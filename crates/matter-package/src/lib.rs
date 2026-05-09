@@ -569,6 +569,24 @@ impl PackageManager {
         Ok(entry_path)
     }
 
+    pub fn resolve_all_imports(&self, package: &Package) -> Result<HashMap<String, PathBuf>, String> {
+        let mut imports = HashMap::new();
+        let mut names = package
+            .manifest
+            .dependencies
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>();
+        names.sort();
+
+        for name in names {
+            let entry_path = self.resolve_import(package, &name)?;
+            imports.insert(name, entry_path);
+        }
+
+        Ok(imports)
+    }
+
     pub fn verify_lockfile(&self, package: &Package, lockfile: &Lockfile) -> Result<(), String> {
         let expected = self.lock_dependencies(package)?;
         if &expected == lockfile {
@@ -933,6 +951,70 @@ math-utils = "^1.0.0"
         let manager = PackageManager::new();
         let error = manager.resolve_import(&app, "utils").unwrap_err();
         assert!(error.contains("does not declare dependency"));
+    }
+
+    #[test]
+    fn test_resolve_all_imports_returns_declared_dependency_entries() {
+        let root = std::env::temp_dir().join("matter_package_all_imports_test");
+        let registry_root = std::env::temp_dir().join("matter_package_all_imports_registry");
+        let _ = fs::remove_dir_all(&root);
+        let _ = fs::remove_dir_all(&registry_root);
+        fs::create_dir_all(root.join("src")).unwrap();
+
+        let mut app_manifest = Manifest::new("app".to_string(), Version::new(0, 1, 0));
+        for name in ["math", "utils"] {
+            app_manifest.dependencies.insert(
+                name.to_string(),
+                Dependency::Registry(VersionReq::Caret(Version::new(1, 0, 0))),
+            );
+        }
+        let app = Package::new(app_manifest, root.clone());
+        app.manifest.save(&root.join("matter.toml")).unwrap();
+
+        let mut manager = PackageManager::new();
+        for name in ["math", "utils"] {
+            let package_root = registry_root.join(name);
+            fs::create_dir_all(package_root.join("src")).unwrap();
+            let mut manifest = Manifest::new(name.to_string(), Version::new(1, 0, 0));
+            manifest.entry = "src/lib.matter".to_string();
+            manifest.save(&package_root.join("matter.toml")).unwrap();
+            fs::write(
+                package_root.join("src").join("lib.matter"),
+                format!("fn {}() {{ return 1 }}\n", name),
+            )
+            .unwrap();
+            manager.register_package(Package::new(manifest, package_root));
+        }
+
+        manager.install_dependencies(&app).unwrap();
+        let imports = manager.resolve_all_imports(&app).unwrap();
+
+        assert_eq!(imports.len(), 2);
+        assert_eq!(
+            imports.get("math"),
+            Some(
+                &root
+                    .join(".matter")
+                    .join("packages")
+                    .join("math")
+                    .join("src")
+                    .join("lib.matter")
+            )
+        );
+        assert_eq!(
+            imports.get("utils"),
+            Some(
+                &root
+                    .join(".matter")
+                    .join("packages")
+                    .join("utils")
+                    .join("src")
+                    .join("lib.matter")
+            )
+        );
+
+        let _ = fs::remove_dir_all(root);
+        let _ = fs::remove_dir_all(registry_root);
     }
 
     #[test]
