@@ -71,6 +71,7 @@ $projectManifestFile = "target\api_bridge_project.toml"
 $projectEntryFile = "target\api_bridge_project_entry.matter"
 $projectDependencyFile = "target\api_bridge_project_dependency.matter"
 $projectBytecodeFile = "target\api_bridge_project.mbc"
+$projectBuildFile = "target\api_bridge_project_build.mbc"
 
 try {
     'import "stdlib_demo"' | Set-Content -Path $projectEntryFile -Encoding UTF8
@@ -135,6 +136,9 @@ stdlib_demo = "api_bridge_project_dependency.matter"
         }
         if (@($json.json_commands) -notcontains "project-source-json") {
             Fail "capabilities-json deveria listar project-source-json"
+        }
+        if (@($json.json_commands) -notcontains "project-build-json") {
+            Fail "capabilities-json deveria listar project-build-json"
         }
         if (@($json.language_features) -notcontains "events") {
             Fail "capabilities-json deveria listar events"
@@ -286,6 +290,25 @@ stdlib_demo = "api_bridge_project_dependency.matter"
         }
         else {
             Pass "project-compile-json"
+        }
+    }
+
+    Write-Host "Construindo projeto via project-build-json..."
+    $json = Invoke-JsonNoInput @("project-build-json", $projectManifestFile, "-o", $projectBuildFile) 0
+    if ($null -ne $json) {
+        Assert-Equal $json.ok $true "project-build-json deveria retornar ok=true"
+        Assert-Equal $json.package "api-bridge-project" "project-build-json deveria usar nome do pacote"
+        Assert-Equal $json.output $projectBuildFile "project-build-json deveria devolver output"
+        Assert-Equal $json.files_count 4 "project-build-json deveria preservar contagem de arquivos"
+        Assert-Equal $json.imports_count 2 "project-build-json deveria preservar contagem de imports"
+        if ([string]::IsNullOrWhiteSpace($json.bytecode_fingerprint)) {
+            Fail "project-build-json deveria gerar bytecode_fingerprint"
+        }
+        if (-not (Test-Path $projectBuildFile)) {
+            Fail "project-build-json nao criou $projectBuildFile"
+        }
+        else {
+            Pass "project-build-json"
         }
     }
 
