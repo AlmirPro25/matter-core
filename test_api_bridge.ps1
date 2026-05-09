@@ -67,8 +67,24 @@ if (-not (Test-Path $cli)) {
 
 $bytecodeFile = "target\api_bridge_test.mbc"
 $eventBytecodeFile = "target\api_bridge_event_test.mbc"
+$projectManifestFile = "target\api_bridge_project.toml"
+$projectBytecodeFile = "target\api_bridge_project.mbc"
 
 try {
+    @'
+[package]
+name = "api-bridge-project"
+version = "0.1.0"
+entry = "..\examples\test_stdlib.matter"
+
+[paths]
+stdlib = "..\stdlib"
+store = "api_bridge_project_store.json"
+
+[dependencies]
+stdlib_demo = "..\examples\test_stdlib.matter"
+'@ | Set-Content -Path $projectManifestFile -Encoding UTF8
+
     Write-Host "Descobrindo capacidades via capabilities-json..."
     $json = Invoke-JsonNoInput @("capabilities-json") 0
     if ($null -ne $json) {
@@ -89,6 +105,9 @@ try {
         }
         if (@($json.json_commands) -notcontains "package-json") {
             Fail "capabilities-json deveria listar package-json"
+        }
+        if (@($json.json_commands) -notcontains "project-run-json") {
+            Fail "capabilities-json deveria listar project-run-json"
         }
         if (@($json.language_features) -notcontains "events") {
             Fail "capabilities-json deveria listar events"
@@ -123,6 +142,38 @@ try {
         Assert-Equal $json.paths.stdlib "stdlib" "package-json deveria ler caminho da stdlib"
         Assert-Equal @($json.dependencies)[0].name "math_tools" "package-json deveria listar dependencia local"
         Pass "package-json"
+    }
+
+    Write-Host "Validando projeto via project-check-json..."
+    $json = Invoke-JsonNoInput @("project-check-json", $projectManifestFile) 0
+    if ($null -ne $json) {
+        Assert-Equal $json.ok $true "project-check-json deveria retornar ok=true"
+        Assert-Equal $json.package "api-bridge-project" "project-check-json deveria usar nome do pacote"
+        Assert-Equal $json.manifest $projectManifestFile "project-check-json deveria devolver manifesto"
+        Pass "project-check-json"
+    }
+
+    Write-Host "Executando projeto via project-run-json..."
+    $json = Invoke-JsonNoInput @("project-run-json", $projectManifestFile) 0
+    if ($null -ne $json) {
+        Assert-Equal $json.ok $true "project-run-json deveria retornar ok=true"
+        Assert-Equal $json.package "api-bridge-project" "project-run-json deveria usar nome do pacote"
+        Assert-Equal @($json.output)[1] "10" "project-run-json deveria resolver stdlib pelo manifesto"
+        Pass "project-run-json"
+    }
+
+    Write-Host "Compilando projeto via project-compile-json..."
+    $json = Invoke-JsonNoInput @("project-compile-json", $projectManifestFile, "-o", $projectBytecodeFile) 0
+    if ($null -ne $json) {
+        Assert-Equal $json.ok $true "project-compile-json deveria retornar ok=true"
+        Assert-Equal $json.package "api-bridge-project" "project-compile-json deveria usar nome do pacote"
+        Assert-Equal $json.output $projectBytecodeFile "project-compile-json deveria devolver arquivo de saida"
+        if (-not (Test-Path $projectBytecodeFile)) {
+            Fail "project-compile-json nao criou $projectBytecodeFile"
+        }
+        else {
+            Pass "project-compile-json"
+        }
     }
 
     Write-Host "Executando snippet via eval-json..."

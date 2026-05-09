@@ -33,6 +33,16 @@ APIs and cloud CLIs can inspect it without running code:
 
 This returns package identity, entrypoint, runtime paths, and local dependency aliases as JSON.
 
+They can also execute the whole project contract directly from the manifest:
+
+```bash
+.\target\release\matter-cli.exe project-check-json
+.\target\release\matter-cli.exe project-run-json
+.\target\release\matter-cli.exe project-compile-json -o target\project.mbc
+```
+
+Project commands read `package.entry`, resolve `paths.stdlib` through `MATTER_STDLIB_PATH`, and route `paths.store` through `MATTER_STORE_PATH` for the current run. That lets a cloud worker mount a repository and call one stable command without knowing the internal file layout.
+
 ## Capability discovery
 
 APIs can discover the available contract at runtime:
@@ -44,7 +54,7 @@ APIs can discover the available contract at runtime:
 Response:
 
 ```json
-{"ok":true,"name":"matter-cli","version":"0.1.0","bytecode":"MBC1","stdin":true,"json_commands":["capabilities-json","eval-json","tokens-json","imports-json","check-json","run-json","emit-json","compile-json","inspect-json","run-bytecode-json","emit-bytecode-json"],"source_commands":["run","eval","emit","check","compile"],"bytecode_commands":["run-bytecode","emit-bytecode","inspect"],"language_features":["variables","functions","recursion","if","while","loop","for","break","continue","events","lists","maps","structs","backend_calls","imports"]}
+{"ok":true,"name":"matter-cli","version":"0.1.0","bytecode":"MBC1","stdin":true,"json_commands":["capabilities-json","package-json","project-check-json","project-run-json","project-compile-json","eval-json","tokens-json","imports-json","check-json","run-json","emit-json","compile-json","inspect-json","run-bytecode-json","emit-bytecode-json"],"source_commands":["run","eval","emit","check","compile"],"bytecode_commands":["run-bytecode","emit-bytecode","inspect"],"language_features":["variables","functions","recursion","if","while","loop","for","break","continue","events","lists","maps","structs","backend_calls","imports","stdlib","persistence","network","concurrency","packages"]}
 ```
 
 ## Local imports

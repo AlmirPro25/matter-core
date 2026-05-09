@@ -37,6 +37,38 @@ fn main() {
             package_json(manifest);
         }
 
+        "project-check-json" => {
+            let manifest = if args.len() >= 3 {
+                &args[2]
+            } else {
+                "matter.toml"
+            };
+            project_check_json(manifest);
+        }
+
+        "project-run-json" => {
+            let manifest = if args.len() >= 3 {
+                &args[2]
+            } else {
+                "matter.toml"
+            };
+            project_run_json(manifest);
+        }
+
+        "project-compile-json" => {
+            let manifest = if args.len() >= 3 {
+                &args[2]
+            } else {
+                "matter.toml"
+            };
+            let output = if args.len() >= 5 && args[3] == "-o" {
+                &args[4]
+            } else {
+                "output.mbc"
+            };
+            project_compile_json(manifest, output);
+        }
+
         "run" => {
             if args.len() < 3 {
                 eprintln!("Usage: matter-cli run <file.matter|->");
@@ -209,6 +241,9 @@ fn print_usage() {
     println!("Usage:");
     println!("  matter-cli capabilities-json                Print machine-readable capabilities");
     println!("  matter-cli package-json [matter.toml]       Inspect Matter package manifest as JSON");
+    println!("  matter-cli project-check-json [matter.toml] Validate package entrypoint as JSON");
+    println!("  matter-cli project-run-json [matter.toml]   Run package entrypoint as JSON");
+    println!("  matter-cli project-compile-json [matter.toml] [-o out] Compile package entrypoint as JSON");
     println!("  matter-cli run <file.matter|->              Run Matter source file or stdin");
     println!("  matter-cli eval <source>                    Run Matter source passed as text");
     println!("  matter-cli eval-json <source>               Run source text and print JSON result");
@@ -243,6 +278,9 @@ fn print_capabilities_json() {
             "\"json_commands\":[",
             "\"capabilities-json\",",
             "\"package-json\",",
+            "\"project-check-json\",",
+            "\"project-run-json\",",
+            "\"project-compile-json\",",
             "\"eval-json\",",
             "\"tokens-json\",",
             "\"imports-json\",",
@@ -310,6 +348,17 @@ struct ManifestDependency {
     path: String,
 }
 
+struct ProjectContext {
+    manifest_path: String,
+    base_dir: PathBuf,
+    manifest: PackageManifest,
+}
+
+struct EnvSnapshot {
+    key: &'static str,
+    previous: Option<String>,
+}
+
 fn package_json(path: &str) {
     let source = fs::read_to_string(path).unwrap_or_else(|error| {
         println!(
@@ -349,12 +398,201 @@ fn package_json(path: &str) {
     );
 }
 
+fn project_check_json(manifest_path: &str) {
+    let project = load_project_or_json_exit(manifest_path);
+    let _env = apply_project_env(&project);
+    let (source, entry_label) = read_project_entry_or_json_exit(&project);
+    let bytecode = build_json_or_exit(&source, &entry_label, &[("package", &project.manifest.name)]);
+
+    println!(
+        "{{\"ok\":true,\"package\":\"{}\",\"manifest\":\"{}\",\"input\":\"{}\",\"summary\":{}}}",
+        json_escape(&project.manifest.name),
+        json_escape(&project.manifest_path),
+        json_escape(&entry_label),
+        bytecode_summary_json(&bytecode)
+    );
+}
+
+fn project_run_json(manifest_path: &str) {
+    let project = load_project_or_json_exit(manifest_path);
+    let _env = apply_project_env(&project);
+    let (source, entry_label) = read_project_entry_or_json_exit(&project);
+    let bytecode = build_json_or_exit(&source, &entry_label, &[("package", &project.manifest.name)]);
+
+    let mut runtime = Runtime::new_silent(bytecode);
+    runtime.set_stdout_enabled(false);
+
+    if let Err(error) = runtime.run() {
+        println!(
+            "{{\"ok\":false,\"stage\":\"runtime\",\"package\":\"{}\",\"manifest\":\"{}\",\"input\":\"{}\",\"error\":{{\"message\":\"{}\"}},\"output\":{}}}",
+            json_escape(&project.manifest.name),
+            json_escape(&project.manifest_path),
+            json_escape(&entry_label),
+            json_escape(&error),
+            json_string_array(&runtime.take_output())
+        );
+        process::exit(1);
+    }
+
+    println!(
+        "{{\"ok\":true,\"package\":\"{}\",\"manifest\":\"{}\",\"input\":\"{}\",\"output\":{}}}",
+        json_escape(&project.manifest.name),
+        json_escape(&project.manifest_path),
+        json_escape(&entry_label),
+        json_string_array(&runtime.take_output())
+    );
+}
+
+fn project_compile_json(manifest_path: &str, output: &str) {
+    let project = load_project_or_json_exit(manifest_path);
+    let _env = apply_project_env(&project);
+    let (source, entry_label) = read_project_entry_or_json_exit(&project);
+    let bytecode = build_json_or_exit(
+        &source,
+        &entry_label,
+        &[("package", &project.manifest.name), ("output", output)],
+    );
+
+    if let Err(error) = bytecode.save_to_file(output) {
+        println!(
+            "{{\"ok\":false,\"stage\":\"write\",\"package\":\"{}\",\"manifest\":\"{}\",\"input\":\"{}\",\"output\":\"{}\",\"error\":{{\"message\":\"{}\"}}}}",
+            json_escape(&project.manifest.name),
+            json_escape(&project.manifest_path),
+            json_escape(&entry_label),
+            json_escape(output),
+            json_escape(&error.to_string())
+        );
+        process::exit(1);
+    }
+
+    println!(
+        "{{\"ok\":true,\"package\":\"{}\",\"manifest\":\"{}\",\"input\":\"{}\",\"output\":\"{}\",\"summary\":{}}}",
+        json_escape(&project.manifest.name),
+        json_escape(&project.manifest_path),
+        json_escape(&entry_label),
+        json_escape(output),
+        bytecode_summary_json(&bytecode)
+    );
+}
+
+fn load_project_or_json_exit(manifest_path: &str) -> ProjectContext {
+    let source = fs::read_to_string(manifest_path).unwrap_or_else(|error| {
+        println!(
+            "{{\"ok\":false,\"stage\":\"read\",\"manifest\":\"{}\",\"error\":{{\"message\":\"{}\"}}}}",
+            json_escape(manifest_path),
+            json_escape(&error.to_string())
+        );
+        process::exit(1);
+    });
+
+    let manifest = parse_package_manifest(&source).unwrap_or_else(|error| {
+        println!(
+            "{{\"ok\":false,\"stage\":\"manifest\",\"manifest\":\"{}\",\"error\":{{\"message\":\"{}\"}}}}",
+            json_escape(manifest_path),
+            json_escape(&error)
+        );
+        process::exit(1);
+    });
+
+    let manifest_file = Path::new(manifest_path);
+    let base_dir = manifest_file
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or(Path::new("."))
+        .to_path_buf();
+
+    ProjectContext {
+        manifest_path: manifest_path.to_string(),
+        base_dir,
+        manifest,
+    }
+}
+
+fn read_project_entry_or_json_exit(project: &ProjectContext) -> (String, String) {
+    let entry_path = project_path(&project.base_dir, &project.manifest.entry);
+    let entry_label = entry_path.display().to_string();
+    let source = fs::read_to_string(&entry_path).unwrap_or_else(|error| {
+        println!(
+            "{{\"ok\":false,\"stage\":\"read\",\"package\":\"{}\",\"manifest\":\"{}\",\"input\":\"{}\",\"error\":{{\"message\":\"{}\"}}}}",
+            json_escape(&project.manifest.name),
+            json_escape(&project.manifest_path),
+            json_escape(&entry_label),
+            json_escape(&error.to_string())
+        );
+        process::exit(1);
+    });
+
+    let base_dir = entry_path.parent().unwrap_or(Path::new("."));
+    let resolved = resolve_imports(&source, base_dir, &mut HashSet::new()).unwrap_or_else(|error| {
+        println!(
+            "{{\"ok\":false,\"stage\":\"import\",\"package\":\"{}\",\"manifest\":\"{}\",\"input\":\"{}\",\"error\":{{\"message\":\"{}\"}}}}",
+            json_escape(&project.manifest.name),
+            json_escape(&project.manifest_path),
+            json_escape(&entry_label),
+            json_escape(&error)
+        );
+        process::exit(1);
+    });
+
+    (resolved, entry_label)
+}
+
+fn apply_project_env(project: &ProjectContext) -> Vec<EnvSnapshot> {
+    let mut snapshots = Vec::new();
+
+    if !project.manifest.stdlib.is_empty() {
+        snapshots.push(set_env_snapshot(
+            "MATTER_STDLIB_PATH",
+            project_path(&project.base_dir, &project.manifest.stdlib).display().to_string(),
+        ));
+    }
+
+    if !project.manifest.store.is_empty() {
+        snapshots.push(set_env_snapshot(
+            "MATTER_STORE_PATH",
+            project_path(&project.base_dir, &project.manifest.store).display().to_string(),
+        ));
+    }
+
+    snapshots
+}
+
+fn set_env_snapshot(key: &'static str, value: String) -> EnvSnapshot {
+    let previous = env::var(key).ok();
+    env::set_var(key, value);
+    EnvSnapshot { key, previous }
+}
+
+impl Drop for EnvSnapshot {
+    fn drop(&mut self) {
+        if let Some(value) = &self.previous {
+            env::set_var(self.key, value);
+        } else {
+            env::remove_var(self.key);
+        }
+    }
+}
+
+fn project_path(base_dir: &Path, value: &str) -> PathBuf {
+    let path = Path::new(value);
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        base_dir.join(path)
+    }
+}
+
 fn parse_package_manifest(source: &str) -> Result<PackageManifest, String> {
     let mut manifest = PackageManifest::default();
     let mut section = String::new();
 
     for (line_index, raw_line) in source.lines().enumerate() {
-        let line = raw_line.split('#').next().unwrap_or("").trim();
+        let line = raw_line
+            .trim_start_matches('\u{feff}')
+            .split('#')
+            .next()
+            .unwrap_or("")
+            .trim();
         if line.is_empty() {
             continue;
         }
