@@ -55,6 +55,15 @@ fn main() {
             project_check_json(manifest);
         }
 
+        "project-verify-json" => {
+            let manifest = if args.len() >= 3 {
+                &args[2]
+            } else {
+                "matter.toml"
+            };
+            project_verify_json(manifest);
+        }
+
         "project-run-json" => {
             let manifest = if args.len() >= 3 {
                 &args[2]
@@ -287,6 +296,7 @@ fn print_usage() {
     println!("  matter-cli package-json [matter.toml]       Inspect Matter package manifest as JSON");
     println!("  matter-cli project-deps-json [matter.toml]  Inspect resolved package dependencies as JSON");
     println!("  matter-cli project-check-json [matter.toml] Validate package entrypoint as JSON");
+    println!("  matter-cli project-verify-json [matter.toml] Verify dependencies, imports, and compile checks as JSON");
     println!("  matter-cli project-run-json [matter.toml]   Run package entrypoint as JSON");
     println!("  matter-cli project-imports-json [matter.toml] Inspect package import graph as JSON");
     println!("  matter-cli project-lock-json [matter.toml]  Print reproducible package lock JSON");
@@ -329,6 +339,7 @@ fn print_capabilities_json() {
             "\"package-json\",",
             "\"project-deps-json\",",
             "\"project-check-json\",",
+            "\"project-verify-json\",",
             "\"project-run-json\",",
             "\"project-imports-json\",",
             "\"project-lock-json\",",
@@ -522,6 +533,95 @@ fn project_check_json(manifest_path: &str) {
     );
 }
 
+fn project_verify_json(manifest_path: &str) {
+    let project = load_project_or_json_exit(manifest_path);
+    let _env = apply_project_env(&project);
+    let entry_path = project_path(&project.base_dir, &project.manifest.entry);
+    let entry_label = entry_path.display().to_string();
+    let source = fs::read_to_string(&entry_path).unwrap_or_else(|error| {
+        println!(
+            "{{\"ok\":false,\"stage\":\"read\",\"package\":\"{}\",\"manifest\":\"{}\",\"input\":\"{}\",\"error\":{{\"message\":\"{}\"}}}}",
+            json_escape(&project.manifest.name),
+            json_escape(&project.manifest_path),
+            json_escape(&entry_label),
+            json_escape(&error.to_string())
+        );
+        process::exit(1);
+    });
+
+    let base_dir = entry_path
+        .parent()
+        .unwrap_or(Path::new("."))
+        .to_path_buf();
+    let mut imports = Vec::new();
+    let mut stack = vec![entry_path
+        .canonicalize()
+        .unwrap_or_else(|_| entry_path.clone())];
+
+    if let Err(error) = collect_imports_with_dependencies(
+        &source,
+        &base_dir,
+        &entry_label,
+        &project.base_dir,
+        &project.manifest.dependencies,
+        &mut stack,
+        &mut imports,
+    ) {
+        println!(
+            "{{\"ok\":false,\"stage\":\"import\",\"package\":\"{}\",\"manifest\":\"{}\",\"input\":\"{}\",\"error\":{{\"message\":\"{}\"}}}}",
+            json_escape(&project.manifest.name),
+            json_escape(&project.manifest_path),
+            json_escape(&entry_label),
+            json_escape(&error)
+        );
+        process::exit(1);
+    }
+
+    let resolved_source = resolve_imports_with_dependencies(
+        &source,
+        &base_dir,
+        &project.base_dir,
+        &project.manifest.dependencies,
+        &mut HashSet::new(),
+    ).unwrap_or_else(|error| {
+        println!(
+            "{{\"ok\":false,\"stage\":\"import\",\"package\":\"{}\",\"manifest\":\"{}\",\"input\":\"{}\",\"error\":{{\"message\":\"{}\"}}}}",
+            json_escape(&project.manifest.name),
+            json_escape(&project.manifest_path),
+            json_escape(&entry_label),
+            json_escape(&error)
+        );
+        process::exit(1);
+    });
+
+    let bytecode = build_json_or_exit(
+        &resolved_source,
+        &entry_label,
+        &[("package", &project.manifest.name)],
+    );
+
+    let mut files = Vec::new();
+    let mut seen_files = HashSet::new();
+    push_lock_file(&mut files, &mut seen_files, "manifest", Path::new(&project.manifest_path));
+    push_lock_file(&mut files, &mut seen_files, "entry", &entry_path);
+    for import in &imports {
+        push_lock_file(&mut files, &mut seen_files, &import.source, Path::new(&import.resolved));
+    }
+    let lock_fingerprint = project_lock_fingerprint(&files, &imports, &project.manifest.dependencies);
+
+    println!(
+        "{{\"ok\":true,\"package\":\"{}\",\"manifest\":\"{}\",\"input\":\"{}\",\"lock_fingerprint\":\"{}\",\"dependencies_count\":{},\"imports_count\":{},\"files_count\":{},\"source_bytes\":{},\"summary\":{}}}",
+        json_escape(&project.manifest.name),
+        json_escape(&project.manifest_path),
+        json_escape(&entry_label),
+        json_escape(&lock_fingerprint),
+        project.manifest.dependencies.len(),
+        imports.len(),
+        files.len(),
+        resolved_source.as_bytes().len(),
+        bytecode_summary_json(&bytecode)
+    );
+}
 fn project_run_json(manifest_path: &str) {
     let project = load_project_or_json_exit(manifest_path);
     let _env = apply_project_env(&project);

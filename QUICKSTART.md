@@ -81,6 +81,7 @@ Ou enviar Matter Core por stdin usando `-`:
 ### Executar projeto pelo manifesto
 ```bash
 .\target\release\matter-cli.exe project-check-json
+.\target\release\matter-cli.exe project-verify-json
 .\target\release\matter-cli.exe project-run-json
 .\target\release\matter-cli.exe project-imports-json
 .\target\release\matter-cli.exe project-lock-json

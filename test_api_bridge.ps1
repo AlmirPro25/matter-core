@@ -118,6 +118,9 @@ stdlib_demo = "api_bridge_project_dependency.matter"
         if (@($json.json_commands) -notcontains "project-deps-json") {
             Fail "capabilities-json deveria listar project-deps-json"
         }
+        if (@($json.json_commands) -notcontains "project-verify-json") {
+            Fail "capabilities-json deveria listar project-verify-json"
+        }
         if (@($json.json_commands) -notcontains "project-run-json") {
             Fail "capabilities-json deveria listar project-run-json"
         }
@@ -188,6 +191,20 @@ stdlib_demo = "api_bridge_project_dependency.matter"
         Assert-Equal $json.package "api-bridge-project" "project-check-json deveria usar nome do pacote"
         Assert-Equal $json.manifest $projectManifestFile "project-check-json deveria devolver manifesto"
         Pass "project-check-json"
+    }
+
+    Write-Host "Verificando projeto via project-verify-json..."
+    $json = Invoke-JsonNoInput @("project-verify-json", $projectManifestFile) 0
+    if ($null -ne $json) {
+        Assert-Equal $json.ok $true "project-verify-json deveria retornar ok=true"
+        Assert-Equal $json.package "api-bridge-project" "project-verify-json deveria usar nome do pacote"
+        Assert-Equal $json.dependencies_count 1 "project-verify-json deveria contar dependencias"
+        Assert-Equal $json.imports_count 2 "project-verify-json deveria contar imports"
+        Assert-Equal $json.files_count 4 "project-verify-json deveria contar arquivos"
+        if ([string]::IsNullOrWhiteSpace($json.lock_fingerprint)) {
+            Fail "project-verify-json deveria gerar lock_fingerprint"
+        }
+        Pass "project-verify-json"
     }
 
     Write-Host "Executando projeto via project-run-json..."
