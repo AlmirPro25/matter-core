@@ -247,6 +247,12 @@ impl TraceVisualBackend {
         parse_visual_event_document(&content)
     }
 
+    pub fn dispatch_events(&mut self, path: &str) -> Result<Value, VisualError> {
+        let content =
+            fs::read_to_string(path).map_err(|error| VisualError::RuntimeError(error.to_string()))?;
+        apply_visual_event_document(self, &content)
+    }
+
     pub fn tick(&mut self, delta_ms: i64) -> Result<Value, VisualError> {
         if delta_ms <= 0 {
             return Err(VisualError::InvalidArgument(
@@ -815,6 +821,18 @@ impl Backend for TraceVisualBackend {
                     .map_err(|_| "visual.load_events expects string path".to_string())?;
                 self.load_events(&path).map_err(|e| e.to_string())
             }
+            "dispatch_events" => {
+                if args.len() != 1 {
+                    return Err(format!(
+                        "visual.dispatch_events expects 1 argument, got {}",
+                        args.len()
+                    ));
+                }
+                let path = args[0]
+                    .as_string()
+                    .map_err(|_| "visual.dispatch_events expects string path".to_string())?;
+                self.dispatch_events(&path).map_err(|e| e.to_string())
+            }
             "tick" => {
                 if args.len() != 1 {
                     return Err(format!("visual.tick expects 1 argument, got {}", args.len()));
@@ -1238,6 +1256,85 @@ fn parse_visual_event_document(content: &str) -> Result<Value, VisualError> {
     Ok(Value::List(
         events.iter().map(json_value_to_backend_value).collect(),
     ))
+}
+
+fn apply_visual_event_document(
+    backend: &mut TraceVisualBackend,
+    content: &str,
+) -> Result<Value, VisualError> {
+    let document: serde_json::Value =
+        serde_json::from_str(content).map_err(|error| VisualError::RuntimeError(error.to_string()))?;
+    let format = document
+        .get("format")
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| VisualError::InvalidArgument("visual event document missing format".to_string()))?;
+    if format != "PXL_TRACE" && format != "PXL_EVENT_QUEUE" {
+        return Err(VisualError::InvalidArgument(format!(
+            "visual event format must be PXL_TRACE or PXL_EVENT_QUEUE, got {}",
+            format
+        )));
+    }
+    let events = document
+        .get("events")
+        .and_then(|value| value.as_array())
+        .ok_or_else(|| VisualError::InvalidArgument("visual event document events must be an array".to_string()))?;
+
+    let mut selected = String::new();
+    let mut active_scene = backend.current_scene.clone().unwrap_or_default();
+    let mut moved = 0;
+
+    for event in events {
+        let Some(event_object) = event.as_object() else {
+            continue;
+        };
+        let event_name = event_object
+            .get("event")
+            .and_then(|value| value.as_str())
+            .unwrap_or("unknown")
+            .to_string();
+        if let Some(scene) = event_object.get("scene").and_then(|value| value.as_str()) {
+            backend.current_scene = Some(scene.to_string());
+            active_scene = scene.to_string();
+            if !backend.scenes.iter().any(|existing| existing == scene) {
+                backend.scenes.push(scene.to_string());
+            }
+        }
+        if let Some(target) = event_object.get("target").and_then(|value| value.as_str()) {
+            selected = target.to_string();
+            let entry = backend.properties.entry(target.to_string()).or_default();
+            entry.insert("state".to_string(), Value::String("active".to_string()));
+            entry.insert("selected".to_string(), Value::Bool(true));
+            entry.insert("lastEvent".to_string(), Value::String(event_name.clone()));
+
+            if event_name == "editor_move"
+                || event_object
+                    .get("type")
+                    .and_then(|value| value.as_str())
+                    .is_some_and(|kind| kind == "editor_move")
+            {
+                if let Some(region) = backend.regions.get_mut(target) {
+                    if let Some(x) = event_object.get("x").and_then(|value| value.as_i64()) {
+                        region.x = x;
+                    }
+                    if let Some(y) = event_object.get("y").and_then(|value| value.as_i64()) {
+                        region.y = y;
+                    }
+                    moved += 1;
+                }
+            }
+        }
+    }
+
+    Ok(Value::Map(HashMap::from([
+        ("processed".to_string(), Value::Int(events.len() as i64)),
+        ("moved".to_string(), Value::Int(moved)),
+        ("selected".to_string(), Value::String(selected)),
+        ("activeScene".to_string(), Value::String(active_scene)),
+        (
+            "events".to_string(),
+            Value::List(events.iter().map(json_value_to_backend_value).collect()),
+        ),
+    ])))
 }
 
 fn render_pxl_document(backend: &TraceVisualBackend) -> String {
@@ -2166,6 +2263,59 @@ mod tests {
             }
             _ => panic!("visual.load_events event must be a map"),
         }
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn test_visual_events_can_be_dispatched_into_visual_state() {
+        let path = std::env::temp_dir().join("matter_visual_dispatch_events_test.json");
+        fs::write(
+            &path,
+            r#"{"format":"PXL_EVENT_QUEUE","version":1,"events":[{"type":"scene","scene":"checkout","event":"scene_change"},{"type":"pointer","target":"button","event":"button_tap"},{"type":"editor_move","target":"button","x":42,"y":64,"event":"editor_move"}]}"#,
+        )
+        .unwrap();
+
+        let mut backend = TraceVisualBackend::new();
+        backend
+            .call(
+                "region",
+                vec![
+                    Value::String("button".to_string()),
+                    Value::Int(10),
+                    Value::Int(20),
+                    Value::Int(120),
+                    Value::Int(40),
+                ],
+            )
+            .unwrap();
+        let result = backend
+            .call(
+                "dispatch_events",
+                vec![Value::String(path.display().to_string())],
+            )
+            .unwrap();
+        match result {
+            Value::Map(result) => {
+                assert_eq!(result.get("processed"), Some(&Value::Int(3)));
+                assert_eq!(result.get("moved"), Some(&Value::Int(1)));
+                assert_eq!(
+                    result.get("selected"),
+                    Some(&Value::String("button".to_string()))
+                );
+                assert_eq!(
+                    result.get("activeScene"),
+                    Some(&Value::String("checkout".to_string()))
+                );
+            }
+            _ => panic!("visual.dispatch_events must return a map"),
+        }
+
+        let snapshot = backend.call("snapshot", vec![]).unwrap().as_string().unwrap();
+        assert!(snapshot.contains("\"activeScene\":\"checkout\""));
+        assert!(snapshot.contains("\"name\":\"button\",\"x\":42,\"y\":64"));
+        assert!(snapshot.contains("\"state\":\"active\""));
+        assert!(snapshot.contains("\"selected\":true"));
+        assert!(snapshot.contains("\"lastEvent\":\"editor_move\""));
         let _ = fs::remove_file(path);
     }
 
