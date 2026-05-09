@@ -173,6 +173,24 @@ impl TraceVisualBackend {
         fs::write(path, render_pxl_canvas(self))
             .map_err(|error| VisualError::RuntimeError(error.to_string()))
     }
+
+    pub fn save_state(&self, path: &str) -> Result<(), VisualError> {
+        if let Some(parent) = Path::new(path).parent() {
+            if !parent.as_os_str().is_empty() {
+                fs::create_dir_all(parent)
+                    .map_err(|error| VisualError::RuntimeError(error.to_string()))?;
+            }
+        }
+
+        fs::write(path, render_visual_state_document(self))
+            .map_err(|error| VisualError::RuntimeError(error.to_string()))
+    }
+
+    pub fn load_state(&mut self, path: &str) -> Result<(), VisualError> {
+        let content =
+            fs::read_to_string(path).map_err(|error| VisualError::RuntimeError(error.to_string()))?;
+        apply_visual_state_document(self, &content)
+    }
 }
 
 impl Default for TraceVisualBackend {
@@ -684,6 +702,26 @@ impl Backend for TraceVisualBackend {
                 }
                 Ok(Value::String(self.pxl_snapshot()))
             }
+            "save_state" => {
+                if args.len() != 1 {
+                    return Err(format!("visual.save_state expects 1 argument, got {}", args.len()));
+                }
+                let path = args[0]
+                    .as_string()
+                    .map_err(|_| "visual.save_state expects string path".to_string())?;
+                self.save_state(&path).map_err(|e| e.to_string())?;
+                Ok(Value::String(path))
+            }
+            "load_state" => {
+                if args.len() != 1 {
+                    return Err(format!("visual.load_state expects 1 argument, got {}", args.len()));
+                }
+                let path = args[0]
+                    .as_string()
+                    .map_err(|_| "visual.load_state expects string path".to_string())?;
+                self.load_state(&path).map_err(|e| e.to_string())?;
+                Ok(Value::String(path))
+            }
             "export" => {
                 if args.len() != 1 {
                     return Err(format!("visual.export expects 1 argument, got {}", args.len()));
@@ -764,6 +802,117 @@ fn component_region_key(key: &str) -> bool {
         key,
         "x" | "y" | "w" | "h" | "semantic" | "behavior" | "material" | "energy" | "scene"
     )
+}
+
+fn render_visual_state_document(backend: &TraceVisualBackend) -> String {
+    let mut regions: Vec<&VisualRegionSpec> = backend.regions.values().collect();
+    regions.sort_by(|left, right| left.name.cmp(&right.name));
+    let region_json = regions
+        .into_iter()
+        .map(|region| {
+            let properties = backend
+                .properties
+                .get(&region.name)
+                .map(value_map_json)
+                .unwrap_or_else(|| "{}".to_string());
+            format!(
+                "{{\"name\":\"{}\",\"x\":{},\"y\":{},\"w\":{},\"h\":{},\"properties\":{}}}",
+                json_escape(&region.name),
+                region.x,
+                region.y,
+                region.w,
+                region.h,
+                properties
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    let active_scene = backend
+        .current_scene
+        .clone()
+        .unwrap_or_else(|| "main".to_string());
+
+    format!(
+        "{{\"format\":\"PXL_STATE\",\"version\":1,\"activeScene\":\"{}\",\"regions\":[{}]}}",
+        json_escape(&active_scene),
+        region_json
+    )
+}
+
+fn apply_visual_state_document(
+    backend: &mut TraceVisualBackend,
+    content: &str,
+) -> Result<(), VisualError> {
+    let document: serde_json::Value =
+        serde_json::from_str(content).map_err(|error| VisualError::RuntimeError(error.to_string()))?;
+    let format = document
+        .get("format")
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| VisualError::InvalidArgument("visual state missing format".to_string()))?;
+    if format != "PXL_STATE" {
+        return Err(VisualError::InvalidArgument(format!(
+            "visual state format must be PXL_STATE, got {}",
+            format
+        )));
+    }
+
+    if let Some(active_scene) = document.get("activeScene").and_then(|value| value.as_str()) {
+        if !backend.scenes.iter().any(|scene| scene == active_scene) {
+            backend.scenes.push(active_scene.to_string());
+        }
+        backend.current_scene = Some(active_scene.to_string());
+    }
+
+    let regions = document
+        .get("regions")
+        .and_then(|value| value.as_array())
+        .ok_or_else(|| VisualError::InvalidArgument("visual state regions must be an array".to_string()))?;
+    for region_state in regions {
+        let name = region_state
+            .get("name")
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| VisualError::InvalidArgument("visual state region missing name".to_string()))?;
+        if let Some(region) = backend.regions.get_mut(name) {
+            if let Some(x) = region_state.get("x").and_then(|value| value.as_i64()) {
+                region.x = x;
+            }
+            if let Some(y) = region_state.get("y").and_then(|value| value.as_i64()) {
+                region.y = y;
+            }
+            if let Some(w) = region_state.get("w").and_then(|value| value.as_i64()) {
+                region.w = w;
+            }
+            if let Some(h) = region_state.get("h").and_then(|value| value.as_i64()) {
+                region.h = h;
+            }
+        }
+        if let Some(properties) = region_state.get("properties").and_then(|value| value.as_object()) {
+            let entry = backend.properties.entry(name.to_string()).or_default();
+            for (key, value) in properties {
+                entry.insert(key.clone(), json_value_to_backend_value(value));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn json_value_to_backend_value(value: &serde_json::Value) -> Value {
+    match value {
+        serde_json::Value::Null => Value::Unit,
+        serde_json::Value::Bool(value) => Value::Bool(*value),
+        serde_json::Value::Number(value) => Value::Int(value.as_i64().unwrap_or_default()),
+        serde_json::Value::String(value) => Value::String(value.clone()),
+        serde_json::Value::Array(values) => {
+            Value::List(values.iter().map(json_value_to_backend_value).collect())
+        }
+        serde_json::Value::Object(values) => Value::Map(
+            values
+                .iter()
+                .map(|(key, value)| (key.clone(), json_value_to_backend_value(value)))
+                .collect(),
+        ),
+    }
 }
 
 fn render_pxl_document(backend: &TraceVisualBackend) -> String {
@@ -986,11 +1135,11 @@ fn render_pxl_canvas(backend: &TraceVisualBackend) -> String {
     );
     html = html.replace(
         "let selected=null;const zoomScale",
-        "let selected=null;let activeScene=pxl.activeScene||(pxl.scenes&&pxl.scenes[0])||'main';const layoutsByScene=new Map((pxl.layouts||[]).map((layout)=>[layout.scene,layout]));const zoomScale",
+        "let selected=null;let activeScene=pxl.activeScene||(pxl.scenes&&pxl.scenes[0])||'main';const persistenceKey='PXL_STATE:'+surface.name;function loadPersistedState(){try{const state=JSON.parse(localStorage.getItem(persistenceKey)||'{}');if(state.activeScene)activeScene=state.activeScene;if(state.selected)selected=state.selected;}catch(_error){}}function savePersistedState(){try{localStorage.setItem(persistenceKey,JSON.stringify({format:'PXL_BROWSER_STATE',version:1,activeScene,selected,updatedAt:new Date().toISOString()}));}catch(_error){}}loadPersistedState();const layoutsByScene=new Map((pxl.layouts||[]).map((layout)=>[layout.scene,layout]));const zoomScale",
     );
     html = html.replace(
         "bindings.innerHTML=(pxl.inputs||[]).map((input)=>'<div><kbd>'+input.key+'</kbd><span>'+input.target+' / '+input.event+'</span></div>').join('')||'<div>No input bindings</div>';",
-        "function renderSceneList(){sceneList.innerHTML=(pxl.scenes||['main']).map((scene)=>'<div><button type=\"button\" data-scene=\"'+scene+'\">'+scene+'</button><span>'+((scene===activeScene)?'active':'')+'</span></div>').join('');sceneList.querySelectorAll('[data-scene]').forEach((node)=>node.addEventListener('click',()=>{activeScene=node.dataset.scene;selected=null;renderSceneList();recordEvent({type:'scene',scene:activeScene,event:'scene_change'});}));}renderSceneList();bindings.innerHTML=(pxl.inputs||[]).map((input)=>'<div><kbd>'+input.key+'</kbd><span>'+input.target+' / '+input.event+'</span></div>').join('')||'<div>No input bindings</div>';",
+        "function renderSceneList(){sceneList.innerHTML=(pxl.scenes||['main']).map((scene)=>'<div><button type=\"button\" data-scene=\"'+scene+'\">'+scene+'</button><span>'+((scene===activeScene)?'active':'')+'</span></div>').join('');sceneList.querySelectorAll('[data-scene]').forEach((node)=>node.addEventListener('click',()=>{activeScene=node.dataset.scene;selected=null;renderSceneList();savePersistedState();recordEvent({type:'scene',scene:activeScene,event:'scene_change'});}));}renderSceneList();bindings.innerHTML=(pxl.inputs||[]).map((input)=>'<div><kbd>'+input.key+'</kbd><span>'+input.target+' / '+input.event+'</span></div>').join('')||'<div>No input bindings</div>';",
     );
     html = html.replace(
         "function regionVisible(region){return prop(region,'visible')!==false;}",
@@ -1003,6 +1152,14 @@ fn render_pxl_canvas(backend: &TraceVisualBackend) -> String {
     html = html.replace(
         "return sortedRegions().reverse().find((region)=>x>=region.x&&x<=region.x+region.w&&y>=region.y&&y<=region.y+region.h);",
         "const regions=sortedRegions();return regions.map((region,index)=>layoutedRegion(region,index)).reverse().find((region)=>x>=region.x&&x<=region.x+region.w&&y>=region.y&&y<=region.y+region.h);",
+    );
+    html = html.replace(
+        "selected=region.name;recordEvent({type:'pointer'",
+        "selected=region.name;savePersistedState();recordEvent({type:'pointer'",
+    );
+    html = html.replace(
+        "selected=binding.target;recordEvent({type:'keyboard'",
+        "selected=binding.target;savePersistedState();recordEvent({type:'keyboard'",
     );
     html
 }
@@ -1452,6 +1609,75 @@ mod tests {
     }
 
     #[test]
+    fn test_visual_state_can_be_saved_and_loaded() {
+        let path = std::env::temp_dir().join("matter_visual_state_test.json");
+        let mut backend = TraceVisualBackend::new();
+        backend
+            .call("scene", vec![Value::String("settings".to_string())])
+            .unwrap();
+        backend
+            .call(
+                "region",
+                vec![
+                    Value::String("panel".to_string()),
+                    Value::Int(20),
+                    Value::Int(30),
+                    Value::Int(300),
+                    Value::Int(90),
+                ],
+            )
+            .unwrap();
+        backend
+            .call(
+                "state",
+                vec![
+                    Value::String("panel".to_string()),
+                    Value::String("active".to_string()),
+                ],
+            )
+            .unwrap();
+        backend
+            .call(
+                "visible",
+                vec![Value::String("panel".to_string()), Value::Bool(false)],
+            )
+            .unwrap();
+
+        let result = backend
+            .call("save_state", vec![Value::String(path.display().to_string())])
+            .unwrap();
+        assert_eq!(result, Value::String(path.display().to_string()));
+        let saved = fs::read_to_string(&path).unwrap();
+        assert!(saved.contains("\"format\":\"PXL_STATE\""));
+        assert!(saved.contains("\"activeScene\":\"settings\""));
+        assert!(saved.contains("\"visible\":false"));
+
+        let mut restored = TraceVisualBackend::new();
+        restored
+            .call(
+                "region",
+                vec![
+                    Value::String("panel".to_string()),
+                    Value::Int(1),
+                    Value::Int(1),
+                    Value::Int(10),
+                    Value::Int(10),
+                ],
+            )
+            .unwrap();
+        restored
+            .call("load_state", vec![Value::String(path.display().to_string())])
+            .unwrap();
+        let snapshot = restored.call("snapshot", vec![]).unwrap().as_string().unwrap();
+        assert!(snapshot.contains("\"activeScene\":\"settings\""));
+        assert!(snapshot.contains("\"x\":20"));
+        assert!(snapshot.contains("\"w\":300"));
+        assert!(snapshot.contains("\"state\":\"active\""));
+        assert!(snapshot.contains("\"visible\":false"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
     fn test_visual_canvas_writes_engine_html() {
         let mut backend = TraceVisualBackend::new();
         let path = std::env::temp_dir().join("matter_visual_canvas_test.html");
@@ -1636,6 +1862,10 @@ mod tests {
         assert!(html.contains("layoutsByScene"));
         assert!(html.contains("sceneLayout"));
         assert!(html.contains("layoutedRegion"));
+        assert!(html.contains("localStorage"));
+        assert!(html.contains("PXL_BROWSER_STATE"));
+        assert!(html.contains("loadPersistedState"));
+        assert!(html.contains("savePersistedState"));
         assert!(html.contains("\"inputs\":[{\"key\":\"Enter\",\"target\":\"checkout\",\"event\":\"checkout_submit\"}]"));
         assert!(html.contains("\"theme\":{\"accent\":\"#0f766e\"}"));
         assert!(html.contains("themeValue"));
