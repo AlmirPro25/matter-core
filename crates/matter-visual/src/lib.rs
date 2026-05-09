@@ -219,6 +219,10 @@ impl TraceVisualBackend {
         Ok(())
     }
 
+    pub fn verify_web_runtime(&self, dir: &str) -> Result<Value, VisualError> {
+        verify_web_package_lock(Path::new(dir))
+    }
+
     pub fn save_state(&self, path: &str) -> Result<(), VisualError> {
         if let Some(parent) = Path::new(path).parent() {
             if !parent.as_os_str().is_empty() {
@@ -885,6 +889,15 @@ impl Backend for TraceVisualBackend {
                     .map_err(|e| e.to_string())?;
                 Ok(Value::String(dir))
             }
+            "verify_web" => {
+                if args.len() != 1 {
+                    return Err(format!("visual.verify_web expects 1 argument, got {}", args.len()));
+                }
+                let dir = args[0]
+                    .as_string()
+                    .map_err(|_| "visual.verify_web expects string dir".to_string())?;
+                self.verify_web_runtime(&dir).map_err(|e| e.to_string())
+            }
             _ => Err(format!("Unknown visual method: {}", method)),
         }
     }
@@ -1000,6 +1013,73 @@ fn stable_fingerprint(bytes: &[u8]) -> String {
         hash = hash.wrapping_mul(0x100000001b3);
     }
     format!("{:016x}", hash)
+}
+
+fn verify_web_package_lock(root: &Path) -> Result<Value, VisualError> {
+    let lock_path = root.join("matter-lock.json");
+    let content = fs::read_to_string(&lock_path)
+        .map_err(|error| VisualError::RuntimeError(error.to_string()))?;
+    let document: serde_json::Value =
+        serde_json::from_str(&content).map_err(|error| VisualError::RuntimeError(error.to_string()))?;
+    let format = document
+        .get("format")
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| VisualError::InvalidArgument("matter-lock.json missing format".to_string()))?;
+    if format != "MATTER_LOCK" {
+        return Err(VisualError::InvalidArgument(format!(
+            "matter-lock.json format must be MATTER_LOCK, got {}",
+            format
+        )));
+    }
+    let package = document
+        .get("package")
+        .and_then(|value| value.as_str())
+        .unwrap_or("unknown")
+        .to_string();
+    let files = document
+        .get("files")
+        .and_then(|value| value.as_array())
+        .ok_or_else(|| {
+            VisualError::InvalidArgument("matter-lock.json files must be an array".to_string())
+        })?;
+
+    let mut ok = true;
+    let mut verified_files = Vec::new();
+    for file in files {
+        let path = file
+            .get("path")
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| VisualError::InvalidArgument("matter-lock.json file missing path".to_string()))?;
+        let expected_bytes = file
+            .get("bytes")
+            .and_then(|value| value.as_u64())
+            .unwrap_or(0) as i64;
+        let expected_fingerprint = file
+            .get("fingerprint")
+            .and_then(|value| value.as_str())
+            .unwrap_or("");
+        let file_path = root.join(path);
+        let bytes = fs::read(&file_path).map_err(|error| VisualError::RuntimeError(error.to_string()))?;
+        let actual_bytes = bytes.len() as i64;
+        let actual_fingerprint = stable_fingerprint(&bytes);
+        let file_ok = actual_bytes == expected_bytes && actual_fingerprint == expected_fingerprint;
+        ok = ok && file_ok;
+        verified_files.push(Value::Map(HashMap::from([
+            ("path".to_string(), Value::String(path.to_string())),
+            ("ok".to_string(), Value::Bool(file_ok)),
+            ("bytes".to_string(), Value::Int(actual_bytes)),
+            (
+                "fingerprint".to_string(),
+                Value::String(actual_fingerprint),
+            ),
+        ])));
+    }
+
+    Ok(Value::Map(HashMap::from([
+        ("ok".to_string(), Value::Bool(ok)),
+        ("package".to_string(), Value::String(package)),
+        ("files".to_string(), Value::List(verified_files)),
+    ])))
 }
 
 fn package_slug(value: &str) -> String {
@@ -1839,6 +1919,24 @@ mod tests {
         assert!(lock.contains("\"path\":\"index.html\""));
         assert!(lock.contains("\"path\":\"pxl.json\""));
         assert!(lock.contains("\"fingerprint\""));
+
+        let verification = backend
+            .call("verify_web", vec![Value::String(dir.display().to_string())])
+            .unwrap();
+        match verification {
+            Value::Map(result) => {
+                assert_eq!(result.get("ok"), Some(&Value::Bool(true)));
+                assert_eq!(
+                    result.get("package"),
+                    Some(&Value::String("matter-pxl-demo".to_string()))
+                );
+                match result.get("files") {
+                    Some(Value::List(files)) => assert_eq!(files.len(), 4),
+                    _ => panic!("visual.verify_web must return verified files"),
+                }
+            }
+            _ => panic!("visual.verify_web must return a map"),
+        }
         let _ = fs::remove_dir_all(dir);
     }
 
