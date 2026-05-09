@@ -45,6 +45,13 @@ pub struct VisualComponentSpec {
     pub defaults: HashMap<String, Value>,
 }
 
+#[derive(Debug, Clone)]
+pub struct VisualLoopState {
+    pub frame: i64,
+    pub time_ms: i64,
+    pub running: bool,
+}
+
 /// Especificação de uma região visual (PXL)
 #[derive(Debug, Clone)]
 pub struct VisualRegionSpec {
@@ -105,6 +112,7 @@ pub struct TraceVisualBackend {
     current_scene: Option<String>,
     layouts: Vec<VisualLayoutSpec>,
     components: HashMap<String, VisualComponentSpec>,
+    loop_state: VisualLoopState,
     stdout_enabled: bool,
 }
 
@@ -124,6 +132,11 @@ impl TraceVisualBackend {
             current_scene: None,
             layouts: Vec::new(),
             components: HashMap::new(),
+            loop_state: VisualLoopState {
+                frame: 0,
+                time_ms: 0,
+                running: false,
+            },
             stdout_enabled: true,
         }
     }
@@ -196,6 +209,35 @@ impl TraceVisualBackend {
         let content =
             fs::read_to_string(path).map_err(|error| VisualError::RuntimeError(error.to_string()))?;
         parse_visual_event_document(&content)
+    }
+
+    pub fn tick(&mut self, delta_ms: i64) -> Result<Value, VisualError> {
+        if delta_ms <= 0 {
+            return Err(VisualError::InvalidArgument(
+                "visual.tick delta must be greater than 0".to_string(),
+            ));
+        }
+        self.loop_state.frame += 1;
+        self.loop_state.time_ms += delta_ms;
+        self.loop_state.running = true;
+        Ok(loop_state_value(&self.loop_state))
+    }
+
+    pub fn run_loop(&mut self, frames: i64, delta_ms: i64) -> Result<Value, VisualError> {
+        if frames <= 0 {
+            return Err(VisualError::InvalidArgument(
+                "visual.loop frames must be greater than 0".to_string(),
+            ));
+        }
+        if delta_ms <= 0 {
+            return Err(VisualError::InvalidArgument(
+                "visual.loop delta must be greater than 0".to_string(),
+            ));
+        }
+        for _ in 0..frames {
+            self.tick(delta_ms)?;
+        }
+        Ok(loop_state_value(&self.loop_state))
     }
 }
 
@@ -737,6 +779,27 @@ impl Backend for TraceVisualBackend {
                     .map_err(|_| "visual.load_events expects string path".to_string())?;
                 self.load_events(&path).map_err(|e| e.to_string())
             }
+            "tick" => {
+                if args.len() != 1 {
+                    return Err(format!("visual.tick expects 1 argument, got {}", args.len()));
+                }
+                let delta_ms = args[0]
+                    .as_int()
+                    .map_err(|_| "visual.tick expects int delta".to_string())?;
+                self.tick(delta_ms).map_err(|e| e.to_string())
+            }
+            "loop" => {
+                if args.len() != 2 {
+                    return Err(format!("visual.loop expects 2 arguments, got {}", args.len()));
+                }
+                let frames = args[0]
+                    .as_int()
+                    .map_err(|_| "visual.loop expects int frames".to_string())?;
+                let delta_ms = args[1]
+                    .as_int()
+                    .map_err(|_| "visual.loop expects int delta".to_string())?;
+                self.run_loop(frames, delta_ms).map_err(|e| e.to_string())
+            }
             "export" => {
                 if args.len() != 1 {
                     return Err(format!("visual.export expects 1 argument, got {}", args.len()));
@@ -816,6 +879,21 @@ fn component_region_key(key: &str) -> bool {
     matches!(
         key,
         "x" | "y" | "w" | "h" | "semantic" | "behavior" | "material" | "energy" | "scene"
+    )
+}
+
+fn loop_state_value(loop_state: &VisualLoopState) -> Value {
+    Value::Map(HashMap::from([
+        ("frame".to_string(), Value::Int(loop_state.frame)),
+        ("timeMs".to_string(), Value::Int(loop_state.time_ms)),
+        ("running".to_string(), Value::Bool(loop_state.running)),
+    ]))
+}
+
+fn render_loop_state(loop_state: &VisualLoopState) -> String {
+    format!(
+        "{{\"frame\":{},\"timeMs\":{},\"running\":{}}}",
+        loop_state.frame, loop_state.time_ms, loop_state.running
     )
 }
 
@@ -999,6 +1077,7 @@ fn render_pxl_document(backend: &TraceVisualBackend) -> String {
         .map(render_component)
         .collect::<Vec<_>>()
         .join(",");
+    let loop_json = render_loop_state(&backend.loop_state);
     let scenes = if backend.scenes.is_empty() {
         vec!["main".to_string()]
     } else {
@@ -1017,7 +1096,7 @@ fn render_pxl_document(backend: &TraceVisualBackend) -> String {
         .unwrap_or_else(|| "null".to_string());
 
     format!(
-        "{{\"format\":\"PXL\",\"version\":1,\"surfaces\":[{}],\"regions\":[{}],\"pulses\":[{}],\"camera\":{},\"inputs\":[{}],\"theme\":{},\"scenes\":{},\"activeScene\":\"{}\",\"layouts\":[{}],\"components\":[{}],\"loaded\":{},\"apps\":{}}}",
+        "{{\"format\":\"PXL\",\"version\":1,\"surfaces\":[{}],\"regions\":[{}],\"pulses\":[{}],\"camera\":{},\"inputs\":[{}],\"theme\":{},\"scenes\":{},\"activeScene\":\"{}\",\"layouts\":[{}],\"components\":[{}],\"loop\":{},\"loaded\":{},\"apps\":{}}}",
         surface_json,
         region_json,
         pulse_json,
@@ -1028,6 +1107,7 @@ fn render_pxl_document(backend: &TraceVisualBackend) -> String {
         json_escape(&active_scene),
         layout_json,
         component_json,
+        loop_json,
         loaded_json,
         app_json
     )
@@ -1173,7 +1253,11 @@ fn render_pxl_canvas(backend: &TraceVisualBackend) -> String {
     );
     html = html.replace(
         "let selected=null;const zoomScale",
-        "let selected=null;let activeScene=pxl.activeScene||(pxl.scenes&&pxl.scenes[0])||'main';const persistenceKey='PXL_STATE:'+surface.name;const eventQueueKey='PXL_EVENT_QUEUE:'+surface.name;function loadPersistedState(){try{const state=JSON.parse(localStorage.getItem(persistenceKey)||'{}');if(state.activeScene)activeScene=state.activeScene;if(state.selected)selected=state.selected;}catch(_error){}}function savePersistedState(){try{localStorage.setItem(persistenceKey,JSON.stringify({format:'PXL_BROWSER_STATE',version:1,activeScene,selected,updatedAt:new Date().toISOString()}));}catch(_error){}}function saveEventQueue(){try{localStorage.setItem(eventQueueKey,JSON.stringify({format:'PXL_EVENT_QUEUE',version:1,surface:surface.name,activeScene,events}));}catch(_error){}}loadPersistedState();const layoutsByScene=new Map((pxl.layouts||[]).map((layout)=>[layout.scene,layout]));const zoomScale",
+        "let selected=null;let activeScene=pxl.activeScene||(pxl.scenes&&pxl.scenes[0])||'main';let appFrame=(pxl.loop&&pxl.loop.frame)||0;let appTimeMs=(pxl.loop&&pxl.loop.timeMs)||0;const persistenceKey='PXL_STATE:'+surface.name;const eventQueueKey='PXL_EVENT_QUEUE:'+surface.name;function loadPersistedState(){try{const state=JSON.parse(localStorage.getItem(persistenceKey)||'{}');if(state.activeScene)activeScene=state.activeScene;if(state.selected)selected=state.selected;}catch(_error){}}function savePersistedState(){try{localStorage.setItem(persistenceKey,JSON.stringify({format:'PXL_BROWSER_STATE',version:1,activeScene,selected,updatedAt:new Date().toISOString()}));}catch(_error){}}function saveEventQueue(){try{localStorage.setItem(eventQueueKey,JSON.stringify({format:'PXL_EVENT_QUEUE',version:1,surface:surface.name,activeScene,appFrame,appTimeMs,events}));}catch(_error){}}loadPersistedState();const layoutsByScene=new Map((pxl.layouts||[]).map((layout)=>[layout.scene,layout]));const zoomScale",
+    );
+    html = html.replace(
+        "function draw(time){ctx.clearRect(0,0,canvas.width,canvas.height);",
+        "function draw(time){appFrame+=1;appTimeMs=Math.round(time);ctx.clearRect(0,0,canvas.width,canvas.height);",
     );
     html = html.replace(
         "bindings.innerHTML=(pxl.inputs||[]).map((input)=>'<div><kbd>'+input.key+'</kbd><span>'+input.target+' / '+input.event+'</span></div>').join('')||'<div>No input bindings</div>';",
@@ -1431,6 +1515,35 @@ mod tests {
             ],
         );
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_visual_loop_advances_frames_inside_backend() {
+        let mut backend = TraceVisualBackend::new();
+        let result = backend.call("tick", vec![Value::Int(16)]).unwrap();
+        match result {
+            Value::Map(state) => {
+                assert_eq!(state.get("frame"), Some(&Value::Int(1)));
+                assert_eq!(state.get("timeMs"), Some(&Value::Int(16)));
+                assert_eq!(state.get("running"), Some(&Value::Bool(true)));
+            }
+            _ => panic!("visual.tick must return loop state map"),
+        }
+
+        let result = backend
+            .call("loop", vec![Value::Int(3), Value::Int(16)])
+            .unwrap();
+        match result {
+            Value::Map(state) => {
+                assert_eq!(state.get("frame"), Some(&Value::Int(4)));
+                assert_eq!(state.get("timeMs"), Some(&Value::Int(64)));
+                assert_eq!(state.get("running"), Some(&Value::Bool(true)));
+            }
+            _ => panic!("visual.loop must return loop state map"),
+        }
+
+        let snapshot = backend.call("snapshot", vec![]).unwrap().as_string().unwrap();
+        assert!(snapshot.contains("\"loop\":{\"frame\":4,\"timeMs\":64,\"running\":true}"));
     }
 
     #[test]
@@ -1913,6 +2026,9 @@ mod tests {
                 vec![Value::String("checkout".to_string()), Value::Bool(false)],
             )
             .unwrap();
+        backend
+            .call("loop", vec![Value::Int(2), Value::Int(16)])
+            .unwrap();
 
         let result = backend
             .call("canvas", vec![Value::String(path.display().to_string())])
@@ -1932,6 +2048,9 @@ mod tests {
         assert!(html.contains("\"components\":[{\"name\":\"action_button\""));
         assert!(html.contains("\"component\":\"action_button\""));
         assert!(html.contains("\"semantic\":\"primary_action\""));
+        assert!(html.contains("\"loop\":{\"frame\":2,\"timeMs\":32,\"running\":true}"));
+        assert!(html.contains("appFrame"));
+        assert!(html.contains("appTimeMs"));
         assert!(html.contains("\"scene\":\"home\""));
         assert!(html.contains("scene-list"));
         assert!(html.contains("activeScene"));

@@ -44,7 +44,9 @@ visual.set("settings_status", "event", "layout_status")
 visual.layer("settings_status", 2)
 
 visual.scene("home")
+let loop_state = visual.loop(3, 16)
 let state = visual.save_state("target/matter-visual-state.json")
 let canvas = visual.canvas("target/matter-visual-canvas.html")
+print loop_state
 print state
 print canvas
