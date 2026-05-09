@@ -527,11 +527,14 @@ fn render_pxl_preview(backend: &TraceVisualBackend) -> String {
             let properties = backend.properties.get(&region.name);
             let label = region_label(region, properties);
             let state = region_state(properties);
+            let event = region_event(region, properties);
             let is_pulsing = backend.pulses.iter().any(|target| target == &region.name);
             let class_name = region_class(is_pulsing, state.as_deref());
             content.push_str(&format!(
-                "<div class=\"{}\" style=\"left:{}px;top:{}px;width:{}px;height:{}px\"><strong>{}</strong><small>{}</small></div>",
+                "<button class=\"{}\" type=\"button\" data-region=\"{}\" data-event=\"{}\" style=\"left:{}px;top:{}px;width:{}px;height:{}px\"><strong>{}</strong><small>{}</small></button>",
                 class_name,
+                html_escape(&region.name),
+                html_escape(&event),
                 (region.x as f64 * scale).round() as i64,
                 (region.y as f64 * scale).round() as i64,
                 (region.w as f64 * scale).round().max(1.0) as i64,
@@ -549,7 +552,7 @@ fn render_pxl_preview(backend: &TraceVisualBackend) -> String {
     }
 
     format!(
-        "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>PXL Preview</title><style>body{{margin:0;font-family:Arial,sans-serif;background:#eef2f7;color:#111827}}main{{padding:24px;display:grid;gap:20px}}.surface{{background:white;border:1px solid #d8e1ee;border-radius:8px;overflow:hidden;box-shadow:0 8px 24px rgba(15,23,42,.08)}}header{{display:flex;justify-content:space-between;padding:12px 14px;background:#111827;color:white;font-weight:700}}header span{{font-weight:400;color:#cbd5e1}}.canvas{{position:relative;margin:18px;background:#f8fafc;border:1px solid #cbd5e1;overflow:hidden}}.region{{position:absolute;box-sizing:border-box;border:2px solid #2563eb;background:rgba(37,99,235,.14);border-radius:6px;padding:6px;color:#0f172a;display:flex;flex-direction:column;gap:2px;overflow:hidden}}.region small{{font-size:11px;color:#334155}}.pulse{{border-color:#dc2626;background:rgba(220,38,38,.14)}}.state-active{{border-color:#059669;background:rgba(5,150,105,.16)}}.state-disabled{{border-color:#64748b;background:rgba(100,116,139,.16);opacity:.72}}.state-error{{border-color:#b91c1c;background:rgba(185,28,28,.18)}}.empty{{padding:24px;background:white;border-radius:8px}}</style></head><body><main>{}</main></body></html>",
+        "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>PXL Preview</title><style>body{{margin:0;font-family:Arial,sans-serif;background:#eef2f7;color:#111827}}main{{padding:24px;display:grid;gap:20px}}.surface{{background:white;border:1px solid #d8e1ee;border-radius:8px;overflow:hidden;box-shadow:0 8px 24px rgba(15,23,42,.08)}}header{{display:flex;justify-content:space-between;padding:12px 14px;background:#111827;color:white;font-weight:700}}header span{{font-weight:400;color:#cbd5e1}}.canvas{{position:relative;margin:18px;background:#f8fafc;border:1px solid #cbd5e1;overflow:hidden}}.region{{position:absolute;box-sizing:border-box;border:2px solid #2563eb;background:rgba(37,99,235,.14);border-radius:6px;padding:6px;color:#0f172a;display:flex;flex-direction:column;gap:2px;overflow:hidden;text-align:left;cursor:pointer;font:inherit}}.region small{{font-size:11px;color:#334155}}.region.selected{{outline:3px solid #f59e0b;outline-offset:2px}}.pulse{{border-color:#dc2626;background:rgba(220,38,38,.14)}}.state-active{{border-color:#059669;background:rgba(5,150,105,.16)}}.state-disabled{{border-color:#64748b;background:rgba(100,116,139,.16);opacity:.72}}.state-error{{border-color:#b91c1c;background:rgba(185,28,28,.18)}}.empty{{padding:24px;background:white;border-radius:8px}}.event-log{{background:#0f172a;color:#e2e8f0;border-radius:8px;padding:14px;font-size:13px;min-height:64px}}.event-log strong{{display:block;color:white;margin-bottom:8px}}.event-log div{{padding:3px 0;border-top:1px solid rgba(226,232,240,.14)}}</style></head><body><main>{}<section class=\"event-log\"><strong>Preview events</strong><div>Click a PXL region</div></section></main><script>document.querySelectorAll('[data-region]').forEach((node)=>node.addEventListener('click',()=>{{document.querySelectorAll('[data-region]').forEach((item)=>item.classList.remove('selected'));node.classList.add('selected');const log=document.querySelector('.event-log');const line=document.createElement('div');line.textContent='region='+node.dataset.region+' event='+node.dataset.event;log.appendChild(line);}}));</script></body></html>",
         content
     )
 }
@@ -587,6 +590,21 @@ fn region_state(properties: Option<&HashMap<String, Value>>) -> Option<String> {
         Some(Value::String(state)) => Some(state.clone()),
         _ => None,
     })
+}
+
+fn region_event(region: &VisualRegionSpec, properties: Option<&HashMap<String, Value>>) -> String {
+    if let Some(properties) = properties {
+        if let Some(Value::String(event)) = properties.get("event") {
+            return event.clone();
+        }
+        if let Some(Value::String(behavior)) = properties.get("behavior") {
+            return behavior.clone();
+        }
+    }
+    region
+        .behavior
+        .clone()
+        .unwrap_or_else(|| "tap".to_string())
 }
 
 fn region_class(is_pulsing: bool, state: Option<&str>) -> String {
@@ -851,6 +869,8 @@ mod tests {
         assert!(html.contains("PXL Preview"));
         assert!(html.contains("checkout"));
         assert!(html.contains("primary_action"));
+        assert!(html.contains("data-region=\"checkout\""));
+        assert!(html.contains("Preview events"));
         let _ = fs::remove_file(path);
     }
 
