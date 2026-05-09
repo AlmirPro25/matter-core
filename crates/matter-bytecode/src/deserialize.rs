@@ -315,6 +315,7 @@ fn deserialize_instruction<R: Read>(reader: &mut R) -> Result<Instruction> {
             Ok(Instruction::Call(u32::from_le_bytes(bytes) as usize))
         }
         0x41 => Ok(Instruction::Return),
+        0x42 => Ok(Instruction::SpawnEvent(read_string(reader)?)),
         0x50 => Ok(Instruction::Print),
         0x60 => {
             // BackendCall

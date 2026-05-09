@@ -40,6 +40,9 @@ pub enum Statement {
         event: String,
         body: Vec<Statement>,
     },
+    Spawn {
+        event: String,
+    },
     If {
         condition: Expression,
         then_body: Vec<Statement>,

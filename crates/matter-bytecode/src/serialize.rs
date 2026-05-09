@@ -253,6 +253,12 @@ fn serialize_instruction<W: Write>(instr: &Instruction, writer: &mut W) -> Resul
             writer.write_all(&(*arg_count as u32).to_le_bytes())?;
         }
         Instruction::Return => writer.write_all(&[0x41])?,
+        Instruction::SpawnEvent(event) => {
+            writer.write_all(&[0x42])?;
+            let bytes = event.as_bytes();
+            writer.write_all(&(bytes.len() as u32).to_le_bytes())?;
+            writer.write_all(bytes)?;
+        }
         Instruction::Print => writer.write_all(&[0x50])?,
         Instruction::BackendCall { backend, method, arg_count } => {
             writer.write_all(&[0x60])?;

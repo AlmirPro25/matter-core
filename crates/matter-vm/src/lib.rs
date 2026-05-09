@@ -3,7 +3,7 @@
 
 use matter_backend::{Backend, Value};
 use matter_bytecode::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fmt;
 
 #[derive(Debug)]
@@ -80,6 +80,7 @@ pub struct Vm {
     backends: HashMap<String, Box<dyn Backend>>,
     stdout_enabled: bool,
     output: Vec<String>,
+    event_queue: VecDeque<String>,
 }
 
 impl Vm {
@@ -93,6 +94,7 @@ impl Vm {
             backends: HashMap::new(),
             stdout_enabled: true,
             output: Vec::new(),
+            event_queue: VecDeque::new(),
         }
     }
     
@@ -148,10 +150,16 @@ impl Vm {
     }
     
     pub fn run(&mut self) -> Result<(), VmError> {
-        self.execute(&self.bytecode.main_instructions.clone())
+        self.execute(&self.bytecode.main_instructions.clone())?;
+        self.drain_event_queue()
     }
     
     pub fn emit_event(&mut self, event: &str) -> Result<(), VmError> {
+        self.emit_event_now(event)?;
+        self.drain_event_queue()
+    }
+
+    fn emit_event_now(&mut self, event: &str) -> Result<(), VmError> {
         if let Some(handler) = self.bytecode.event_handlers.get(event) {
             let instructions = handler.instructions.clone();
             
@@ -161,6 +169,20 @@ impl Vm {
             self.pop_scope();
             
             result?;
+        }
+        Ok(())
+    }
+
+    fn drain_event_queue(&mut self) -> Result<(), VmError> {
+        let mut executed = 0usize;
+        while let Some(event) = self.event_queue.pop_front() {
+            executed += 1;
+            if executed > 10_000 {
+                return Err(VmError::TypeError(
+                    "spawn event queue exceeded 10000 events".to_string(),
+                ));
+            }
+            self.emit_event_now(&event)?;
         }
         Ok(())
     }
@@ -421,6 +443,10 @@ impl Vm {
                 Instruction::Return => {
                     // Return value should be on top of stack
                     return Ok(());
+                }
+
+                Instruction::SpawnEvent(event) => {
+                    self.event_queue.push_back(event.clone());
                 }
                 
                 Instruction::Print => {

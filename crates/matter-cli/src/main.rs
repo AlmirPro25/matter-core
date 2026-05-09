@@ -273,7 +273,8 @@ fn print_capabilities_json() {
             "\"imports\",",
             "\"stdlib\",",
             "\"persistence\",",
-            "\"network\"",
+            "\"network\",",
+            "\"concurrency\"",
             "]",
             "}}"
         ),
@@ -755,6 +756,7 @@ fn token_json(index: usize, token: &Token, line: usize, column: usize) -> String
         Token::Continue => ("continue", None),
         Token::Struct => ("struct", None),
         Token::Import => ("import", None),
+        Token::Spawn => ("spawn", None),
         Token::Int(value) => ("int", Some(value.to_string())),
         Token::String(value) => ("string", Some(value.clone())),
         Token::Bool(value) => ("bool", Some(value.to_string())),
@@ -1185,6 +1187,9 @@ fn print_instruction(index: usize, instr: &matter_bytecode::Instruction, constan
         Instruction::PopScope => println!("{:<20} ; exit scope", "PopScope"),
         Instruction::Call(n) => println!("{:<20} ; call with {} args", format!("Call({})", n), n),
         Instruction::Return => println!("{:<20} ; return from function", "Return"),
+        Instruction::SpawnEvent(event) => {
+            println!("{:<20} ; enqueue event {}", format!("SpawnEvent(\"{}\")", event), event);
+        }
         Instruction::Halt => println!("{:<20} ; stop execution", "Halt"),
         Instruction::BackendCall { backend, method, arg_count } => {
             println!("{:<20} ; {}.{}({})", 

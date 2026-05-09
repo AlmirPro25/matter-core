@@ -102,6 +102,9 @@ try {
         if (@($json.language_features) -notcontains "network") {
             Fail "capabilities-json deveria listar network"
         }
+        if (@($json.language_features) -notcontains "concurrency") {
+            Fail "capabilities-json deveria listar concurrency"
+        }
         Pass "capabilities-json"
     }
 
@@ -172,6 +175,17 @@ try {
     }
     Remove-Item -LiteralPath $env:MATTER_STORE_PATH -ErrorAction SilentlyContinue
     Remove-Item Env:\MATTER_STORE_PATH -ErrorAction SilentlyContinue
+
+    Write-Host "Executando fila spawn via run-json..."
+    $json = Invoke-JsonNoInput @("run-json", "examples\test_spawn.matter") 0
+    if ($null -ne $json) {
+        Assert-Equal $json.ok $true "run-json com spawn deveria retornar ok=true"
+        Assert-Equal @($json.output)[0] "main" "spawn deveria continuar main antes de drenar evento"
+        Assert-Equal @($json.output)[1] "boot" "spawn deveria executar evento enfileirado"
+        Assert-Equal @($json.output)[2] "after boot" "evento deveria continuar apos spawn interno"
+        Assert-Equal @($json.output)[3] "tick" "spawn dentro de evento deveria enfileirar novo evento"
+        Pass "run-json spawn"
+    }
 
     Write-Host "Validando source via check-json..."
     $json = Invoke-JsonCommand "print 42" @("check-json", "-") 0

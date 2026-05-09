@@ -131,6 +131,21 @@ print net.ok("http://example.com")
 .\target\release\matter-cli.exe run examples\network.matter
 ```
 
+### Enfileirar eventos
+```matter
+on boot {
+    print "boot"
+    spawn tick
+}
+
+on tick {
+    print "tick"
+}
+
+spawn boot
+print "main"
+```
+
 ### Executar para API
 ```bash
 .\target\release\matter-cli.exe run-json <arquivo.matter|->

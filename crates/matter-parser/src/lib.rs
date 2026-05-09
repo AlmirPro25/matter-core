@@ -120,6 +120,7 @@ impl Parser {
             Token::Fn => self.parse_function(),
             Token::Struct => self.parse_struct_def(),
             Token::On => self.parse_on_event(),
+            Token::Spawn => self.parse_spawn(),
             Token::If => self.parse_if(),
             Token::While => self.parse_while(),
             Token::For => self.parse_for(),
@@ -294,6 +295,18 @@ impl Parser {
         self.expect(Token::RBrace)?;
         
         Ok(Statement::OnEvent { event, body })
+    }
+
+    fn parse_spawn(&mut self) -> ParseResult<Statement> {
+        self.advance(); // skip 'spawn'
+
+        let event = match self.current() {
+            Token::Ident(event) => event.clone(),
+            _ => return Err(self.error("Expected event name")),
+        };
+        self.advance();
+
+        Ok(Statement::Spawn { event })
     }
     
     fn parse_if(&mut self) -> ParseResult<Statement> {
@@ -792,6 +805,17 @@ print user.name
         assert!(matches!(
             &program.statements[0],
             Statement::Expression(Expression::MethodCall { method, .. }) if method == "set"
+        ));
+    }
+
+    #[test]
+    fn test_parse_spawn_event() {
+        let mut parser = Parser::from_source("spawn tick");
+        let program = parser.parse().unwrap();
+
+        assert!(matches!(
+            &program.statements[0],
+            Statement::Spawn { event } if event == "tick"
         ));
     }
 }

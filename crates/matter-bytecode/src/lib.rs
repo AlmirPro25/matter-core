@@ -47,6 +47,7 @@ pub enum Instruction {
     JumpIfFalse(usize),
     Call(usize), // número de argumentos
     Return,
+    SpawnEvent(String),
     
     // Built-ins
     Print,
@@ -358,6 +359,7 @@ fn validate_statement(
         Statement::FunctionDef { .. } => {}
         Statement::StructDef { .. } => {}
         Statement::OnEvent { .. } => {}
+        Statement::Spawn { .. } => {}
         Statement::If {
             condition,
             then_body,
@@ -762,6 +764,10 @@ impl BytecodeBuilder {
                 
                 self.bytecode.event_handlers.insert(event.clone(), handler);
             }
+
+            Statement::Spawn { event } => {
+                instructions.push(Instruction::SpawnEvent(event.clone()));
+            }
             
             Statement::If { condition, then_body, else_body } => {
                 self.compile_expression(condition, instructions);
@@ -933,6 +939,10 @@ impl BytecodeBuilder {
             Statement::Print(expr) => {
                 self.compile_function_expression(expr, instructions, params);
                 instructions.push(Instruction::Print);
+            }
+
+            Statement::Spawn { event } => {
+                instructions.push(Instruction::SpawnEvent(event.clone()));
             }
             
             Statement::If { condition, then_body, else_body } => {

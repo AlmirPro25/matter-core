@@ -20,6 +20,7 @@ pub enum Token {
     Continue,
     Struct,
     Import,
+    Spawn,
     
     // Literals
     Int(i64),
@@ -298,6 +299,7 @@ impl Lexer {
                     "continue" => Token::Continue,
                     "struct" => Token::Struct,
                     "import" => Token::Import,
+                    "spawn" => Token::Spawn,
                     "true" => Token::Bool(true),
                     "false" => Token::Bool(false),
                     _ => Token::Ident(ident),

@@ -8,6 +8,7 @@ $testFiles = @(
     "examples\test_imports.matter",
     "examples\test_stdlib.matter",
     "examples\test_store.matter",
+    "examples\test_spawn.matter",
     "examples\test_lists.matter",
     "examples\test_maps.matter",
     "examples\test_structs.matter",

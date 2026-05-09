@@ -70,6 +70,26 @@ let body = net.get("http://example.com")
 
 Supported methods: `net.get(url)`, `net.status(url)`, `net.ok(url)`, and `net.post(url, body)`.
 
+## Cooperative Concurrency
+
+Matter can enqueue event work with `spawn`. The current model is cooperative: the VM finishes the current instruction stream, then drains the queued events in order. Events can enqueue more events.
+
+```matter
+on boot {
+    print "boot"
+    spawn tick
+}
+
+on tick {
+    print "tick"
+}
+
+spawn boot
+print "main"
+```
+
+This prints `main`, then `boot`, then `tick`.
+
 Use `imports-json` to inspect an import graph without running the program:
 
 ```bash

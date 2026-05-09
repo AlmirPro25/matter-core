@@ -1,0 +1,14 @@
+# Teste de concorrencia cooperativa por fila de eventos
+
+on boot {
+    print "boot"
+    spawn tick
+    print "after boot"
+}
+
+on tick {
+    print "tick"
+}
+
+spawn boot
+print "main"
