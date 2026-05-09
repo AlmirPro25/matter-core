@@ -68,14 +68,17 @@ if (-not (Test-Path $cli)) {
 $bytecodeFile = "target\api_bridge_test.mbc"
 $eventBytecodeFile = "target\api_bridge_event_test.mbc"
 $projectManifestFile = "target\api_bridge_project.toml"
+$projectEntryFile = "target\api_bridge_project_entry.matter"
 $projectBytecodeFile = "target\api_bridge_project.mbc"
 
 try {
+    'import "stdlib_demo"' | Set-Content -Path $projectEntryFile -Encoding UTF8
+
     @'
 [package]
 name = "api-bridge-project"
 version = "0.1.0"
-entry = "..\examples\test_stdlib.matter"
+entry = "api_bridge_project_entry.matter"
 
 [paths]
 stdlib = "..\stdlib"
@@ -158,7 +161,7 @@ stdlib_demo = "..\examples\test_stdlib.matter"
     if ($null -ne $json) {
         Assert-Equal $json.ok $true "project-run-json deveria retornar ok=true"
         Assert-Equal $json.package "api-bridge-project" "project-run-json deveria usar nome do pacote"
-        Assert-Equal @($json.output)[1] "10" "project-run-json deveria resolver stdlib pelo manifesto"
+        Assert-Equal @($json.output)[1] "10" "project-run-json deveria resolver dependencia local pelo manifesto"
         Pass "project-run-json"
     }
 

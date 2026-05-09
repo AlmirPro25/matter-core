@@ -33,6 +33,14 @@ APIs and cloud CLIs can inspect it without running code:
 
 This returns package identity, entrypoint, runtime paths, and local dependency aliases as JSON.
 
+Project commands can import dependency aliases declared in the manifest:
+
+```matter
+import "math_tools"
+
+print dobro(21)
+```
+
 They can also execute the whole project contract directly from the manifest:
 
 ```bash

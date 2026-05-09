@@ -523,7 +523,13 @@ fn read_project_entry_or_json_exit(project: &ProjectContext) -> (String, String)
     });
 
     let base_dir = entry_path.parent().unwrap_or(Path::new("."));
-    let resolved = resolve_imports(&source, base_dir, &mut HashSet::new()).unwrap_or_else(|error| {
+    let resolved = resolve_imports_with_dependencies(
+        &source,
+        base_dir,
+        &project.base_dir,
+        &project.manifest.dependencies,
+        &mut HashSet::new(),
+    ).unwrap_or_else(|error| {
         println!(
             "{{\"ok\":false,\"stage\":\"import\",\"package\":\"{}\",\"manifest\":\"{}\",\"input\":\"{}\",\"error\":{{\"message\":\"{}\"}}}}",
             json_escape(&project.manifest.name),
@@ -959,11 +965,26 @@ fn resolve_imports(
     base_dir: &Path,
     seen: &mut HashSet<PathBuf>,
 ) -> Result<String, String> {
+    resolve_imports_with_dependencies(source, base_dir, Path::new("."), &[], seen)
+}
+
+fn resolve_imports_with_dependencies(
+    source: &str,
+    base_dir: &Path,
+    project_base_dir: &Path,
+    dependencies: &[ManifestDependency],
+    seen: &mut HashSet<PathBuf>,
+) -> Result<String, String> {
     let mut resolved = String::new();
 
     for line in source.lines() {
         if let Some(import_path) = parse_import_line(line) {
-            let canonical = resolve_import_path(&import_path, base_dir)?;
+            let canonical = resolve_import_path_with_dependencies(
+                &import_path,
+                base_dir,
+                project_base_dir,
+                dependencies,
+            )?;
 
             if !seen.insert(canonical.clone()) {
                 return Err(format!("circular import detected for '{}'", canonical.display()));
@@ -973,7 +994,13 @@ fn resolve_imports(
                 format!("could not read import '{}': {}", canonical.display(), e)
             })?;
             let imported_base = canonical.parent().unwrap_or(Path::new("."));
-            resolved.push_str(&resolve_imports(&imported_source, imported_base, seen)?);
+            resolved.push_str(&resolve_imports_with_dependencies(
+                &imported_source,
+                imported_base,
+                project_base_dir,
+                dependencies,
+                seen,
+            )?);
             resolved.push('\n');
             seen.remove(&canonical);
         } else {
@@ -984,9 +1011,8 @@ fn resolve_imports(
 
     Ok(resolved)
 }
-
 fn parse_import_line(line: &str) -> Option<String> {
-    let trimmed = line.trim();
+    let trimmed = line.trim_start_matches('\u{feff}').trim();
     let rest = trimmed.strip_prefix("import ")?;
     let rest = rest.trim();
 
@@ -1006,8 +1032,19 @@ fn parse_import_line(line: &str) -> Option<String> {
 }
 
 fn resolve_import_path(import_path: &str, base_dir: &Path) -> Result<PathBuf, String> {
+    resolve_import_path_with_dependencies(import_path, base_dir, Path::new("."), &[])
+}
+
+fn resolve_import_path_with_dependencies(
+    import_path: &str,
+    base_dir: &Path,
+    project_base_dir: &Path,
+    dependencies: &[ManifestDependency],
+) -> Result<PathBuf, String> {
     let full_path = if is_std_import(import_path) {
         stdlib_root().join(strip_std_prefix(import_path))
+    } else if let Some(dependency) = dependencies.iter().find(|dependency| dependency.name == import_path) {
+        project_path(project_base_dir, &dependency.path)
     } else {
         base_dir.join(import_path)
     };
@@ -1016,7 +1053,6 @@ fn resolve_import_path(import_path: &str, base_dir: &Path) -> Result<PathBuf, St
         .canonicalize()
         .map_err(|e| format!("could not resolve import '{}': {}", full_path.display(), e))
 }
-
 fn is_std_import(import_path: &str) -> bool {
     import_path.starts_with("std/") || import_path.starts_with("std\\")
 }
