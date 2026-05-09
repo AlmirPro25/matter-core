@@ -587,6 +587,43 @@ impl PackageManager {
         Ok(imports)
     }
 
+    pub fn verify_installation(&self, package: &Package) -> Result<Vec<PathBuf>, String> {
+        let lockfile = Lockfile::load(&package.root.join("matter.lock"))?;
+        self.verify_lockfile(package, &lockfile)?;
+
+        let mut installed = Vec::new();
+        for entry in lockfile.entries {
+            let installed_root = package
+                .root
+                .join(".matter")
+                .join("packages")
+                .join(&entry.name);
+            if !installed_root.exists() {
+                return Err(format!("Dependency '{}' is missing from .matter/packages", entry.name));
+            }
+
+            let dependency = Package::load(&installed_root)?;
+            if dependency.manifest.version != entry.version {
+                return Err(format!(
+                    "Dependency '{}' installed version {} does not match lock {}",
+                    entry.name, dependency.manifest.version, entry.version
+                ));
+            }
+
+            let entry_path = dependency.entry_path();
+            if !entry_path.exists() {
+                return Err(format!(
+                    "Dependency '{}' installed entry '{}' is missing",
+                    entry.name, dependency.manifest.entry
+                ));
+            }
+            installed.push(installed_root);
+        }
+        installed.sort();
+
+        Ok(installed)
+    }
+
     pub fn verify_lockfile(&self, package: &Package, lockfile: &Lockfile) -> Result<(), String> {
         let expected = self.lock_dependencies(package)?;
         if &expected == lockfile {
@@ -1012,6 +1049,77 @@ math-utils = "^1.0.0"
                     .join("lib.matter")
             )
         );
+
+        let _ = fs::remove_dir_all(root);
+        let _ = fs::remove_dir_all(registry_root);
+    }
+
+    #[test]
+    fn test_verify_installation_accepts_installed_locked_packages() {
+        let root = std::env::temp_dir().join("matter_package_verify_install_test");
+        let registry_root = std::env::temp_dir().join("matter_package_verify_install_registry");
+        let _ = fs::remove_dir_all(&root);
+        let _ = fs::remove_dir_all(&registry_root);
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::create_dir_all(registry_root.join("utils").join("src")).unwrap();
+
+        let mut app_manifest = Manifest::new("app".to_string(), Version::new(0, 1, 0));
+        app_manifest.dependencies.insert(
+            "utils".to_string(),
+            Dependency::Registry(VersionReq::Caret(Version::new(1, 0, 0))),
+        );
+        let app = Package::new(app_manifest, root.clone());
+        app.manifest.save(&root.join("matter.toml")).unwrap();
+
+        let mut utils_manifest = Manifest::new("utils".to_string(), Version::new(1, 2, 0));
+        utils_manifest.entry = "src/lib.matter".to_string();
+        let utils_root = registry_root.join("utils");
+        utils_manifest.save(&utils_root.join("matter.toml")).unwrap();
+        fs::write(utils_root.join("src").join("lib.matter"), "fn util() { return 1 }\n").unwrap();
+
+        let mut manager = PackageManager::new();
+        manager.register_package(Package::new(utils_manifest, utils_root));
+        manager.install_dependencies(&app).unwrap();
+
+        let installed = manager.verify_installation(&app).unwrap();
+        assert_eq!(
+            installed,
+            vec![root.join(".matter").join("packages").join("utils")]
+        );
+
+        let _ = fs::remove_dir_all(root);
+        let _ = fs::remove_dir_all(registry_root);
+    }
+
+    #[test]
+    fn test_verify_installation_rejects_missing_installed_package() {
+        let root = std::env::temp_dir().join("matter_package_missing_install_test");
+        let registry_root = std::env::temp_dir().join("matter_package_missing_install_registry");
+        let _ = fs::remove_dir_all(&root);
+        let _ = fs::remove_dir_all(&registry_root);
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::create_dir_all(registry_root.join("utils").join("src")).unwrap();
+
+        let mut app_manifest = Manifest::new("app".to_string(), Version::new(0, 1, 0));
+        app_manifest.dependencies.insert(
+            "utils".to_string(),
+            Dependency::Registry(VersionReq::Caret(Version::new(1, 0, 0))),
+        );
+        let app = Package::new(app_manifest, root.clone());
+        app.manifest.save(&root.join("matter.toml")).unwrap();
+
+        let utils_manifest = Manifest::new("utils".to_string(), Version::new(1, 2, 0));
+        let utils_root = registry_root.join("utils");
+        utils_manifest.save(&utils_root.join("matter.toml")).unwrap();
+        fs::write(utils_root.join("src").join("main.matter"), "print 1\n").unwrap();
+
+        let mut manager = PackageManager::new();
+        manager.register_package(Package::new(utils_manifest, utils_root));
+        manager.install_dependencies(&app).unwrap();
+        fs::remove_dir_all(root.join(".matter").join("packages").join("utils")).unwrap();
+
+        let error = manager.verify_installation(&app).unwrap_err();
+        assert!(error.contains("missing from .matter/packages"));
 
         let _ = fs::remove_dir_all(root);
         let _ = fs::remove_dir_all(registry_root);
