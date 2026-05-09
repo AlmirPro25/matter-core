@@ -191,6 +191,12 @@ impl TraceVisualBackend {
             fs::read_to_string(path).map_err(|error| VisualError::RuntimeError(error.to_string()))?;
         apply_visual_state_document(self, &content)
     }
+
+    pub fn load_events(&self, path: &str) -> Result<Value, VisualError> {
+        let content =
+            fs::read_to_string(path).map_err(|error| VisualError::RuntimeError(error.to_string()))?;
+        parse_visual_event_document(&content)
+    }
 }
 
 impl Default for TraceVisualBackend {
@@ -722,6 +728,15 @@ impl Backend for TraceVisualBackend {
                 self.load_state(&path).map_err(|e| e.to_string())?;
                 Ok(Value::String(path))
             }
+            "load_events" => {
+                if args.len() != 1 {
+                    return Err(format!("visual.load_events expects 1 argument, got {}", args.len()));
+                }
+                let path = args[0]
+                    .as_string()
+                    .map_err(|_| "visual.load_events expects string path".to_string())?;
+                self.load_events(&path).map_err(|e| e.to_string())
+            }
             "export" => {
                 if args.len() != 1 {
                     return Err(format!("visual.export expects 1 argument, got {}", args.len()));
@@ -913,6 +928,29 @@ fn json_value_to_backend_value(value: &serde_json::Value) -> Value {
                 .collect(),
         ),
     }
+}
+
+fn parse_visual_event_document(content: &str) -> Result<Value, VisualError> {
+    let document: serde_json::Value =
+        serde_json::from_str(content).map_err(|error| VisualError::RuntimeError(error.to_string()))?;
+    let format = document
+        .get("format")
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| VisualError::InvalidArgument("visual event document missing format".to_string()))?;
+    if format != "PXL_TRACE" && format != "PXL_EVENT_QUEUE" {
+        return Err(VisualError::InvalidArgument(format!(
+            "visual event format must be PXL_TRACE or PXL_EVENT_QUEUE, got {}",
+            format
+        )));
+    }
+    let events = document
+        .get("events")
+        .and_then(|value| value.as_array())
+        .ok_or_else(|| VisualError::InvalidArgument("visual event document events must be an array".to_string()))?;
+
+    Ok(Value::List(
+        events.iter().map(json_value_to_backend_value).collect(),
+    ))
 }
 
 fn render_pxl_document(backend: &TraceVisualBackend) -> String {
@@ -1135,7 +1173,7 @@ fn render_pxl_canvas(backend: &TraceVisualBackend) -> String {
     );
     html = html.replace(
         "let selected=null;const zoomScale",
-        "let selected=null;let activeScene=pxl.activeScene||(pxl.scenes&&pxl.scenes[0])||'main';const persistenceKey='PXL_STATE:'+surface.name;function loadPersistedState(){try{const state=JSON.parse(localStorage.getItem(persistenceKey)||'{}');if(state.activeScene)activeScene=state.activeScene;if(state.selected)selected=state.selected;}catch(_error){}}function savePersistedState(){try{localStorage.setItem(persistenceKey,JSON.stringify({format:'PXL_BROWSER_STATE',version:1,activeScene,selected,updatedAt:new Date().toISOString()}));}catch(_error){}}loadPersistedState();const layoutsByScene=new Map((pxl.layouts||[]).map((layout)=>[layout.scene,layout]));const zoomScale",
+        "let selected=null;let activeScene=pxl.activeScene||(pxl.scenes&&pxl.scenes[0])||'main';const persistenceKey='PXL_STATE:'+surface.name;const eventQueueKey='PXL_EVENT_QUEUE:'+surface.name;function loadPersistedState(){try{const state=JSON.parse(localStorage.getItem(persistenceKey)||'{}');if(state.activeScene)activeScene=state.activeScene;if(state.selected)selected=state.selected;}catch(_error){}}function savePersistedState(){try{localStorage.setItem(persistenceKey,JSON.stringify({format:'PXL_BROWSER_STATE',version:1,activeScene,selected,updatedAt:new Date().toISOString()}));}catch(_error){}}function saveEventQueue(){try{localStorage.setItem(eventQueueKey,JSON.stringify({format:'PXL_EVENT_QUEUE',version:1,surface:surface.name,activeScene,events}));}catch(_error){}}loadPersistedState();const layoutsByScene=new Map((pxl.layouts||[]).map((layout)=>[layout.scene,layout]));const zoomScale",
     );
     html = html.replace(
         "bindings.innerHTML=(pxl.inputs||[]).map((input)=>'<div><kbd>'+input.key+'</kbd><span>'+input.target+' / '+input.event+'</span></div>').join('')||'<div>No input bindings</div>';",
@@ -1160,6 +1198,10 @@ fn render_pxl_canvas(backend: &TraceVisualBackend) -> String {
     html = html.replace(
         "selected=binding.target;recordEvent({type:'keyboard'",
         "selected=binding.target;savePersistedState();recordEvent({type:'keyboard'",
+    );
+    html = html.replace(
+        "events.push(event);const line=document.createElement('div');",
+        "events.push(event);saveEventQueue();const line=document.createElement('div');",
     );
     html
 }
@@ -1678,6 +1720,41 @@ mod tests {
     }
 
     #[test]
+    fn test_visual_events_can_be_loaded_back_into_matter() {
+        let path = std::env::temp_dir().join("matter_visual_events_test.json");
+        fs::write(
+            &path,
+            r#"{"format":"PXL_EVENT_QUEUE","version":1,"events":[{"type":"pointer","target":"checkout","event":"checkout_tap","layer":4},{"type":"keyboard","key":"Enter","target":"checkout","event":"checkout_submit"}]}"#,
+        )
+        .unwrap();
+
+        let mut backend = TraceVisualBackend::new();
+        let events = backend
+            .call("load_events", vec![Value::String(path.display().to_string())])
+            .unwrap();
+        let events = match events {
+            Value::List(events) => events,
+            _ => panic!("visual.load_events must return a list"),
+        };
+        assert_eq!(events.len(), 2);
+        match &events[0] {
+            Value::Map(event) => {
+                assert_eq!(
+                    event.get("type"),
+                    Some(&Value::String("pointer".to_string()))
+                );
+                assert_eq!(
+                    event.get("target"),
+                    Some(&Value::String("checkout".to_string()))
+                );
+                assert_eq!(event.get("layer"), Some(&Value::Int(4)));
+            }
+            _ => panic!("visual.load_events event must be a map"),
+        }
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
     fn test_visual_canvas_writes_engine_html() {
         let mut backend = TraceVisualBackend::new();
         let path = std::env::temp_dir().join("matter_visual_canvas_test.html");
@@ -1863,6 +1940,9 @@ mod tests {
         assert!(html.contains("sceneLayout"));
         assert!(html.contains("layoutedRegion"));
         assert!(html.contains("localStorage"));
+        assert!(html.contains("PXL_EVENT_QUEUE"));
+        assert!(html.contains("eventQueueKey"));
+        assert!(html.contains("saveEventQueue"));
         assert!(html.contains("PXL_BROWSER_STATE"));
         assert!(html.contains("loadPersistedState"));
         assert!(html.contains("savePersistedState"));
