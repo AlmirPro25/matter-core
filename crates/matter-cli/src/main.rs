@@ -63,6 +63,15 @@ fn main() {
             };
             project_imports_json(manifest);
         }
+        "project-lock-json" => {
+            let manifest = if args.len() >= 3 {
+                &args[2]
+            } else {
+                "matter.toml"
+            };
+            project_lock_json(manifest);
+        }
+
         "project-compile-json" => {
             let manifest = if args.len() >= 3 {
                 &args[2]
@@ -252,6 +261,7 @@ fn print_usage() {
     println!("  matter-cli project-check-json [matter.toml] Validate package entrypoint as JSON");
     println!("  matter-cli project-run-json [matter.toml]   Run package entrypoint as JSON");
     println!("  matter-cli project-imports-json [matter.toml] Inspect package import graph as JSON");
+    println!("  matter-cli project-lock-json [matter.toml]  Print reproducible package lock JSON");
     println!("  matter-cli project-compile-json [matter.toml] [-o out] Compile package entrypoint as JSON");
     println!("  matter-cli run <file.matter|->              Run Matter source file or stdin");
     println!("  matter-cli eval <source>                    Run Matter source passed as text");
@@ -290,6 +300,7 @@ fn print_capabilities_json() {
             "\"project-check-json\",",
             "\"project-run-json\",",
             "\"project-imports-json\",",
+            "\"project-lock-json\",",
             "\"project-compile-json\",",
             "\"eval-json\",",
             "\"tokens-json\",",
@@ -367,6 +378,13 @@ struct ProjectContext {
 struct EnvSnapshot {
     key: &'static str,
     previous: Option<String>,
+}
+
+struct ProjectFileLock {
+    kind: String,
+    path: String,
+    bytes: usize,
+    fingerprint: String,
 }
 
 fn package_json(path: &str) {
@@ -506,6 +524,74 @@ fn project_imports_json(manifest_path: &str) {
         json_escape(&entry_label),
         imports.len(),
         items.join(",")
+    );
+}
+fn project_lock_json(manifest_path: &str) {
+    let project = load_project_or_json_exit(manifest_path);
+    let _env = apply_project_env(&project);
+    let entry_path = project_path(&project.base_dir, &project.manifest.entry);
+    let entry_label = entry_path.display().to_string();
+    let source = fs::read_to_string(&entry_path).unwrap_or_else(|error| {
+        println!(
+            "{{\"ok\":false,\"stage\":\"read\",\"package\":\"{}\",\"manifest\":\"{}\",\"input\":\"{}\",\"error\":{{\"message\":\"{}\"}}}}",
+            json_escape(&project.manifest.name),
+            json_escape(&project.manifest_path),
+            json_escape(&entry_label),
+            json_escape(&error.to_string())
+        );
+        process::exit(1);
+    });
+
+    let base_dir = entry_path
+        .parent()
+        .unwrap_or(Path::new("."))
+        .to_path_buf();
+    let mut imports = Vec::new();
+    let mut stack = vec![entry_path
+        .canonicalize()
+        .unwrap_or_else(|_| entry_path.clone())];
+
+    if let Err(error) = collect_imports_with_dependencies(
+        &source,
+        &base_dir,
+        &entry_label,
+        &project.base_dir,
+        &project.manifest.dependencies,
+        &mut stack,
+        &mut imports,
+    ) {
+        println!(
+            "{{\"ok\":false,\"stage\":\"import\",\"package\":\"{}\",\"manifest\":\"{}\",\"input\":\"{}\",\"error\":{{\"message\":\"{}\"}}}}",
+            json_escape(&project.manifest.name),
+            json_escape(&project.manifest_path),
+            json_escape(&entry_label),
+            json_escape(&error)
+        );
+        process::exit(1);
+    }
+
+    let mut files = Vec::new();
+    let mut seen_files = HashSet::new();
+    push_lock_file(&mut files, &mut seen_files, "manifest", Path::new(&project.manifest_path));
+    push_lock_file(&mut files, &mut seen_files, "entry", &entry_path);
+    for import in &imports {
+        push_lock_file(&mut files, &mut seen_files, &import.source, Path::new(&import.resolved));
+    }
+
+    let file_items: Vec<String> = files.iter().map(project_file_lock_json).collect();
+    let import_items: Vec<String> = imports.iter().map(import_info_json).collect();
+
+    println!(
+        "{{\"ok\":true,\"package\":{{\"name\":\"{}\",\"version\":\"{}\"}},\"manifest\":\"{}\",\"entry\":\"{}\",\"files_count\":{},\"files\":[{}],\"dependencies\":[{}],\"imports_count\":{},\"imports\":[{}]}}",
+        json_escape(&project.manifest.name),
+        json_escape(&project.manifest.version),
+        json_escape(&project.manifest_path),
+        json_escape(&entry_label),
+        files.len(),
+        file_items.join(","),
+        manifest_dependencies_json(&project.manifest.dependencies),
+        imports.len(),
+        import_items.join(",")
     );
 }
 fn project_compile_json(manifest_path: &str, output: &str) {
@@ -653,6 +739,53 @@ fn project_path(base_dir: &Path, value: &str) -> PathBuf {
     }
 }
 
+fn push_lock_file(
+    files: &mut Vec<ProjectFileLock>,
+    seen: &mut HashSet<String>,
+    kind: &str,
+    path: &Path,
+) {
+    let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let key = canonical.display().to_string();
+    if !seen.insert(key.clone()) {
+        return;
+    }
+
+    let bytes = fs::read(&canonical).unwrap_or_else(|error| {
+        println!(
+            "{{\"ok\":false,\"stage\":\"lock\",\"input\":\"{}\",\"error\":{{\"message\":\"{}\"}}}}",
+            json_escape(&key),
+            json_escape(&error.to_string())
+        );
+        process::exit(1);
+    });
+
+    files.push(ProjectFileLock {
+        kind: kind.to_string(),
+        path: key,
+        bytes: bytes.len(),
+        fingerprint: fnv1a64_hex(&bytes),
+    });
+}
+
+fn project_file_lock_json(file: &ProjectFileLock) -> String {
+    format!(
+        "{{\"kind\":\"{}\",\"path\":\"{}\",\"bytes\":{},\"fingerprint\":\"{}\"}}",
+        json_escape(&file.kind),
+        json_escape(&file.path),
+        file.bytes,
+        json_escape(&file.fingerprint)
+    )
+}
+
+fn fnv1a64_hex(bytes: &[u8]) -> String {
+    let mut hash = 0xcbf29ce484222325u64;
+    for byte in bytes {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("{:016x}", hash)
+}
 fn parse_package_manifest(source: &str) -> Result<PackageManifest, String> {
     let mut manifest = PackageManifest::default();
     let mut section = String::new();
