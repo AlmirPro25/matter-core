@@ -1,0 +1,9 @@
+# Backend calls em Matter
+
+on boot {
+    agent.say("Olá do Matter!")
+    visual.run("pizzaria")
+}
+
+let message = "Sistema pronto"
+agent.say(message)

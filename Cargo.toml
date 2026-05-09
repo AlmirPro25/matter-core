@@ -1,0 +1,50 @@
+[workspace]
+members = [
+    "crates/matter-lexer",
+    "crates/matter-parser",
+    "crates/matter-ast",
+    "crates/matter-bytecode",
+    "crates/matter-vm",
+    "crates/matter-runtime",
+    "crates/matter-backend",
+    "crates/matter-error",
+    "crates/matter-stdlib",
+    "crates/matter-cli",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Matter Core Team"]
+license = "MIT"
+
+[workspace.dependencies]
+matter-lexer = { path = "crates/matter-lexer" }
+matter-parser = { path = "crates/matter-parser" }
+matter-ast = { path = "crates/matter-ast" }
+matter-bytecode = { path = "crates/matter-bytecode" }
+matter-vm = { path = "crates/matter-vm" }
+matter-runtime = { path = "crates/matter-runtime" }
+matter-backend = { path = "crates/matter-backend" }
+matter-error = { path = "crates/matter-error" }
+matter-stdlib = { path = "crates/matter-stdlib" }
+
+# Root package for integration tests
+[package]
+name = "matter-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+matter-lexer.workspace = true
+matter-parser.workspace = true
+matter-ast.workspace = true
+matter-bytecode.workspace = true
+matter-vm.workspace = true
+matter-runtime.workspace = true
+matter-backend.workspace = true
+matter-error.workspace = true
+matter-stdlib.workspace = true

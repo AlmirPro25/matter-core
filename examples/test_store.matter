@@ -1,0 +1,16 @@
+# Teste de persistencia em disco
+
+store.clear()
+
+print "=== Teste de Store ==="
+print store.has("counter")
+
+store.set("counter", 41)
+let counter = store.get("counter")
+print counter
+
+store.set("counter", counter + 1)
+print store.get("counter")
+print store.list()
+print store.delete("counter")
+print store.has("counter")

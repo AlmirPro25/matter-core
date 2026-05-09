@@ -1,0 +1,45 @@
+# Teste de Shadowing
+
+print "=== Teste 1: Shadowing Básico ==="
+let x = 10
+fn test() {
+    let x = 20
+    print x
+}
+test()
+print x
+
+print "=== Teste 2: Nested Blocks ==="
+let y = 1
+if true {
+    let y = 2
+    print y
+    if true {
+        let y = 3
+        print y
+    }
+    print y
+}
+print y
+
+print "=== Teste 3: Function + Block ==="
+let z = 1
+fn test2() {
+    let z = 2
+    if true {
+        let z = 3
+        print z
+    }
+    print z
+}
+test2()
+print z
+
+print "=== Teste 4: Global Fallback ==="
+let global = 100
+fn test3() {
+    print global
+}
+test3()
+
+print "=== Fim dos Testes ==="

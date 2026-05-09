@@ -1,0 +1,17 @@
+# Exemplo simples de Matter
+
+let x = 5
+let y = 10
+let z = x + y
+
+print x
+print y
+print z
+
+if z > 10 {
+    print "z é maior que 10"
+}
+
+if z == 15 {
+    print "z é exatamente 15"
+}

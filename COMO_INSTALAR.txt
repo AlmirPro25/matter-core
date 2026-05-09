@@ -1,0 +1,96 @@
+╔════════════════════════════════════════════════════════════╗
+║                                                            ║
+║          COMO INSTALAR MATTER NO SEU COMPUTADOR           ║
+║                                                            ║
+╚════════════════════════════════════════════════════════════╝
+
+📦 INSTALAÇÃO RÁPIDA (3 passos)
+═══════════════════════════════════════════════════════════
+
+1️⃣  ABRA O POWERSHELL COMO ADMINISTRADOR
+   
+   → Clique com botão DIREITO no Menu Iniciar
+   → Escolha "Windows PowerShell (Admin)"
+   → Ou "Terminal (Admin)"
+
+
+2️⃣  NAVEGUE ATÉ ESTA PASTA
+
+   Digite no PowerShell:
+   
+   cd "F:\Users\almir\Desktop\MANIFESTO DA LINGUAGEM MATTER CORE"
+
+
+3️⃣  EXECUTE O INSTALADOR
+
+   Digite no PowerShell:
+   
+   .\install.ps1
+   
+   → Aguarde a instalação (1-2 minutos)
+   → Feche o PowerShell
+   → Abra um NOVO terminal
+
+
+✅ PRONTO! Agora você pode usar:
+═══════════════════════════════════════════════════════════
+
+   matter --help              → Ver ajuda
+   matter run programa.matter → Executar programa
+   
+
+📝 CRIAR SEU PRIMEIRO PROGRAMA
+═══════════════════════════════════════════════════════════
+
+1. Crie um arquivo chamado "teste.matter"
+
+2. Escreva dentro:
+
+   let nome = "Almir"
+   print nome
+   
+   fn somar(a, b) {
+       return a + b
+   }
+   
+   print somar(10, 20)
+
+3. Execute:
+
+   matter run teste.matter
+
+
+🎯 O QUE FOI INSTALADO?
+═══════════════════════════════════════════════════════════
+
+→ Matter foi instalado em: C:\Program Files\Matter
+→ Comando "matter" disponível em qualquer pasta
+→ Exemplos em: C:\Program Files\Matter\examples
+→ Igual ao Node.js!
+
+
+🔧 DESINSTALAR
+═══════════════════════════════════════════════════════════
+
+Se quiser remover:
+
+1. Abra PowerShell como Admin
+2. Digite: .\uninstall.ps1
+
+
+❓ PROBLEMAS?
+═══════════════════════════════════════════════════════════
+
+→ "matter não reconhecido"
+  Solução: Feche TODOS os terminais e abra um novo
+
+→ "Acesso negado"
+  Solução: Abra PowerShell como Administrador
+
+→ Erro de compilação
+  Solução: Instale Rust em https://rustup.rs/
+
+
+═══════════════════════════════════════════════════════════
+Leia INSTALL_GUIDE.md para mais detalhes!
+═══════════════════════════════════════════════════════════

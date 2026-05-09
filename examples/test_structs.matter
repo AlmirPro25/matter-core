@@ -1,0 +1,29 @@
+# Teste de Structs
+
+print "=== Teste de Structs ==="
+
+struct User {
+    name: string,
+    age: int,
+    active: bool
+}
+
+let user = User {
+    name: "Ana",
+    age: 20,
+    active: true
+}
+
+print user
+print user.name
+print user.age
+print user.active
+
+set user.age = 21
+set user.name = "Ana Core"
+
+print user
+print user.name
+print user.age
+
+print "=== Fim dos Testes ==="

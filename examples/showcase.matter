@@ -1,0 +1,67 @@
+# Matter Core Showcase
+# Demonstração de todas as funcionalidades implementadas
+
+# 1. Variáveis e tipos básicos
+let numero = 42
+let texto = "Matter Core"
+let verdadeiro = true
+let falso = false
+
+print "=== Variáveis ==="
+print numero
+print texto
+print verdadeiro
+
+# 2. Operações aritméticas
+let a = 10
+let b = 5
+let soma = a + b
+let subtracao = a - b
+let multiplicacao = a * b
+let divisao = a / b
+
+print "=== Aritmética ==="
+print soma
+print subtracao
+print multiplicacao
+print divisao
+
+# 3. Comparações
+print "=== Comparações ==="
+if a > b {
+    print "a é maior que b"
+}
+
+if a == 10 {
+    print "a é igual a 10"
+}
+
+if b != 0 {
+    print "b é diferente de zero"
+}
+
+# 4. Estado mutável
+let contador = 0
+print "=== Estado Mutável ==="
+print contador
+
+set contador = contador + 1
+print contador
+
+set contador = contador + 10
+print contador
+
+# 5. Condicionais com else
+print "=== Condicionais ==="
+if contador > 20 {
+    print "contador maior que 20"
+} else {
+    print "contador menor ou igual a 20"
+}
+
+# 6. Backend calls
+print "=== Backend Calls ==="
+agent.say("Olá do Matter Core!")
+visual.run("showcase")
+
+print "=== Fim do Showcase ==="

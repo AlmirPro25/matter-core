@@ -1,0 +1,7 @@
+[package]
+name = "matter-bytecode"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+matter-ast = { workspace = true }

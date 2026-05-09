@@ -1,0 +1,26 @@
+# Teste de Maps
+
+print "=== Teste de Maps ==="
+
+let person = {
+    "name": "Alice",
+    "age": 30
+}
+
+print person
+print person["name"]
+print person.name
+print person["age"]
+print person.has("name")
+print person.has("missing")
+print person.keys()
+print person.values()
+
+set person["age"] = 31
+set person.active = true
+
+print person
+print person.age
+print person.active
+
+print "=== Fim dos Testes ==="

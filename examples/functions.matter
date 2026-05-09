@@ -1,0 +1,15 @@
+# Funções em Matter
+
+fn soma(a, b) {
+    return a + b
+}
+
+fn multiplica(x, y) {
+    return x * y
+}
+
+let resultado = soma(10, 20)
+print resultado
+
+let produto = multiplica(5, 6)
+print produto

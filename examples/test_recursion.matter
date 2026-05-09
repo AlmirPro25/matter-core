@@ -1,0 +1,17 @@
+# Teste de recursão
+
+fn fatorial(n) {
+    if n <= 1 {
+        return 1
+    }
+    let n_menos_1 = n - 1
+    let fat_anterior = fatorial(n_menos_1)
+    return n * fat_anterior
+}
+
+print "=== Teste de Recursão ==="
+print fatorial(1)
+print fatorial(2)
+print fatorial(3)
+print fatorial(4)
+print fatorial(5)

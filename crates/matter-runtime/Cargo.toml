@@ -1,0 +1,10 @@
+[package]
+name = "matter-runtime"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+matter-vm = { workspace = true }
+matter-bytecode = { workspace = true }
+matter-backend = { workspace = true }
+matter-stdlib = { workspace = true }

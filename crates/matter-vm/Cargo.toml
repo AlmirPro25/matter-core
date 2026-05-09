@@ -1,0 +1,8 @@
+[package]
+name = "matter-vm"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+matter-bytecode = { workspace = true }
+matter-backend = { workspace = true }

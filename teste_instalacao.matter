@@ -1,0 +1,33 @@
+# Teste do Matter instalado!
+
+print "=== TESTE DE INSTALACAO DO MATTER ==="
+
+let nome = "Almir"
+print nome
+
+fn somar(a, b) {
+    return a + b
+}
+
+fn multiplicar(x, y) {
+    return x * y
+}
+
+let resultado1 = somar(10, 20)
+let resultado2 = multiplicar(5, 6)
+
+print resultado1
+print resultado2
+
+# Teste de lista
+let numeros = [1, 2, 3, 4, 5]
+print numeros
+
+# Teste de loop
+let contador = 0
+while contador < 3 {
+    print contador
+    set contador = contador + 1
+}
+
+print "=== MATTER FUNCIONANDO PERFEITAMENTE! ==="

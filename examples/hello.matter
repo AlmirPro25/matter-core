@@ -1,0 +1,11 @@
+# Hello World em Matter
+
+let total = 10 + 20
+print total
+
+set total = total + 1
+print total
+
+if total > 30 {
+    print "total é maior que 30"
+}

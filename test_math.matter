@@ -1,0 +1,8 @@
+let a = 5
+let b = 10
+let min_val = math.min(a, b)
+print min_val
+let max_val = math.max(a, b)
+print max_val
+let pow_val = math.pow(2, 8)
+print pow_val

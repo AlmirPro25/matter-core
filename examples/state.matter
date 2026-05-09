@@ -1,0 +1,17 @@
+# Estado mutável em Matter
+
+let counter = 0
+
+fn increment() {
+    set counter = counter + 1
+    print counter
+}
+
+on boot {
+    print "Contador inicial:"
+    print counter
+}
+
+on tick {
+    increment()
+}

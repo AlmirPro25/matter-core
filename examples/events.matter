@@ -1,0 +1,10 @@
+# Eventos em Matter
+
+on boot {
+    print "Sistema online"
+    agent.say("Matter Core iniciado")
+}
+
+on shutdown {
+    print "Desligando..."
+}

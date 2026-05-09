@@ -1,0 +1,93 @@
+feat: Complete Sprint 3.5 - MBC1 Persistence & Scope Semantics
+
+BREAKING CHANGE: StoreGlobal now always stores to global scope
+
+This sprint marks a fundamental milestone: Matter is now a real language
+with persistent bytecode and guaranteed source-bytecode equivalence.
+
+## Major Changes
+
+### 1. Bytecode Persistence (MBC1 Format)
+- Implemented binary serialization/deserialization
+- Added `matter compile` command
+- Added `matter run-bytecode` command
+- Format: Magic "MBC1" + Version + Sections (Constants, Functions, Events, Main)
+
+### 2. Enhanced `matter inspect` Command
+- Visual bytecode inspector with formatted output
+- Shows instruction index, opcode, jump targets
+- Inline constant values
+- Explanatory comments for each instruction
+
+### 3. Critical Bug Fix: Scope Semantics
+- Fixed infinite loop bug in bytecode execution
+- Root cause: StoreGlobal was storing to local scope when scope stack was active
+- Solution: StoreGlobal now ALWAYS stores to global scope
+- Impact: Clarified let vs set semantics
+
+### 4. Equivalence Testing
+- Created automated test suite (test_bytecode_equivalence.ps1)
+- Validates: compile → save → load → execute == source execution
+- All tests passing: loops, functions, recursion, simple
+
+### 5. Documentation Updates
+- Updated SPEC.md with clear scope semantics
+- Created LOOP_BYTECODE_FIX.md with detailed analysis
+- Created SPRINT_4.md for next phase (Data Model)
+- Updated PROGRESS.md with Sprint 3.5 completion
+
+## Scope Semantics (Now Clear)
+
+Before (ambiguous):
+- `set` inside loops created local variables unintentionally
+- Inconsistent behavior between source and bytecode
+
+After (clear):
+- `let x = value` → creates variable in current scope
+- `set x = value` → updates existing variable (local → global lookup)
+- `StoreGlobal` → ALWAYS stores to global (essential for reactive state)
+
+## Why This Matters
+
+Matter now has a complete development cycle:
+1. Write code (.matter)
+2. Compile to bytecode (.mbc)
+3. Inspect bytecode (matter inspect)
+4. Execute bytecode (matter run-bytecode)
+5. Validate equivalence (automated tests)
+
+This is a real language.
+
+## Files Changed
+
+Modified:
+- crates/matter-vm/src/lib.rs (StoreGlobal fix)
+- crates/matter-cli/src/main.rs (enhanced inspect command)
+- docs/SPEC.md (scope semantics documentation)
+- PROGRESS.md (Sprint 3.5 completion)
+
+Created:
+- LOOP_BYTECODE_FIX.md (bug analysis)
+- SPRINT_4.md (next phase planning)
+- SPRINT_3.5_SUMMARY.md (executive summary)
+- test_bytecode_equivalence.ps1 (automated testing)
+
+## Test Results
+
+✅ test_loops.matter - PASSED
+✅ test_functions.matter - PASSED
+✅ test_recursion.matter - PASSED
+✅ simple.matter - PASSED
+
+Equivalence: 100% (source == bytecode)
+
+## Next Steps
+
+Sprint 4: Data Model (List, Map, Struct)
+- Foundation is ready for composite types
+- VM has: functions, scope, loops, bytecode persistence, equivalence
+- Ready for real application state modeling
+
+---
+
+Co-authored-by: Matter Core Team

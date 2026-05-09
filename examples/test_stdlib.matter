@@ -1,0 +1,53 @@
+# Teste da Standard Library
+
+print "=== Math Module ==="
+
+let x = 10
+print math.abs(x)
+
+let a = 5
+let b = 10
+print math.min(a, b)
+print math.max(a, b)
+
+let base = 2
+let exp = 8
+print math.pow(base, exp)
+
+let n = 16
+print math.sqrt(n)
+
+print "=== String Module ==="
+
+let text = "Hello World"
+print string.upper(text)
+print string.lower(text)
+
+let padded = "  spaces  "
+print string.trim(padded)
+
+let csv = "a,b,c"
+let parts = string.split(csv, ",")
+print parts
+
+let joined = string.join("-", parts)
+print joined
+
+let haystack = "hello world"
+let needle = "world"
+print string.contains(haystack, needle)
+
+let original = "hello world"
+let replaced = string.replace(original, "world", "Matter")
+print replaced
+
+print "=== List Module ==="
+
+let nums = [3, 1, 4, 1, 5, 9, 2, 6]
+print list.sort(nums)
+print list.reverse(nums)
+print list.sum(nums)
+print list.min(nums)
+print list.max(nums)
+
+print "=== Done ==="

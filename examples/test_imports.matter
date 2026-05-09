@@ -1,0 +1,8 @@
+# Teste de imports locais
+
+import "modules/math_tools.matter"
+
+print "=== Teste de Imports ==="
+print dobro(21)
+print soma_tres(1, 2, 3)
+print "=== Fim dos Testes ==="

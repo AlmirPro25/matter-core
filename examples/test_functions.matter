@@ -1,0 +1,30 @@
+# Teste de funções com parâmetros e retorno
+
+fn soma(a, b) {
+    return a + b
+}
+
+fn multiplica(x, y) {
+    return x * y
+}
+
+fn subtrai(a, b) {
+    return a - b
+}
+
+print "=== Teste de Funções ==="
+
+let r1 = soma(10, 20)
+print r1
+
+let r2 = multiplica(5, 6)
+print r2
+
+let r3 = subtrai(100, 30)
+print r3
+
+# Teste com expressões
+let r4 = soma(soma(1, 2), soma(3, 4))
+print r4
+
+print "=== Fim dos Testes ==="

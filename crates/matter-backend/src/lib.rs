@@ -1,0 +1,420 @@
+/// Backend contracts for Matter
+/// Define interfaces para backends (visual, agent, terminal, etc)
+
+use std::collections::HashMap;
+use std::env;
+use std::fs;
+use std::path::PathBuf;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Value {
+    Int(i64),
+    Bool(bool),
+    String(String),
+    Unit,
+    Function(String),
+    // Sprint 4: Data Model
+    List(Vec<Value>),
+    Map(HashMap<String, Value>),
+    Struct {
+        type_name: String,
+        fields: HashMap<String, Value>,
+    },
+}
+
+impl Value {
+    pub fn as_int(&self) -> Result<i64, String> {
+        match self {
+            Value::Int(n) => Ok(*n),
+            _ => Err("Expected int".to_string()),
+        }
+    }
+    
+    pub fn as_bool(&self) -> Result<bool, String> {
+        match self {
+            Value::Bool(b) => Ok(*b),
+            _ => Err("Expected bool".to_string()),
+        }
+    }
+    
+    pub fn as_string(&self) -> Result<String, String> {
+        match self {
+            Value::String(s) => Ok(s.clone()),
+            _ => Err("Expected string".to_string()),
+        }
+    }
+    
+    pub fn to_display_string(&self) -> String {
+        match self {
+            Value::Int(n) => n.to_string(),
+            Value::Bool(b) => b.to_string(),
+            Value::String(s) => s.clone(),
+            Value::Unit => "()".to_string(),
+            Value::Function(name) => format!("<fn {}>", name),
+            Value::List(elements) => {
+                let items: Vec<String> = elements.iter()
+                    .map(|v| v.to_display_string())
+                    .collect();
+                format!("[{}]", items.join(", "))
+            }
+            Value::Map(entries) => {
+                let mut items: Vec<String> = entries
+                    .iter()
+                    .map(|(key, value)| format!("{}: {}", key, value.to_display_string()))
+                    .collect();
+                items.sort();
+                format!("{{{}}}", items.join(", "))
+            }
+            Value::Struct { type_name, fields } => {
+                let mut items: Vec<String> = fields
+                    .iter()
+                    .map(|(key, value)| format!("{}: {}", key, value.to_display_string()))
+                    .collect();
+                items.sort();
+                format!("{} {{{}}}", type_name, items.join(", "))
+            }
+        }
+    }
+}
+
+pub trait Backend {
+    fn call(&mut self, method: &str, args: Vec<Value>) -> Result<Value, String>;
+}
+
+/// Mock backend para trace/debug
+pub struct TraceBackend {
+    name: String,
+}
+
+impl TraceBackend {
+    pub fn new(name: String) -> Self {
+        Self { name }
+    }
+}
+
+impl Backend for TraceBackend {
+    fn call(&mut self, method: &str, args: Vec<Value>) -> Result<Value, String> {
+        print!("[BACKEND:{}::{}](", self.name, method);
+        for (i, arg) in args.iter().enumerate() {
+            if i > 0 {
+                print!(", ");
+            }
+            print!("{}", arg.to_display_string());
+        }
+        println!(")");
+        
+        Ok(Value::Unit)
+    }
+}
+
+/// Agent backend (mock por enquanto)
+pub struct AgentBackend;
+
+impl AgentBackend {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for AgentBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Backend for AgentBackend {
+    fn call(&mut self, method: &str, args: Vec<Value>) -> Result<Value, String> {
+        match method {
+            "say" => {
+                if let Some(arg) = args.first() {
+                    println!("[AGENT] {}", arg.to_display_string());
+                }
+                Ok(Value::Unit)
+            }
+            _ => Err(format!("Unknown agent method: {}", method)),
+        }
+    }
+}
+
+/// Visual backend (mock por enquanto)
+pub struct VisualBackend;
+
+impl VisualBackend {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for VisualBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Backend for VisualBackend {
+    fn call(&mut self, method: &str, args: Vec<Value>) -> Result<Value, String> {
+        match method {
+            "run" => {
+                if let Some(arg) = args.first() {
+                    println!("[VISUAL] Running app: {}", arg.to_display_string());
+                }
+                Ok(Value::Unit)
+            }
+            _ => Err(format!("Unknown visual method: {}", method)),
+        }
+    }
+}
+
+/// File-backed key/value store.
+pub struct StoreBackend {
+    path: PathBuf,
+    values: HashMap<String, Value>,
+}
+
+impl StoreBackend {
+    pub fn new() -> Self {
+        let path = env::var("MATTER_STORE_PATH")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from(".matter_store.json"));
+        Self::with_path(path)
+    }
+
+    pub fn with_path(path: PathBuf) -> Self {
+        let values = load_store_file(&path).unwrap_or_default();
+        Self { path, values }
+    }
+
+    fn save(&self) -> Result<(), String> {
+        if let Some(parent) = self.path.parent() {
+            if !parent.as_os_str().is_empty() {
+                fs::create_dir_all(parent)
+                    .map_err(|e| format!("could not create store directory: {}", e))?;
+            }
+        }
+
+        let mut object = serde_json::Map::new();
+        for (key, value) in &self.values {
+            object.insert(key.clone(), encode_value(value));
+        }
+
+        let json = serde_json::to_string_pretty(&serde_json::Value::Object(object))
+            .map_err(|e| format!("could not encode store: {}", e))?;
+        fs::write(&self.path, json).map_err(|e| {
+            format!("could not write store '{}': {}", self.path.display(), e)
+        })
+    }
+}
+
+impl Default for StoreBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Backend for StoreBackend {
+    fn call(&mut self, method: &str, args: Vec<Value>) -> Result<Value, String> {
+        match method {
+            "set" => {
+                if args.len() != 2 {
+                    return Err("store.set expects 2 arguments".to_string());
+                }
+                let key = args[0].as_string()?;
+                self.values.insert(key, args[1].clone());
+                self.save()?;
+                Ok(Value::Unit)
+            }
+            "get" => {
+                if args.len() != 1 {
+                    return Err("store.get expects 1 argument".to_string());
+                }
+                let key = args[0].as_string()?;
+                Ok(self.values.get(&key).cloned().unwrap_or(Value::Unit))
+            }
+            "has" => {
+                if args.len() != 1 {
+                    return Err("store.has expects 1 argument".to_string());
+                }
+                let key = args[0].as_string()?;
+                Ok(Value::Bool(self.values.contains_key(&key)))
+            }
+            "delete" => {
+                if args.len() != 1 {
+                    return Err("store.delete expects 1 argument".to_string());
+                }
+                let key = args[0].as_string()?;
+                let existed = self.values.remove(&key).is_some();
+                self.save()?;
+                Ok(Value::Bool(existed))
+            }
+            "clear" => {
+                if !args.is_empty() {
+                    return Err("store.clear expects 0 arguments".to_string());
+                }
+                self.values.clear();
+                self.save()?;
+                Ok(Value::Unit)
+            }
+            "list" => {
+                if !args.is_empty() {
+                    return Err("store.list expects 0 arguments".to_string());
+                }
+                let mut keys: Vec<String> = self.values.keys().cloned().collect();
+                keys.sort();
+                Ok(Value::List(keys.into_iter().map(Value::String).collect()))
+            }
+            _ => Err(format!("Unknown store method: {}", method)),
+        }
+    }
+}
+
+fn load_store_file(path: &PathBuf) -> Result<HashMap<String, Value>, String> {
+    if !path.exists() {
+        return Ok(HashMap::new());
+    }
+
+    let source = fs::read_to_string(path)
+        .map_err(|e| format!("could not read store '{}': {}", path.display(), e))?;
+    if source.trim().is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let json: serde_json::Value = serde_json::from_str(&source)
+        .map_err(|e| format!("could not parse store '{}': {}", path.display(), e))?;
+    let object = json
+        .as_object()
+        .ok_or_else(|| "store root must be a JSON object".to_string())?;
+
+    let mut values = HashMap::new();
+    for (key, value) in object {
+        values.insert(key.clone(), decode_value(value)?);
+    }
+    Ok(values)
+}
+
+fn encode_value(value: &Value) -> serde_json::Value {
+    let mut object = serde_json::Map::new();
+    match value {
+        Value::Int(n) => {
+            object.insert("type".to_string(), serde_json::Value::String("int".to_string()));
+            object.insert("value".to_string(), serde_json::Value::Number((*n).into()));
+        }
+        Value::Bool(b) => {
+            object.insert("type".to_string(), serde_json::Value::String("bool".to_string()));
+            object.insert("value".to_string(), serde_json::Value::Bool(*b));
+        }
+        Value::String(s) => {
+            object.insert("type".to_string(), serde_json::Value::String("string".to_string()));
+            object.insert("value".to_string(), serde_json::Value::String(s.clone()));
+        }
+        Value::Unit => {
+            object.insert("type".to_string(), serde_json::Value::String("unit".to_string()));
+        }
+        Value::List(elements) => {
+            object.insert("type".to_string(), serde_json::Value::String("list".to_string()));
+            object.insert(
+                "value".to_string(),
+                serde_json::Value::Array(elements.iter().map(encode_value).collect()),
+            );
+        }
+        Value::Map(entries) => {
+            object.insert("type".to_string(), serde_json::Value::String("map".to_string()));
+            let mut values = serde_json::Map::new();
+            for (key, value) in entries {
+                values.insert(key.clone(), encode_value(value));
+            }
+            object.insert("value".to_string(), serde_json::Value::Object(values));
+        }
+        Value::Struct { type_name, fields } => {
+            object.insert("type".to_string(), serde_json::Value::String("struct".to_string()));
+            object.insert(
+                "name".to_string(),
+                serde_json::Value::String(type_name.clone()),
+            );
+            let mut values = serde_json::Map::new();
+            for (key, value) in fields {
+                values.insert(key.clone(), encode_value(value));
+            }
+            object.insert("value".to_string(), serde_json::Value::Object(values));
+        }
+        Value::Function(name) => {
+            object.insert("type".to_string(), serde_json::Value::String("function".to_string()));
+            object.insert("value".to_string(), serde_json::Value::String(name.clone()));
+        }
+    }
+    serde_json::Value::Object(object)
+}
+
+fn decode_value(json: &serde_json::Value) -> Result<Value, String> {
+    let object = json
+        .as_object()
+        .ok_or_else(|| "stored value must be an object".to_string())?;
+    let value_type = object
+        .get("type")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "stored value is missing type".to_string())?;
+
+    match value_type {
+        "int" => Ok(Value::Int(
+            object
+                .get("value")
+                .and_then(|v| v.as_i64())
+                .ok_or_else(|| "stored int is invalid".to_string())?,
+        )),
+        "bool" => Ok(Value::Bool(
+            object
+                .get("value")
+                .and_then(|v| v.as_bool())
+                .ok_or_else(|| "stored bool is invalid".to_string())?,
+        )),
+        "string" => Ok(Value::String(
+            object
+                .get("value")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| "stored string is invalid".to_string())?
+                .to_string(),
+        )),
+        "unit" => Ok(Value::Unit),
+        "list" => {
+            let values = object
+                .get("value")
+                .and_then(|v| v.as_array())
+                .ok_or_else(|| "stored list is invalid".to_string())?;
+            values.iter().map(decode_value).collect::<Result<Vec<_>, _>>().map(Value::List)
+        }
+        "map" => {
+            let values = object
+                .get("value")
+                .and_then(|v| v.as_object())
+                .ok_or_else(|| "stored map is invalid".to_string())?;
+            let mut map = HashMap::new();
+            for (key, value) in values {
+                map.insert(key.clone(), decode_value(value)?);
+            }
+            Ok(Value::Map(map))
+        }
+        "struct" => {
+            let type_name = object
+                .get("name")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| "stored struct is missing name".to_string())?
+                .to_string();
+            let values = object
+                .get("value")
+                .and_then(|v| v.as_object())
+                .ok_or_else(|| "stored struct fields are invalid".to_string())?;
+            let mut fields = HashMap::new();
+            for (key, value) in values {
+                fields.insert(key.clone(), decode_value(value)?);
+            }
+            Ok(Value::Struct { type_name, fields })
+        }
+        "function" => Ok(Value::Function(
+            object
+                .get("value")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| "stored function is invalid".to_string())?
+                .to_string(),
+        )),
+        _ => Err(format!("unknown stored value type '{}'", value_type)),
+    }
+}

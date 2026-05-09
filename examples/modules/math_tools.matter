@@ -1,0 +1,7 @@
+fn dobro(n) {
+    return n * 2
+}
+
+fn soma_tres(a, b, c) {
+    return a + b + c
+}
