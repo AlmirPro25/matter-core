@@ -18,6 +18,13 @@ pub struct VisualSurfaceSpec {
     pub height: i64,
 }
 
+#[derive(Debug, Clone)]
+pub struct VisualCameraSpec {
+    pub x: i64,
+    pub y: i64,
+    pub zoom: i64,
+}
+
 /// Especificação de uma região visual (PXL)
 #[derive(Debug, Clone)]
 pub struct VisualRegionSpec {
@@ -71,6 +78,7 @@ pub struct TraceVisualBackend {
     pulses: Vec<String>,
     loaded: Vec<String>,
     apps: Vec<String>,
+    camera: Option<VisualCameraSpec>,
     stdout_enabled: bool,
 }
 
@@ -83,6 +91,7 @@ impl TraceVisualBackend {
             pulses: Vec::new(),
             loaded: Vec::new(),
             apps: Vec::new(),
+            camera: None,
             stdout_enabled: true,
         }
     }
@@ -371,6 +380,39 @@ impl Backend for TraceVisualBackend {
                     .map_err(|e| e.to_string())?;
                 Ok(Value::Unit)
             }
+            "layer" => {
+                if args.len() != 2 {
+                    return Err(format!("visual.layer expects 2 arguments, got {}", args.len()));
+                }
+                let target = args[0]
+                    .as_string()
+                    .map_err(|_| "visual.layer expects string target".to_string())?;
+                let layer = args[1]
+                    .as_int()
+                    .map_err(|_| "visual.layer expects int layer".to_string())?;
+                self.set_property(&target, "layer", Value::Int(layer))
+                    .map_err(|e| e.to_string())?;
+                Ok(Value::Unit)
+            }
+            "camera" => {
+                if args.len() != 3 {
+                    return Err(format!("visual.camera expects 3 arguments, got {}", args.len()));
+                }
+                let x = args[0]
+                    .as_int()
+                    .map_err(|_| "visual.camera expects int x".to_string())?;
+                let y = args[1]
+                    .as_int()
+                    .map_err(|_| "visual.camera expects int y".to_string())?;
+                let zoom = args[2]
+                    .as_int()
+                    .map_err(|_| "visual.camera expects int zoom".to_string())?;
+                if zoom <= 0 {
+                    return Err("visual.camera zoom must be greater than 0".to_string());
+                }
+                self.camera = Some(VisualCameraSpec { x, y, zoom });
+                Ok(Value::Unit)
+            }
             "snapshot" => {
                 if !args.is_empty() {
                     return Err(format!("visual.snapshot expects 0 arguments, got {}", args.len()));
@@ -438,9 +480,15 @@ fn render_pxl_document(backend: &TraceVisualBackend) -> String {
     let loaded_json = string_array_json(&backend.loaded);
     let app_json = string_array_json(&backend.apps);
 
+    let camera_json = backend
+        .camera
+        .as_ref()
+        .map(render_camera)
+        .unwrap_or_else(|| "null".to_string());
+
     format!(
-        "{{\"format\":\"PXL\",\"version\":1,\"surfaces\":[{}],\"regions\":[{}],\"pulses\":[{}],\"loaded\":{},\"apps\":{}}}",
-        surface_json, region_json, pulse_json, loaded_json, app_json
+        "{{\"format\":\"PXL\",\"version\":1,\"surfaces\":[{}],\"regions\":[{}],\"pulses\":[{}],\"camera\":{},\"loaded\":{},\"apps\":{}}}",
+        surface_json, region_json, pulse_json, camera_json, loaded_json, app_json
     )
 }
 
@@ -450,6 +498,13 @@ fn render_surface(surface: &VisualSurfaceSpec) -> String {
         json_escape(&surface.name),
         surface.width,
         surface.height
+    )
+}
+
+fn render_camera(camera: &VisualCameraSpec) -> String {
+    format!(
+        "{{\"x\":{},\"y\":{},\"zoom\":{}}}",
+        camera.x, camera.y, camera.zoom
     )
 }
 
@@ -529,7 +584,7 @@ fn render_pxl_canvas(backend: &TraceVisualBackend) -> String {
     let pxl = render_pxl_document(backend);
 
     format!(
-        r#"<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>PXL Canvas Engine</title><style>body{{margin:0;font-family:Arial,sans-serif;background:#f3f6fb;color:#111827}}main{{min-height:100vh;display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:18px;padding:20px;box-sizing:border-box}}.stage{{display:grid;place-items:center;background:white;border:1px solid #d8e1ee;border-radius:8px;min-height:calc(100vh - 40px);overflow:auto}}canvas{{background:#f8fafc;border:1px solid #cbd5e1;box-shadow:0 16px 38px rgba(15,23,42,.12);max-width:100%;height:auto}}aside{{background:#111827;color:#e2e8f0;border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:12px;min-height:0}}h1{{font-size:16px;margin:0;color:white}}.meta{{font-size:12px;color:#cbd5e1;line-height:1.45}}.event-log{{display:flex;flex-direction:column;gap:6px;overflow:auto;font-size:12px}}.event-log div{{border-top:1px solid rgba(226,232,240,.16);padding-top:6px}}@media (max-width: 760px){{main{{grid-template-columns:1fr}}.stage{{min-height:60vh}}}}</style></head><body><main><section class="stage"><canvas id="pxl-canvas" width="720" height="520"></canvas></section><aside><h1>PXL Canvas Engine</h1><div class="meta" id="pxl-meta">Loading PXL scene</div><section class="event-log" id="event-log"><div>Click a PXL region</div></section></aside></main><script>const pxl={};const canvas=document.getElementById('pxl-canvas');const ctx=canvas.getContext('2d');const meta=document.getElementById('pxl-meta');const log=document.getElementById('event-log');const surface=pxl.surfaces[0]||{{name:'empty',width:720,height:520}};const pulseTargets=new Set((pxl.pulses||[]).map((pulse)=>pulse.target));let selected=null;let scale=Math.min(960/Math.max(1,surface.width),640/Math.max(1,surface.height),1);canvas.width=Math.max(1,Math.round(surface.width*scale));canvas.height=Math.max(1,Math.round(surface.height*scale));meta.textContent=surface.name+' '+surface.width+'x'+surface.height+' regions='+(pxl.regions||[]).length;function prop(region,key){{return region.properties&&region.properties[key]!==undefined?region.properties[key]:region[key];}}function eventName(region){{return prop(region,'event')||prop(region,'behavior')||'tap';}}function regionState(region){{return prop(region,'state')||'idle';}}function fillFor(region,time){{const state=regionState(region);const pulsing=pulseTargets.has(region.name);if(state==='active')return 'rgba(5,150,105,.28)';if(state==='disabled')return 'rgba(100,116,139,.24)';if(state==='error')return 'rgba(185,28,28,.30)';if(pulsing){{const alpha=.18+Math.sin(time/180)*.08;return 'rgba(220,38,38,'+alpha.toFixed(3)+')';}}return 'rgba(37,99,235,.18)';}}function strokeFor(region){{const state=regionState(region);if(region.name===selected)return '#f59e0b';if(state==='active')return '#059669';if(state==='disabled')return '#64748b';if(state==='error')return '#b91c1c';if(pulseTargets.has(region.name))return '#dc2626';return '#2563eb';}}function drawRegion(region,time){{const x=region.x*scale;const y=region.y*scale;const w=Math.max(1,region.w*scale);const h=Math.max(1,region.h*scale);ctx.fillStyle=fillFor(region,time);ctx.strokeStyle=strokeFor(region);ctx.lineWidth=region.name===selected?4:2;ctx.beginPath();ctx.roundRect(x,y,w,h,8);ctx.fill();ctx.stroke();ctx.fillStyle='#0f172a';ctx.font='700 13px Arial';ctx.textBaseline='top';ctx.fillText(region.name,x+8,y+8,Math.max(10,w-16));ctx.font='11px Arial';ctx.fillStyle='#334155';ctx.fillText(regionState(region)+' / '+eventName(region),x+8,y+28,Math.max(10,w-16));}}function draw(time){{ctx.clearRect(0,0,canvas.width,canvas.height);ctx.fillStyle='#f8fafc';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.strokeStyle='#d8e1ee';ctx.lineWidth=1;ctx.strokeRect(.5,.5,canvas.width-1,canvas.height-1);(pxl.regions||[]).forEach((region)=>drawRegion(region,time));requestAnimationFrame(draw);}}function hit(clientX,clientY){{const rect=canvas.getBoundingClientRect();const x=(clientX-rect.left)*(canvas.width/rect.width)/scale;const y=(clientY-rect.top)*(canvas.height/rect.height)/scale;return [...(pxl.regions||[])].reverse().find((region)=>x>=region.x&&x<=region.x+region.w&&y>=region.y&&y<=region.y+region.h);}}canvas.addEventListener('click',(event)=>{{const region=hit(event.clientX,event.clientY);if(!region)return;selected=region.name;const line=document.createElement('div');line.textContent='region='+region.name+' state='+regionState(region)+' event='+eventName(region);log.appendChild(line);log.scrollTop=log.scrollHeight;}});requestAnimationFrame(draw);</script></body></html>"#,
+        r#"<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>PXL Canvas Engine</title><style>body{{margin:0;font-family:Arial,sans-serif;background:#f3f6fb;color:#111827}}main{{min-height:100vh;display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:18px;padding:20px;box-sizing:border-box}}.stage{{display:grid;place-items:center;background:white;border:1px solid #d8e1ee;border-radius:8px;min-height:calc(100vh - 40px);overflow:auto}}canvas{{background:#f8fafc;border:1px solid #cbd5e1;box-shadow:0 16px 38px rgba(15,23,42,.12);max-width:100%;height:auto}}aside{{background:#111827;color:#e2e8f0;border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:12px;min-height:0}}h1{{font-size:16px;margin:0;color:white}}.meta{{font-size:12px;color:#cbd5e1;line-height:1.45}}.event-log{{display:flex;flex-direction:column;gap:6px;overflow:auto;font-size:12px}}.event-log div{{border-top:1px solid rgba(226,232,240,.16);padding-top:6px}}@media (max-width: 760px){{main{{grid-template-columns:1fr}}.stage{{min-height:60vh}}}}</style></head><body><main><section class="stage"><canvas id="pxl-canvas" width="720" height="520"></canvas></section><aside><h1>PXL Canvas Engine</h1><div class="meta" id="pxl-meta">Loading PXL scene</div><section class="event-log" id="event-log"><div>Click a PXL region</div></section></aside></main><script>const pxl={};const canvas=document.getElementById('pxl-canvas');const ctx=canvas.getContext('2d');const meta=document.getElementById('pxl-meta');const log=document.getElementById('event-log');const surface=pxl.surfaces[0]||{{name:'empty',width:720,height:520}};const camera=pxl.camera||{{x:0,y:0,zoom:100}};const pulseTargets=new Set((pxl.pulses||[]).map((pulse)=>pulse.target));let selected=null;const zoomScale=Math.max(1,camera.zoom||100)/100;let scale=Math.min(960/Math.max(1,surface.width),640/Math.max(1,surface.height),1);canvas.width=Math.max(1,Math.round(surface.width*scale));canvas.height=Math.max(1,Math.round(surface.height*scale));meta.textContent=surface.name+' '+surface.width+'x'+surface.height+' regions='+(pxl.regions||[]).length+' camera='+camera.x+','+camera.y+' zoom='+camera.zoom;function prop(region,key){{return region.properties&&region.properties[key]!==undefined?region.properties[key]:region[key];}}function layerValue(region){{const layer=Number(prop(region,'layer')||0);return Number.isFinite(layer)?layer:0;}}function sortedRegions(){{return [...(pxl.regions||[])].sort((left,right)=>layerValue(left)-layerValue(right)||left.name.localeCompare(right.name));}}function eventName(region){{return prop(region,'event')||prop(region,'behavior')||'tap';}}function regionState(region){{return prop(region,'state')||'idle';}}function fillFor(region,time){{const state=regionState(region);const pulsing=pulseTargets.has(region.name);if(state==='active')return 'rgba(5,150,105,.28)';if(state==='disabled')return 'rgba(100,116,139,.24)';if(state==='error')return 'rgba(185,28,28,.30)';if(pulsing){{const alpha=.18+Math.sin(time/180)*.08;return 'rgba(220,38,38,'+alpha.toFixed(3)+')';}}return 'rgba(37,99,235,.18)';}}function strokeFor(region){{const state=regionState(region);if(region.name===selected)return '#f59e0b';if(state==='active')return '#059669';if(state==='disabled')return '#64748b';if(state==='error')return '#b91c1c';if(pulseTargets.has(region.name))return '#dc2626';return '#2563eb';}}function drawRegion(region,time){{const x=(region.x-camera.x)*scale*zoomScale;const y=(region.y-camera.y)*scale*zoomScale;const w=Math.max(1,region.w*scale*zoomScale);const h=Math.max(1,region.h*scale*zoomScale);ctx.fillStyle=fillFor(region,time);ctx.strokeStyle=strokeFor(region);ctx.lineWidth=region.name===selected?4:2;ctx.beginPath();ctx.roundRect(x,y,w,h,8);ctx.fill();ctx.stroke();ctx.fillStyle='#0f172a';ctx.font='700 13px Arial';ctx.textBaseline='top';ctx.fillText(region.name,x+8,y+8,Math.max(10,w-16));ctx.font='11px Arial';ctx.fillStyle='#334155';ctx.fillText('z='+layerValue(region)+' '+regionState(region)+' / '+eventName(region),x+8,y+28,Math.max(10,w-16));}}function draw(time){{ctx.clearRect(0,0,canvas.width,canvas.height);ctx.fillStyle='#f8fafc';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.strokeStyle='#d8e1ee';ctx.lineWidth=1;ctx.strokeRect(.5,.5,canvas.width-1,canvas.height-1);sortedRegions().forEach((region)=>drawRegion(region,time));requestAnimationFrame(draw);}}function hit(clientX,clientY){{const rect=canvas.getBoundingClientRect();const x=((clientX-rect.left)*(canvas.width/rect.width))/(scale*zoomScale)+camera.x;const y=((clientY-rect.top)*(canvas.height/rect.height))/(scale*zoomScale)+camera.y;return sortedRegions().reverse().find((region)=>x>=region.x&&x<=region.x+region.w&&y>=region.y&&y<=region.y+region.h);}}canvas.addEventListener('click',(event)=>{{const region=hit(event.clientX,event.clientY);if(!region)return;selected=region.name;const line=document.createElement('div');line.textContent='region='+region.name+' layer='+layerValue(region)+' state='+regionState(region)+' event='+eventName(region);log.appendChild(line);log.scrollTop=log.scrollHeight;}});requestAnimationFrame(draw);</script></body></html>"#,
         pxl
     )
 }
@@ -1001,6 +1056,15 @@ mod tests {
         backend
             .call("pulse", vec![Value::String("checkout".to_string())])
             .unwrap();
+        backend
+            .call(
+                "layer",
+                vec![Value::String("checkout".to_string()), Value::Int(4)],
+            )
+            .unwrap();
+        backend
+            .call("camera", vec![Value::Int(20), Value::Int(40), Value::Int(125)])
+            .unwrap();
 
         let result = backend
             .call("canvas", vec![Value::String(path.display().to_string())])
@@ -1012,6 +1076,10 @@ mod tests {
         assert!(html.contains("<canvas id=\"pxl-canvas\""));
         assert!(html.contains("requestAnimationFrame"));
         assert!(html.contains("checkout_tap"));
+        assert!(html.contains("\"camera\":{\"x\":20,\"y\":40,\"zoom\":125}"));
+        assert!(html.contains("\"layer\":4"));
+        assert!(html.contains("sortedRegions"));
+        assert!(html.contains("zoomScale"));
         assert!(html.contains("\"state\":\"active\""));
         let _ = fs::remove_file(path);
     }

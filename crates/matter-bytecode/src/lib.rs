@@ -358,6 +358,7 @@ fn validate_statement(
         }
         Statement::FunctionDef { .. } => {}
         Statement::StructDef { .. } => {}
+        Statement::Import { .. } => {}
         Statement::OnEvent { .. } => {}
         Statement::Spawn { .. } => {}
         Statement::If {
@@ -749,7 +750,12 @@ impl BytecodeBuilder {
             Statement::StructDef { .. } => {
                 // Struct definitions are declarations for now; struct literals carry runtime shape.
             }
-            
+
+            Statement::Import { .. } => {
+                // Imports are resolved before bytecode execution; keep the compiler tolerant
+                // while module loading is still being wired through the runtime.
+            }
+
             Statement::OnEvent { event, body } => {
                 let mut event_instructions = Vec::new();
                 
