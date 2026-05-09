@@ -4,6 +4,7 @@ visual.region("menu", 40, 40, 360, 64)
 visual.set("checkout", "semantic", "primary_action")
 visual.set("checkout", "material", "glass")
 visual.set("menu", "semantic", "navigation")
+visual.state("checkout", "active")
 visual.pulse("checkout")
 
 let preview = visual.preview("target/matter-visual-preview.html")

@@ -345,6 +345,20 @@ impl Backend for TraceVisualBackend {
                     .map_err(|e| e.to_string())?;
                 Ok(Value::Unit)
             }
+            "state" => {
+                if args.len() != 2 {
+                    return Err(format!("visual.state expects 2 arguments, got {}", args.len()));
+                }
+                let target = args[0]
+                    .as_string()
+                    .map_err(|_| "visual.state expects string target".to_string())?;
+                let state = args[1]
+                    .as_string()
+                    .map_err(|_| "visual.state expects string state".to_string())?;
+                self.set_property(&target, "state", Value::String(state))
+                    .map_err(|e| e.to_string())?;
+                Ok(Value::Unit)
+            }
             "snapshot" => {
                 if !args.is_empty() {
                     return Err(format!("visual.snapshot expects 0 arguments, got {}", args.len()));
@@ -512,8 +526,9 @@ fn render_pxl_preview(backend: &TraceVisualBackend) -> String {
         for region in regions {
             let properties = backend.properties.get(&region.name);
             let label = region_label(region, properties);
+            let state = region_state(properties);
             let is_pulsing = backend.pulses.iter().any(|target| target == &region.name);
-            let class_name = if is_pulsing { "region pulse" } else { "region" };
+            let class_name = region_class(is_pulsing, state.as_deref());
             content.push_str(&format!(
                 "<div class=\"{}\" style=\"left:{}px;top:{}px;width:{}px;height:{}px\"><strong>{}</strong><small>{}</small></div>",
                 class_name,
@@ -534,7 +549,7 @@ fn render_pxl_preview(backend: &TraceVisualBackend) -> String {
     }
 
     format!(
-        "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>PXL Preview</title><style>body{{margin:0;font-family:Arial,sans-serif;background:#eef2f7;color:#111827}}main{{padding:24px;display:grid;gap:20px}}.surface{{background:white;border:1px solid #d8e1ee;border-radius:8px;overflow:hidden;box-shadow:0 8px 24px rgba(15,23,42,.08)}}header{{display:flex;justify-content:space-between;padding:12px 14px;background:#111827;color:white;font-weight:700}}header span{{font-weight:400;color:#cbd5e1}}.canvas{{position:relative;margin:18px;background:#f8fafc;border:1px solid #cbd5e1;overflow:hidden}}.region{{position:absolute;box-sizing:border-box;border:2px solid #2563eb;background:rgba(37,99,235,.14);border-radius:6px;padding:6px;color:#0f172a;display:flex;flex-direction:column;gap:2px;overflow:hidden}}.region small{{font-size:11px;color:#334155}}.pulse{{border-color:#dc2626;background:rgba(220,38,38,.14)}}.empty{{padding:24px;background:white;border-radius:8px}}</style></head><body><main>{}</main></body></html>",
+        "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>PXL Preview</title><style>body{{margin:0;font-family:Arial,sans-serif;background:#eef2f7;color:#111827}}main{{padding:24px;display:grid;gap:20px}}.surface{{background:white;border:1px solid #d8e1ee;border-radius:8px;overflow:hidden;box-shadow:0 8px 24px rgba(15,23,42,.08)}}header{{display:flex;justify-content:space-between;padding:12px 14px;background:#111827;color:white;font-weight:700}}header span{{font-weight:400;color:#cbd5e1}}.canvas{{position:relative;margin:18px;background:#f8fafc;border:1px solid #cbd5e1;overflow:hidden}}.region{{position:absolute;box-sizing:border-box;border:2px solid #2563eb;background:rgba(37,99,235,.14);border-radius:6px;padding:6px;color:#0f172a;display:flex;flex-direction:column;gap:2px;overflow:hidden}}.region small{{font-size:11px;color:#334155}}.pulse{{border-color:#dc2626;background:rgba(220,38,38,.14)}}.state-active{{border-color:#059669;background:rgba(5,150,105,.16)}}.state-disabled{{border-color:#64748b;background:rgba(100,116,139,.16);opacity:.72}}.state-error{{border-color:#b91c1c;background:rgba(185,28,28,.18)}}.empty{{padding:24px;background:white;border-radius:8px}}</style></head><body><main>{}</main></body></html>",
         content
     )
 }
@@ -549,6 +564,9 @@ fn preview_scale(width: i64, height: i64) -> f64 {
 
 fn region_label(region: &VisualRegionSpec, properties: Option<&HashMap<String, Value>>) -> String {
     if let Some(properties) = properties {
+        if let Some(Value::String(state)) = properties.get("state") {
+            return format!("state: {}", state);
+        }
         if let Some(Value::String(semantic)) = properties.get("semantic") {
             return semantic.clone();
         }
@@ -562,6 +580,37 @@ fn region_label(region: &VisualRegionSpec, properties: Option<&HashMap<String, V
         .or_else(|| region.behavior.clone())
         .or_else(|| region.material.clone())
         .unwrap_or_else(|| "region".to_string())
+}
+
+fn region_state(properties: Option<&HashMap<String, Value>>) -> Option<String> {
+    properties.and_then(|properties| match properties.get("state") {
+        Some(Value::String(state)) => Some(state.clone()),
+        _ => None,
+    })
+}
+
+fn region_class(is_pulsing: bool, state: Option<&str>) -> String {
+    let mut classes = vec!["region".to_string()];
+    if is_pulsing {
+        classes.push("pulse".to_string());
+    }
+    if let Some(state) = state {
+        classes.push(format!("state-{}", css_class_token(state)));
+    }
+    classes.join(" ")
+}
+
+fn css_class_token(value: &str) -> String {
+    value
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+                ch.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect()
 }
 
 fn html_escape(value: &str) -> String {
@@ -802,6 +851,54 @@ mod tests {
         assert!(html.contains("PXL Preview"));
         assert!(html.contains("checkout"));
         assert!(html.contains("primary_action"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn test_visual_state_is_exported_and_previewed() {
+        let mut backend = TraceVisualBackend::new();
+        backend
+            .call(
+                "surface",
+                vec![
+                    Value::String("main".to_string()),
+                    Value::Int(800),
+                    Value::Int(600),
+                ],
+            )
+            .unwrap();
+        backend
+            .call(
+                "region",
+                vec![
+                    Value::String("checkout".to_string()),
+                    Value::Int(120),
+                    Value::Int(220),
+                    Value::Int(260),
+                    Value::Int(80),
+                ],
+            )
+            .unwrap();
+        backend
+            .call(
+                "state",
+                vec![
+                    Value::String("checkout".to_string()),
+                    Value::String("active".to_string()),
+                ],
+            )
+            .unwrap();
+
+        let snapshot = backend.call("snapshot", vec![]).unwrap().as_string().unwrap();
+        assert!(snapshot.contains("\"state\":\"active\""));
+
+        let path = std::env::temp_dir().join("matter_visual_state_preview_test.html");
+        backend
+            .call("preview", vec![Value::String(path.display().to_string())])
+            .unwrap();
+        let html = fs::read_to_string(&path).unwrap();
+        assert!(html.contains("state-active"));
+        assert!(html.contains("state: active"));
         let _ = fs::remove_file(path);
     }
 }
