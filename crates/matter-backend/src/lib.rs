@@ -198,6 +198,13 @@ impl Backend for GraphBackend {
                 let (title, labels, values) = chart_args("graph.pie", args)?;
                 Ok(Value::String(render_pie_chart(&title, &labels, &values)))
             }
+            "stats" => {
+                if args.len() != 1 {
+                    return Err(format!("graph.stats expects 1 argument, got {}", args.len()));
+                }
+                let values = value_list_ints("graph.stats values", &args[0])?;
+                Ok(chart_stats(&values))
+            }
             "save" => {
                 if args.len() != 5 {
                     return Err(format!("graph.save expects 5 arguments, got {}", args.len()));
@@ -365,6 +372,28 @@ fn validate_chart_data(name: &str, labels: &[String], values: &[i64]) -> Result<
         ));
     }
     Ok(())
+}
+
+fn chart_stats(values: &[i64]) -> Value {
+    let mut stats = HashMap::new();
+    stats.insert("count".to_string(), Value::Int(values.len() as i64));
+
+    if values.is_empty() {
+        stats.insert("total".to_string(), Value::Int(0));
+        stats.insert("min".to_string(), Value::Unit);
+        stats.insert("max".to_string(), Value::Unit);
+        stats.insert("average".to_string(), Value::Unit);
+        return Value::Map(stats);
+    }
+
+    let total: i64 = values.iter().sum();
+    let min = values.iter().copied().min().unwrap_or(0);
+    let max = values.iter().copied().max().unwrap_or(0);
+    stats.insert("total".to_string(), Value::Int(total));
+    stats.insert("min".to_string(), Value::Int(min));
+    stats.insert("max".to_string(), Value::Int(max));
+    stats.insert("average".to_string(), Value::Int(total / values.len() as i64));
+    Value::Map(stats)
 }
 
 fn render_bar_chart(title: &str, labels: &[String], values: &[i64]) -> String {
@@ -1035,5 +1064,30 @@ mod tests {
         assert!(html.contains("Painel"));
         assert!(html.contains("<svg"));
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn graph_stats_returns_summary_map() {
+        let mut graph = GraphBackend::new();
+        let result = graph
+            .call(
+                "stats",
+                vec![Value::List(vec![
+                    Value::Int(12),
+                    Value::Int(20),
+                    Value::Int(16),
+                    Value::Int(28),
+                ])],
+            )
+            .unwrap();
+
+        let Value::Map(stats) = result else {
+            panic!("expected stats map");
+        };
+        assert_eq!(stats.get("count"), Some(&Value::Int(4)));
+        assert_eq!(stats.get("total"), Some(&Value::Int(76)));
+        assert_eq!(stats.get("min"), Some(&Value::Int(12)));
+        assert_eq!(stats.get("max"), Some(&Value::Int(28)));
+        assert_eq!(stats.get("average"), Some(&Value::Int(19)));
     }
 }

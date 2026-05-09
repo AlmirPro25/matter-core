@@ -1,0 +1,7 @@
+let values = [12, 20, 16, 28]
+let stats = graph.stats(values)
+
+print stats.total
+print stats.min
+print stats.max
+print stats.average
