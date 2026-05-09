@@ -69,10 +69,16 @@ $bytecodeFile = "target\api_bridge_test.mbc"
 $eventBytecodeFile = "target\api_bridge_event_test.mbc"
 $projectManifestFile = "target\api_bridge_project.toml"
 $projectEntryFile = "target\api_bridge_project_entry.matter"
+$projectDependencyFile = "target\api_bridge_project_dependency.matter"
 $projectBytecodeFile = "target\api_bridge_project.mbc"
 
 try {
     'import "stdlib_demo"' | Set-Content -Path $projectEntryFile -Encoding UTF8
+    @'
+import "std/math.matter"
+
+print square(4)
+'@ | Set-Content -Path $projectDependencyFile -Encoding UTF8
 
     @'
 [package]
@@ -85,7 +91,7 @@ stdlib = "..\stdlib"
 store = "api_bridge_project_store.json"
 
 [dependencies]
-stdlib_demo = "..\examples\test_stdlib.matter"
+stdlib_demo = "api_bridge_project_dependency.matter"
 '@ | Set-Content -Path $projectManifestFile -Encoding UTF8
 
     Write-Host "Descobrindo capacidades via capabilities-json..."
@@ -111,6 +117,9 @@ stdlib_demo = "..\examples\test_stdlib.matter"
         }
         if (@($json.json_commands) -notcontains "project-run-json") {
             Fail "capabilities-json deveria listar project-run-json"
+        }
+        if (@($json.json_commands) -notcontains "project-imports-json") {
+            Fail "capabilities-json deveria listar project-imports-json"
         }
         if (@($json.language_features) -notcontains "events") {
             Fail "capabilities-json deveria listar events"
@@ -161,8 +170,20 @@ stdlib_demo = "..\examples\test_stdlib.matter"
     if ($null -ne $json) {
         Assert-Equal $json.ok $true "project-run-json deveria retornar ok=true"
         Assert-Equal $json.package "api-bridge-project" "project-run-json deveria usar nome do pacote"
-        Assert-Equal @($json.output)[1] "10" "project-run-json deveria resolver dependencia local pelo manifesto"
+        Assert-Equal @($json.output)[0] "16" "project-run-json deveria resolver dependencia local pelo manifesto"
         Pass "project-run-json"
+    }
+
+    Write-Host "Inspecionando imports do projeto via project-imports-json..."
+    $json = Invoke-JsonNoInput @("project-imports-json", $projectManifestFile) 0
+    if ($null -ne $json) {
+        Assert-Equal $json.ok $true "project-imports-json deveria retornar ok=true"
+        Assert-Equal $json.package "api-bridge-project" "project-imports-json deveria usar nome do pacote"
+        Assert-Equal $json.count 2 "project-imports-json deveria encontrar alias e stdlib"
+        Assert-Equal @($json.imports)[0].path "stdlib_demo" "project-imports-json deveria preservar alias declarado"
+        Assert-Equal @($json.imports)[0].source "dependency" "project-imports-json deveria marcar alias como dependency"
+        Assert-Equal @($json.imports)[1].source "stdlib" "project-imports-json deveria marcar import stdlib transitivo"
+        Pass "project-imports-json"
     }
 
     Write-Host "Compilando projeto via project-compile-json..."

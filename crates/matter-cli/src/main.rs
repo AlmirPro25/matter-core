@@ -55,6 +55,14 @@ fn main() {
             project_run_json(manifest);
         }
 
+        "project-imports-json" => {
+            let manifest = if args.len() >= 3 {
+                &args[2]
+            } else {
+                "matter.toml"
+            };
+            project_imports_json(manifest);
+        }
         "project-compile-json" => {
             let manifest = if args.len() >= 3 {
                 &args[2]
@@ -243,6 +251,7 @@ fn print_usage() {
     println!("  matter-cli package-json [matter.toml]       Inspect Matter package manifest as JSON");
     println!("  matter-cli project-check-json [matter.toml] Validate package entrypoint as JSON");
     println!("  matter-cli project-run-json [matter.toml]   Run package entrypoint as JSON");
+    println!("  matter-cli project-imports-json [matter.toml] Inspect package import graph as JSON");
     println!("  matter-cli project-compile-json [matter.toml] [-o out] Compile package entrypoint as JSON");
     println!("  matter-cli run <file.matter|->              Run Matter source file or stdin");
     println!("  matter-cli eval <source>                    Run Matter source passed as text");
@@ -280,6 +289,7 @@ fn print_capabilities_json() {
             "\"package-json\",",
             "\"project-check-json\",",
             "\"project-run-json\",",
+            "\"project-imports-json\",",
             "\"project-compile-json\",",
             "\"eval-json\",",
             "\"tokens-json\",",
@@ -443,6 +453,61 @@ fn project_run_json(manifest_path: &str) {
     );
 }
 
+fn project_imports_json(manifest_path: &str) {
+    let project = load_project_or_json_exit(manifest_path);
+    let _env = apply_project_env(&project);
+    let entry_path = project_path(&project.base_dir, &project.manifest.entry);
+    let entry_label = entry_path.display().to_string();
+    let source = fs::read_to_string(&entry_path).unwrap_or_else(|error| {
+        println!(
+            "{{\"ok\":false,\"stage\":\"read\",\"package\":\"{}\",\"manifest\":\"{}\",\"input\":\"{}\",\"error\":{{\"message\":\"{}\"}}}}",
+            json_escape(&project.manifest.name),
+            json_escape(&project.manifest_path),
+            json_escape(&entry_label),
+            json_escape(&error.to_string())
+        );
+        process::exit(1);
+    });
+
+    let base_dir = entry_path
+        .parent()
+        .unwrap_or(Path::new("."))
+        .to_path_buf();
+    let mut imports = Vec::new();
+    let mut stack = vec![entry_path
+        .canonicalize()
+        .unwrap_or_else(|_| entry_path.clone())];
+
+    if let Err(error) = collect_imports_with_dependencies(
+        &source,
+        &base_dir,
+        &entry_label,
+        &project.base_dir,
+        &project.manifest.dependencies,
+        &mut stack,
+        &mut imports,
+    ) {
+        println!(
+            "{{\"ok\":false,\"stage\":\"import\",\"package\":\"{}\",\"manifest\":\"{}\",\"input\":\"{}\",\"error\":{{\"message\":\"{}\"}}}}",
+            json_escape(&project.manifest.name),
+            json_escape(&project.manifest_path),
+            json_escape(&entry_label),
+            json_escape(&error)
+        );
+        process::exit(1);
+    }
+
+    let items: Vec<String> = imports.iter().map(import_info_json).collect();
+
+    println!(
+        "{{\"ok\":true,\"package\":\"{}\",\"manifest\":\"{}\",\"input\":\"{}\",\"count\":{},\"imports\":[{}]}}",
+        json_escape(&project.manifest.name),
+        json_escape(&project.manifest_path),
+        json_escape(&entry_label),
+        imports.len(),
+        items.join(",")
+    );
+}
 fn project_compile_json(manifest_path: &str, output: &str) {
     let project = load_project_or_json_exit(manifest_path);
     let _env = apply_project_env(&project);
@@ -1086,6 +1151,17 @@ struct ImportInfo {
     from: String,
     path: String,
     resolved: String,
+    source: String,
+}
+
+fn import_info_json(import: &ImportInfo) -> String {
+    format!(
+        "{{\"from\":\"{}\",\"path\":\"{}\",\"resolved\":\"{}\",\"source\":\"{}\"}}",
+        json_escape(&import.from),
+        json_escape(&import.path),
+        json_escape(&import.resolved),
+        json_escape(&import.source)
+    )
 }
 
 fn collect_imports(
@@ -1095,19 +1171,46 @@ fn collect_imports(
     stack: &mut Vec<PathBuf>,
     imports: &mut Vec<ImportInfo>,
 ) -> Result<(), String> {
+    collect_imports_with_dependencies(
+        source,
+        base_dir,
+        from_label,
+        Path::new("."),
+        &[],
+        stack,
+        imports,
+    )
+}
+
+fn collect_imports_with_dependencies(
+    source: &str,
+    base_dir: &Path,
+    from_label: &str,
+    project_base_dir: &Path,
+    dependencies: &[ManifestDependency],
+    stack: &mut Vec<PathBuf>,
+    imports: &mut Vec<ImportInfo>,
+) -> Result<(), String> {
     for line in source.lines() {
         if let Some(import_path) = parse_import_line(line) {
-            let canonical = resolve_import_path(&import_path, base_dir)?;
+            let canonical = resolve_import_path_with_dependencies(
+                &import_path,
+                base_dir,
+                project_base_dir,
+                dependencies,
+            )?;
 
             if stack.iter().any(|path| path == &canonical) {
                 return Err(format!("circular import detected for '{}'", canonical.display()));
             }
 
             let resolved = canonical.display().to_string();
+            let source = import_source_kind(&import_path, dependencies);
             imports.push(ImportInfo {
                 from: from_label.to_string(),
                 path: import_path.clone(),
                 resolved: resolved.clone(),
+                source,
             });
 
             let imported_source = fs::read_to_string(&canonical).map_err(|e| {
@@ -1119,10 +1222,12 @@ fn collect_imports(
                 .to_path_buf();
 
             stack.push(canonical);
-            collect_imports(
+            collect_imports_with_dependencies(
                 &imported_source,
                 &imported_base,
                 &resolved,
+                project_base_dir,
+                dependencies,
                 stack,
                 imports,
             )?;
@@ -1133,6 +1238,15 @@ fn collect_imports(
     Ok(())
 }
 
+fn import_source_kind(import_path: &str, dependencies: &[ManifestDependency]) -> String {
+    if is_std_import(import_path) {
+        "stdlib".to_string()
+    } else if dependencies.iter().any(|dependency| dependency.name == import_path) {
+        "dependency".to_string()
+    } else {
+        "local".to_string()
+    }
+}
 fn json_escape(value: &str) -> String {
     let mut escaped = String::new();
     for ch in value.chars() {
