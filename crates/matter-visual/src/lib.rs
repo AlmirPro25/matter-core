@@ -189,6 +189,18 @@ impl TraceVisualBackend {
             .map_err(|error| VisualError::RuntimeError(error.to_string()))
     }
 
+    pub fn export_web_runtime(&self, dir: &str, app_name: &str) -> Result<(), VisualError> {
+        let root = Path::new(dir);
+        fs::create_dir_all(root).map_err(|error| VisualError::RuntimeError(error.to_string()))?;
+        fs::write(root.join("index.html"), render_pxl_canvas(self))
+            .map_err(|error| VisualError::RuntimeError(error.to_string()))?;
+        fs::write(root.join("pxl.json"), self.pxl_snapshot())
+            .map_err(|error| VisualError::RuntimeError(error.to_string()))?;
+        fs::write(root.join("manifest.json"), render_web_manifest(app_name))
+            .map_err(|error| VisualError::RuntimeError(error.to_string()))?;
+        Ok(())
+    }
+
     pub fn save_state(&self, path: &str) -> Result<(), VisualError> {
         if let Some(parent) = Path::new(path).parent() {
             if !parent.as_os_str().is_empty() {
@@ -841,6 +853,20 @@ impl Backend for TraceVisualBackend {
                 self.export_canvas(&path).map_err(|e| e.to_string())?;
                 Ok(Value::String(path))
             }
+            "web" => {
+                if args.len() != 2 {
+                    return Err(format!("visual.web expects 2 arguments, got {}", args.len()));
+                }
+                let dir = args[0]
+                    .as_string()
+                    .map_err(|_| "visual.web expects string dir".to_string())?;
+                let app_name = args[1]
+                    .as_string()
+                    .map_err(|_| "visual.web expects string app name".to_string())?;
+                self.export_web_runtime(&dir, &app_name)
+                    .map_err(|e| e.to_string())?;
+                Ok(Value::String(dir))
+            }
             _ => Err(format!("Unknown visual method: {}", method)),
         }
     }
@@ -910,6 +936,13 @@ fn render_loop_state(loop_state: &VisualLoopState) -> String {
 
 fn render_editor_state(enabled: bool) -> String {
     format!("{{\"enabled\":{}}}", enabled)
+}
+
+fn render_web_manifest(app_name: &str) -> String {
+    format!(
+        "{{\"format\":\"MATTER_WEB_RUNTIME\",\"version\":1,\"app\":\"{}\",\"entry\":\"index.html\",\"pxl\":\"pxl.json\",\"runtime\":\"pxl-canvas\",\"files\":[\"index.html\",\"pxl.json\",\"manifest.json\"]}}",
+        json_escape(app_name)
+    )
 }
 
 fn render_visual_state_document(backend: &TraceVisualBackend) -> String {
@@ -1670,6 +1703,48 @@ mod tests {
         assert!(exported.contains("\"format\":\"PXL\""));
         assert!(exported.contains("\"main\""));
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn test_visual_web_writes_runtime_bundle() {
+        let mut backend = TraceVisualBackend::new();
+        let dir = std::env::temp_dir().join("matter_visual_web_runtime_test");
+        let _ = fs::remove_dir_all(&dir);
+        backend
+            .call(
+                "surface",
+                vec![
+                    Value::String("main".to_string()),
+                    Value::Int(640),
+                    Value::Int(360),
+                ],
+            )
+            .unwrap();
+        backend
+            .call("editor", vec![Value::Bool(true)])
+            .unwrap();
+
+        let result = backend
+            .call(
+                "web",
+                vec![
+                    Value::String(dir.display().to_string()),
+                    Value::String("Matter PXL Demo".to_string()),
+                ],
+            )
+            .unwrap();
+
+        assert_eq!(result, Value::String(dir.display().to_string()));
+        let index = fs::read_to_string(dir.join("index.html")).unwrap();
+        let pxl = fs::read_to_string(dir.join("pxl.json")).unwrap();
+        let manifest = fs::read_to_string(dir.join("manifest.json")).unwrap();
+        assert!(index.contains("PXL Canvas Engine"));
+        assert!(pxl.contains("\"format\":\"PXL\""));
+        assert!(manifest.contains("\"format\":\"MATTER_WEB_RUNTIME\""));
+        assert!(manifest.contains("\"entry\":\"index.html\""));
+        assert!(manifest.contains("\"pxl\":\"pxl.json\""));
+        assert!(manifest.contains("\"app\":\"Matter PXL Demo\""));
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]

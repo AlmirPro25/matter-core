@@ -48,6 +48,8 @@ visual.scene("home")
 let loop_state = visual.loop(3, 16)
 let state = visual.save_state("target/matter-visual-state.json")
 let canvas = visual.canvas("target/matter-visual-canvas.html")
+let web = visual.web("target/matter-web-app", "Matter PXL Demo")
 print loop_state
 print state
 print canvas
+print web
