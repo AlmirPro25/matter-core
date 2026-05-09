@@ -198,6 +198,8 @@ impl TraceVisualBackend {
             .map_err(|error| VisualError::RuntimeError(error.to_string()))?;
         fs::write(root.join("manifest.json"), render_web_manifest(app_name))
             .map_err(|error| VisualError::RuntimeError(error.to_string()))?;
+        fs::write(root.join("matter-package.json"), render_web_package_manifest(app_name))
+            .map_err(|error| VisualError::RuntimeError(error.to_string()))?;
         Ok(())
     }
 
@@ -940,9 +942,42 @@ fn render_editor_state(enabled: bool) -> String {
 
 fn render_web_manifest(app_name: &str) -> String {
     format!(
-        "{{\"format\":\"MATTER_WEB_RUNTIME\",\"version\":1,\"app\":\"{}\",\"entry\":\"index.html\",\"pxl\":\"pxl.json\",\"runtime\":\"pxl-canvas\",\"files\":[\"index.html\",\"pxl.json\",\"manifest.json\"]}}",
+        "{{\"format\":\"MATTER_WEB_RUNTIME\",\"version\":1,\"app\":\"{}\",\"entry\":\"index.html\",\"pxl\":\"pxl.json\",\"runtime\":\"pxl-canvas\",\"package\":\"matter-package.json\",\"files\":[\"index.html\",\"pxl.json\",\"manifest.json\",\"matter-package.json\"]}}",
         json_escape(app_name)
     )
+}
+
+fn render_web_package_manifest(app_name: &str) -> String {
+    let package_name = package_slug(app_name);
+    format!(
+        "{{\"format\":\"MATTER_PACKAGE\",\"version\":1,\"name\":\"{}\",\"displayName\":\"{}\",\"kind\":\"web-runtime\",\"entry\":\"index.html\",\"artifacts\":[{{\"kind\":\"pxl\",\"path\":\"pxl.json\"}},{{\"kind\":\"web\",\"path\":\"index.html\"}}],\"dependencies\":{{\"matter.pxl\":\"^0.1.0\"}}}}",
+        json_escape(&package_name),
+        json_escape(app_name)
+    )
+}
+
+fn package_slug(value: &str) -> String {
+    let slug = value
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else if ch == '-' || ch == '_' || ch.is_whitespace() {
+                '-'
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .split('-')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    if slug.is_empty() {
+        "matter-app".to_string()
+    } else {
+        slug
+    }
 }
 
 fn render_visual_state_document(backend: &TraceVisualBackend) -> String {
@@ -1738,12 +1773,18 @@ mod tests {
         let index = fs::read_to_string(dir.join("index.html")).unwrap();
         let pxl = fs::read_to_string(dir.join("pxl.json")).unwrap();
         let manifest = fs::read_to_string(dir.join("manifest.json")).unwrap();
+        let package = fs::read_to_string(dir.join("matter-package.json")).unwrap();
         assert!(index.contains("PXL Canvas Engine"));
         assert!(pxl.contains("\"format\":\"PXL\""));
         assert!(manifest.contains("\"format\":\"MATTER_WEB_RUNTIME\""));
         assert!(manifest.contains("\"entry\":\"index.html\""));
         assert!(manifest.contains("\"pxl\":\"pxl.json\""));
+        assert!(manifest.contains("\"package\":\"matter-package.json\""));
         assert!(manifest.contains("\"app\":\"Matter PXL Demo\""));
+        assert!(package.contains("\"format\":\"MATTER_PACKAGE\""));
+        assert!(package.contains("\"name\":\"matter-pxl-demo\""));
+        assert!(package.contains("\"kind\":\"web-runtime\""));
+        assert!(package.contains("\"matter.pxl\":\"^0.1.0\""));
         let _ = fs::remove_dir_all(dir);
     }
 
