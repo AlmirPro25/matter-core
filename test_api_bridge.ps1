@@ -124,6 +124,9 @@ stdlib_demo = "api_bridge_project_dependency.matter"
         if (@($json.json_commands) -notcontains "project-lock-json") {
             Fail "capabilities-json deveria listar project-lock-json"
         }
+        if (@($json.json_commands) -notcontains "project-fingerprint-json") {
+            Fail "capabilities-json deveria listar project-fingerprint-json"
+        }
         if (@($json.json_commands) -notcontains "project-source-json") {
             Fail "capabilities-json deveria listar project-source-json"
         }
@@ -194,12 +197,14 @@ stdlib_demo = "api_bridge_project_dependency.matter"
 
     Write-Host "Gerando lock do projeto via project-lock-json..."
     $json = Invoke-JsonNoInput @("project-lock-json", $projectManifestFile) 0
+    $lockFingerprint = $null
     if ($null -ne $json) {
         Assert-Equal $json.ok $true "project-lock-json deveria retornar ok=true"
         Assert-Equal $json.package.name "api-bridge-project" "project-lock-json deveria usar nome do pacote"
         Assert-Equal $json.imports_count 2 "project-lock-json deveria preservar grafo de imports"
         Assert-Equal @($json.dependencies)[0].name "stdlib_demo" "project-lock-json deveria listar dependencias"
         Assert-Equal $json.files_count 4 "project-lock-json deveria listar manifesto, entry, dependency e stdlib"
+        $lockFingerprint = $json.lock_fingerprint
         if ([string]::IsNullOrWhiteSpace($json.lock_fingerprint)) {
             Fail "project-lock-json deveria gerar lock_fingerprint"
         }
@@ -207,6 +212,17 @@ stdlib_demo = "api_bridge_project_dependency.matter"
             Fail "project-lock-json deveria gerar fingerprint para arquivos"
         }
         Pass "project-lock-json"
+    }
+
+    Write-Host "Gerando fingerprint do projeto via project-fingerprint-json..."
+    $json = Invoke-JsonNoInput @("project-fingerprint-json", $projectManifestFile) 0
+    if ($null -ne $json) {
+        Assert-Equal $json.ok $true "project-fingerprint-json deveria retornar ok=true"
+        Assert-Equal $json.package "api-bridge-project" "project-fingerprint-json deveria usar nome do pacote"
+        Assert-Equal $json.files_count 4 "project-fingerprint-json deveria listar os mesmos arquivos do lock"
+        Assert-Equal $json.imports_count 2 "project-fingerprint-json deveria preservar contagem de imports"
+        Assert-Equal $json.lock_fingerprint $lockFingerprint "project-fingerprint-json deveria bater com lock_fingerprint"
+        Pass "project-fingerprint-json"
     }
 
     Write-Host "Gerando source resolvido via project-source-json..."

@@ -83,6 +83,7 @@ Ou enviar Matter Core por stdin usando `-`:
 .\target\release\matter-cli.exe project-run-json
 .\target\release\matter-cli.exe project-imports-json
 .\target\release\matter-cli.exe project-lock-json
+.\target\release\matter-cli.exe project-fingerprint-json
 .\target\release\matter-cli.exe project-source-json
 .\target\release\matter-cli.exe project-compile-json -o target\project.mbc
 ```
