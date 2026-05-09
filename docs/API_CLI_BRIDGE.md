@@ -29,9 +29,11 @@ APIs and cloud CLIs can inspect it without running code:
 
 ```bash
 .\target\release\matter-cli.exe package-json
+.\target\release\matter-cli.exe project-deps-json
 ```
 
 This returns package identity, entrypoint, runtime paths, and local dependency aliases as JSON.
+`project-deps-json` resolves dependency aliases to concrete files and includes byte sizes plus fingerprints.
 
 Project commands can import dependency aliases declared in the manifest:
 
@@ -72,7 +74,7 @@ APIs can discover the available contract at runtime:
 Response:
 
 ```json
-{"ok":true,"name":"matter-cli","version":"0.1.0","bytecode":"MBC1","stdin":true,"json_commands":["capabilities-json","package-json","project-check-json","project-run-json","project-imports-json","project-lock-json","project-fingerprint-json","project-source-json","project-compile-json","eval-json","tokens-json","imports-json","check-json","run-json","emit-json","compile-json","inspect-json","run-bytecode-json","emit-bytecode-json"],"source_commands":["run","eval","emit","check","compile"],"bytecode_commands":["run-bytecode","emit-bytecode","inspect"],"language_features":["variables","functions","recursion","if","while","loop","for","break","continue","events","lists","maps","structs","backend_calls","imports","stdlib","persistence","network","concurrency","packages"]}
+{"ok":true,"name":"matter-cli","version":"0.1.0","bytecode":"MBC1","stdin":true,"json_commands":["capabilities-json","package-json","project-deps-json","project-check-json","project-run-json","project-imports-json","project-lock-json","project-fingerprint-json","project-source-json","project-compile-json","eval-json","tokens-json","imports-json","check-json","run-json","emit-json","compile-json","inspect-json","run-bytecode-json","emit-bytecode-json"],"source_commands":["run","eval","emit","check","compile"],"bytecode_commands":["run-bytecode","emit-bytecode","inspect"],"language_features":["variables","functions","recursion","if","while","loop","for","break","continue","events","lists","maps","structs","backend_calls","imports","stdlib","persistence","network","concurrency","packages"]}
 ```
 
 ## Local imports

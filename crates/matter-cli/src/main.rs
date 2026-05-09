@@ -37,6 +37,15 @@ fn main() {
             package_json(manifest);
         }
 
+        "project-deps-json" => {
+            let manifest = if args.len() >= 3 {
+                &args[2]
+            } else {
+                "matter.toml"
+            };
+            project_deps_json(manifest);
+        }
+
         "project-check-json" => {
             let manifest = if args.len() >= 3 {
                 &args[2]
@@ -276,6 +285,7 @@ fn print_usage() {
     println!("Usage:");
     println!("  matter-cli capabilities-json                Print machine-readable capabilities");
     println!("  matter-cli package-json [matter.toml]       Inspect Matter package manifest as JSON");
+    println!("  matter-cli project-deps-json [matter.toml]  Inspect resolved package dependencies as JSON");
     println!("  matter-cli project-check-json [matter.toml] Validate package entrypoint as JSON");
     println!("  matter-cli project-run-json [matter.toml]   Run package entrypoint as JSON");
     println!("  matter-cli project-imports-json [matter.toml] Inspect package import graph as JSON");
@@ -317,6 +327,7 @@ fn print_capabilities_json() {
             "\"json_commands\":[",
             "\"capabilities-json\",",
             "\"package-json\",",
+            "\"project-deps-json\",",
             "\"project-check-json\",",
             "\"project-run-json\",",
             "\"project-imports-json\",",
@@ -448,6 +459,54 @@ fn package_json(path: &str) {
     );
 }
 
+fn project_deps_json(manifest_path: &str) {
+    let project = load_project_or_json_exit(manifest_path);
+    let mut items = Vec::new();
+
+    for dependency in &project.manifest.dependencies {
+        let resolved_path = project_path(&project.base_dir, &dependency.path);
+        let canonical = resolved_path.canonicalize().unwrap_or_else(|error| {
+            println!(
+                "{{\"ok\":false,\"stage\":\"dependency\",\"package\":\"{}\",\"manifest\":\"{}\",\"dependency\":\"{}\",\"path\":\"{}\",\"error\":{{\"message\":\"{}\"}}}}",
+                json_escape(&project.manifest.name),
+                json_escape(&project.manifest_path),
+                json_escape(&dependency.name),
+                json_escape(&dependency.path),
+                json_escape(&error.to_string())
+            );
+            process::exit(1);
+        });
+
+        let bytes = fs::read(&canonical).unwrap_or_else(|error| {
+            println!(
+                "{{\"ok\":false,\"stage\":\"dependency\",\"package\":\"{}\",\"manifest\":\"{}\",\"dependency\":\"{}\",\"path\":\"{}\",\"error\":{{\"message\":\"{}\"}}}}",
+                json_escape(&project.manifest.name),
+                json_escape(&project.manifest_path),
+                json_escape(&dependency.name),
+                json_escape(&canonical.display().to_string()),
+                json_escape(&error.to_string())
+            );
+            process::exit(1);
+        });
+
+        items.push(format!(
+            "{{\"name\":\"{}\",\"path\":\"{}\",\"resolved\":\"{}\",\"bytes\":{},\"fingerprint\":\"{}\"}}",
+            json_escape(&dependency.name),
+            json_escape(&dependency.path),
+            json_escape(&canonical.display().to_string()),
+            bytes.len(),
+            json_escape(&fnv1a64_hex(&bytes))
+        ));
+    }
+
+    println!(
+        "{{\"ok\":true,\"package\":\"{}\",\"manifest\":\"{}\",\"count\":{},\"dependencies\":[{}]}}",
+        json_escape(&project.manifest.name),
+        json_escape(&project.manifest_path),
+        items.len(),
+        items.join(",")
+    );
+}
 fn project_check_json(manifest_path: &str) {
     let project = load_project_or_json_exit(manifest_path);
     let _env = apply_project_env(&project);

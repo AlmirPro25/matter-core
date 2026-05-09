@@ -75,6 +75,7 @@ Ou enviar Matter Core por stdin usando `-`:
 ```bash
 .\target\release\matter-cli.exe package-json
 .\target\release\matter-cli.exe package-json matter.toml
+.\target\release\matter-cli.exe project-deps-json
 ```
 
 ### Executar projeto pelo manifesto

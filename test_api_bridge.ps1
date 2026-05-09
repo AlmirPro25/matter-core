@@ -115,6 +115,9 @@ stdlib_demo = "api_bridge_project_dependency.matter"
         if (@($json.json_commands) -notcontains "package-json") {
             Fail "capabilities-json deveria listar package-json"
         }
+        if (@($json.json_commands) -notcontains "project-deps-json") {
+            Fail "capabilities-json deveria listar project-deps-json"
+        }
         if (@($json.json_commands) -notcontains "project-run-json") {
             Fail "capabilities-json deveria listar project-run-json"
         }
@@ -163,6 +166,19 @@ stdlib_demo = "api_bridge_project_dependency.matter"
         Assert-Equal $json.paths.stdlib "stdlib" "package-json deveria ler caminho da stdlib"
         Assert-Equal @($json.dependencies)[0].name "math_tools" "package-json deveria listar dependencia local"
         Pass "package-json"
+    }
+
+    Write-Host "Inspecionando dependencias do projeto via project-deps-json..."
+    $json = Invoke-JsonNoInput @("project-deps-json", $projectManifestFile) 0
+    if ($null -ne $json) {
+        Assert-Equal $json.ok $true "project-deps-json deveria retornar ok=true"
+        Assert-Equal $json.package "api-bridge-project" "project-deps-json deveria usar nome do pacote"
+        Assert-Equal $json.count 1 "project-deps-json deveria listar uma dependencia"
+        Assert-Equal @($json.dependencies)[0].name "stdlib_demo" "project-deps-json deveria preservar alias"
+        if ([string]::IsNullOrWhiteSpace(@($json.dependencies)[0].fingerprint)) {
+            Fail "project-deps-json deveria gerar fingerprint da dependencia"
+        }
+        Pass "project-deps-json"
     }
 
     Write-Host "Validando projeto via project-check-json..."
