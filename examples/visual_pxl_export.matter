@@ -1,0 +1,11 @@
+visual.surface("main", 800, 600)
+visual.region("checkout", 120, 220, 260, 80)
+visual.set("checkout", "semantic", "primary_action")
+visual.set("checkout", "material", "glass")
+visual.pulse("checkout")
+
+let pxl = visual.snapshot()
+print pxl
+
+let path = visual.export("target/matter-visual.pxl.json")
+print path

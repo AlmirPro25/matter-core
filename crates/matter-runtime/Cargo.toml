@@ -7,4 +7,5 @@ edition.workspace = true
 matter-vm = { workspace = true }
 matter-bytecode = { workspace = true }
 matter-backend = { workspace = true }
+matter-visual = { workspace = true }
 matter-stdlib = { workspace = true }

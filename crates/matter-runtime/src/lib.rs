@@ -1,7 +1,8 @@
 /// Matter Runtime
 /// Sistema de eventos, estado e scheduler
 
-use matter_backend::{AgentBackend, Backend, GraphBackend, NetBackend, StoreBackend, Value, VisualBackend};
+use matter_backend::{AgentBackend, Backend, GraphBackend, NetBackend, StoreBackend, Value};
+use matter_visual::TraceVisualBackend;
 use matter_bytecode::Bytecode;
 use matter_stdlib::{ListBackend, MathBackend, StringBackend};
 use matter_vm::Vm;
@@ -16,7 +17,7 @@ impl Runtime {
         
         // Register default backends
         vm.register_backend("agent".to_string(), Box::new(AgentBackend::new()));
-        vm.register_backend("visual".to_string(), Box::new(VisualBackend::new()));
+        vm.register_backend("visual".to_string(), Box::new(TraceVisualBackend::new()));
         vm.register_backend("graph".to_string(), Box::new(GraphBackend::new()));
         vm.register_backend("store".to_string(), Box::new(StoreBackend::new()));
         vm.register_backend("net".to_string(), Box::new(NetBackend::new()));
@@ -33,7 +34,7 @@ impl Runtime {
         let mut vm = Vm::new(bytecode);
 
         vm.register_backend("agent".to_string(), Box::new(SilentAgentBackend));
-        vm.register_backend("visual".to_string(), Box::new(SilentVisualBackend));
+        vm.register_backend("visual".to_string(), Box::new(TraceVisualBackend::new_silent()));
         vm.register_backend("graph".to_string(), Box::new(GraphBackend::new()));
         vm.register_backend("store".to_string(), Box::new(StoreBackend::new()));
         vm.register_backend("net".to_string(), Box::new(NetBackend::new()));
@@ -74,17 +75,6 @@ impl Backend for SilentAgentBackend {
         match method {
             "say" => Ok(Value::Unit),
             _ => Err(format!("Unknown agent method: {}", method)),
-        }
-    }
-}
-
-struct SilentVisualBackend;
-
-impl Backend for SilentVisualBackend {
-    fn call(&mut self, method: &str, _args: Vec<Value>) -> Result<Value, String> {
-        match method {
-            "run" => Ok(Value::Unit),
-            _ => Err(format!("Unknown visual method: {}", method)),
         }
     }
 }

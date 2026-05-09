@@ -51,6 +51,7 @@ dependencies = [
  "matter-parser",
  "matter-runtime",
  "matter-stdlib",
+ "matter-visual",
  "matter-vm",
 ]
 
@@ -77,11 +78,19 @@ dependencies = [
  "matter-backend",
  "matter-bytecode",
  "matter-stdlib",
+ "matter-visual",
  "matter-vm",
 ]
 
 [[package]]
 name = "matter-stdlib"
+version = "0.1.0"
+dependencies = [
+ "matter-backend",
+]
+
+[[package]]
+name = "matter-visual"
 version = "0.1.0"
 dependencies = [
  "matter-backend",
