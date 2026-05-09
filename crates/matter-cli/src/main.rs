@@ -272,7 +272,8 @@ fn print_capabilities_json() {
             "\"backend_calls\",",
             "\"imports\",",
             "\"stdlib\",",
-            "\"persistence\"",
+            "\"persistence\",",
+            "\"network\"",
             "]",
             "}}"
         ),

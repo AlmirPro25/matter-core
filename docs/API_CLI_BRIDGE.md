@@ -58,6 +58,18 @@ print store.delete("counter")
 
 Supported methods: `store.set(key, value)`, `store.get(key)`, `store.has(key)`, `store.delete(key)`, `store.clear()`, and `store.list()`.
 
+## Network
+
+Matter programs can make HTTP calls through the built-in `net` backend. Set `MATTER_NET_TIMEOUT_MS` to configure the request timeout. The current portable backend supports `http://` URLs.
+
+```matter
+print net.status("http://example.com")
+print net.ok("http://example.com")
+let body = net.get("http://example.com")
+```
+
+Supported methods: `net.get(url)`, `net.status(url)`, `net.ok(url)`, and `net.post(url, body)`.
+
 Use `imports-json` to inspect an import graph without running the program:
 
 ```bash

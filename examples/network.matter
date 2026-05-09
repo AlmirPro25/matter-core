@@ -1,0 +1,6 @@
+# HTTP network backend example
+# Set MATTER_NET_TIMEOUT_MS to tune request timeout.
+
+print "=== Network ==="
+print net.status("http://example.com")
+print net.ok("http://example.com")

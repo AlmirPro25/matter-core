@@ -4,7 +4,10 @@
 use std::collections::HashMap;
 use std::env;
 use std::fs;
+use std::io::{Read, Write};
+use std::net::TcpStream;
 use std::path::PathBuf;
+use std::time::Duration;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
@@ -163,6 +166,169 @@ impl Backend for VisualBackend {
             _ => Err(format!("Unknown visual method: {}", method)),
         }
     }
+}
+
+/// HTTP network backend.
+pub struct NetBackend {
+    timeout: Duration,
+}
+
+impl NetBackend {
+    pub fn new() -> Self {
+        let timeout_ms = env::var("MATTER_NET_TIMEOUT_MS")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(10_000);
+
+        Self {
+            timeout: Duration::from_millis(timeout_ms),
+        }
+    }
+}
+
+impl Default for NetBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Backend for NetBackend {
+    fn call(&mut self, method: &str, args: Vec<Value>) -> Result<Value, String> {
+        match method {
+            "get" => {
+                if args.len() != 1 {
+                    return Err(format!("net.get expects 1 argument, got {}", args.len()));
+                }
+                let url = args[0].as_string().map_err(|e| format!("net.get: {}", e))?;
+                let response = http_request("GET", &url, "", self.timeout)?;
+                Ok(Value::String(response.body))
+            }
+            "status" => {
+                if args.len() != 1 {
+                    return Err(format!("net.status expects 1 argument, got {}", args.len()));
+                }
+                let url = args[0].as_string().map_err(|e| format!("net.status: {}", e))?;
+                let response = http_request("GET", &url, "", self.timeout)?;
+                Ok(Value::Int(response.status as i64))
+            }
+            "ok" => {
+                if args.len() != 1 {
+                    return Err(format!("net.ok expects 1 argument, got {}", args.len()));
+                }
+                let url = args[0].as_string().map_err(|e| format!("net.ok: {}", e))?;
+                let response = http_request("GET", &url, "", self.timeout)?;
+                let ok = (200..300).contains(&response.status);
+                Ok(Value::Bool(ok))
+            }
+            "post" => {
+                if args.len() != 2 {
+                    return Err(format!("net.post expects 2 arguments, got {}", args.len()));
+                }
+                let url = args[0].as_string().map_err(|e| format!("net.post: {}", e))?;
+                let body = args[1].as_string().map_err(|e| format!("net.post: {}", e))?;
+                let response = http_request("POST", &url, &body, self.timeout)?;
+                Ok(Value::String(response.body))
+            }
+            _ => Err(format!("Unknown net method: {}", method)),
+        }
+    }
+}
+
+struct HttpResponse {
+    status: u16,
+    body: String,
+}
+
+fn http_request(method: &str, url: &str, body: &str, timeout: Duration) -> Result<HttpResponse, String> {
+    let parsed = parse_http_url(url)?;
+    let address = format!("{}:{}", parsed.host, parsed.port);
+    let mut stream = TcpStream::connect(&address)
+        .map_err(|e| format!("net.{} failed to connect to '{}': {}", method.to_lowercase(), address, e))?;
+    stream
+        .set_read_timeout(Some(timeout))
+        .map_err(|e| format!("net could not set read timeout: {}", e))?;
+    stream
+        .set_write_timeout(Some(timeout))
+        .map_err(|e| format!("net could not set write timeout: {}", e))?;
+
+    let request = if method == "POST" {
+        format!(
+            "POST {} HTTP/1.1\r\nHost: {}\r\nUser-Agent: matter-core/0.1\r\nConnection: close\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}",
+            parsed.path,
+            parsed.host,
+            body.as_bytes().len(),
+            body
+        )
+    } else {
+        format!(
+            "GET {} HTTP/1.1\r\nHost: {}\r\nUser-Agent: matter-core/0.1\r\nConnection: close\r\n\r\n",
+            parsed.path, parsed.host
+        )
+    };
+
+    stream
+        .write_all(request.as_bytes())
+        .map_err(|e| format!("net.{} failed to write request: {}", method.to_lowercase(), e))?;
+
+    let mut response = String::new();
+    stream
+        .read_to_string(&mut response)
+        .map_err(|e| format!("net.{} failed to read response: {}", method.to_lowercase(), e))?;
+
+    parse_http_response(&response)
+}
+
+struct ParsedHttpUrl {
+    host: String,
+    port: u16,
+    path: String,
+}
+
+fn parse_http_url(url: &str) -> Result<ParsedHttpUrl, String> {
+    let rest = url
+        .strip_prefix("http://")
+        .ok_or_else(|| "net currently supports only http:// URLs".to_string())?;
+    let (authority, path) = if let Some((authority, path)) = rest.split_once('/') {
+        (authority, format!("/{}", path))
+    } else {
+        (rest, "/".to_string())
+    };
+
+    if authority.is_empty() {
+        return Err("net URL is missing host".to_string());
+    }
+
+    let (host, port) = if let Some((host, port)) = authority.rsplit_once(':') {
+        let port = port
+            .parse::<u16>()
+            .map_err(|_| format!("net URL has invalid port '{}'", port))?;
+        (host.to_string(), port)
+    } else {
+        (authority.to_string(), 80)
+    };
+
+    Ok(ParsedHttpUrl { host, port, path })
+}
+
+fn parse_http_response(response: &str) -> Result<HttpResponse, String> {
+    let (headers, body) = response
+        .split_once("\r\n\r\n")
+        .ok_or_else(|| "net received invalid HTTP response".to_string())?;
+    let status_line = headers
+        .lines()
+        .next()
+        .ok_or_else(|| "net received empty HTTP response".to_string())?;
+    let status = status_line
+        .split_whitespace()
+        .nth(1)
+        .ok_or_else(|| "net response is missing status code".to_string())?
+        .parse::<u16>()
+        .map_err(|_| "net response has invalid status code".to_string())?;
+
+    Ok(HttpResponse {
+        status,
+        body: body.to_string(),
+    })
 }
 
 /// File-backed key/value store.

@@ -121,6 +121,16 @@ $env:MATTER_STORE_PATH="target\meu_store.json"
 .\target\release\matter-cli.exe run examples\test_store.matter
 ```
 
+### Fazer chamadas HTTP
+```matter
+print net.status("http://example.com")
+print net.ok("http://example.com")
+```
+
+```bash
+.\target\release\matter-cli.exe run examples\network.matter
+```
+
 ### Executar para API
 ```bash
 .\target\release\matter-cli.exe run-json <arquivo.matter|->

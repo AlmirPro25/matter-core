@@ -99,6 +99,9 @@ try {
         if (@($json.language_features) -notcontains "persistence") {
             Fail "capabilities-json deveria listar persistence"
         }
+        if (@($json.language_features) -notcontains "network") {
+            Fail "capabilities-json deveria listar network"
+        }
         Pass "capabilities-json"
     }
 
@@ -145,9 +148,10 @@ try {
     $json = Invoke-JsonNoInput @("run-json", "examples\test_stdlib.matter") 0
     if ($null -ne $json) {
         Assert-Equal $json.ok $true "run-json com stdlib deveria retornar ok=true"
-        Assert-Equal @($json.output)[1] "9" "stdlib abs deveria funcionar"
-        Assert-Equal @($json.output)[4] "10" "stdlib clamp deveria funcionar"
-        Assert-Equal @($json.output)[8] "27" "stdlib cube deveria funcionar"
+        Assert-Equal @($json.output)[1] "10" "stdlib math.abs deveria funcionar"
+        Assert-Equal @($json.output)[4] "256" "stdlib math.pow deveria funcionar"
+        Assert-Equal @($json.output)[7] "HELLO WORLD" "stdlib string.upper deveria funcionar"
+        Assert-Equal @($json.output)[17] "31" "stdlib list.sum deveria funcionar"
         Pass "run-json stdlib"
     }
 

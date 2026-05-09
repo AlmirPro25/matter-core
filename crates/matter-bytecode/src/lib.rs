@@ -546,12 +546,16 @@ fn validate_expression(
             validate_expression(target, structs, functions, context)?;
         }
         Expression::MethodCall { target, method, args } => {
-            validate_method_arity(method, args.len())?;
-            if !is_backend_call(target, method) {
+            if is_backend_call(target, method) {
+                for arg in args {
+                    validate_expression(arg, structs, functions, context)?;
+                }
+            } else {
+                validate_method_arity(method, args.len())?;
                 validate_expression(target, structs, functions, context)?;
-            }
-            for arg in args {
-                validate_expression(arg, structs, functions, context)?;
+                for arg in args {
+                    validate_expression(arg, structs, functions, context)?;
+                }
             }
         }
     }
@@ -593,7 +597,10 @@ fn is_backend_call(target: &Expression, method: &str) -> bool {
 }
 
 fn is_builtin_backend(name: &str) -> bool {
-    matches!(name, "agent" | "visual" | "store")
+    matches!(
+        name,
+        "agent" | "visual" | "store" | "net" | "math" | "string" | "list"
+    )
 }
 
 fn infer_static_type(expr: &Expression) -> Option<String> {
