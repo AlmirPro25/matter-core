@@ -200,6 +200,9 @@ stdlib_demo = "api_bridge_project_dependency.matter"
         Assert-Equal $json.imports_count 2 "project-lock-json deveria preservar grafo de imports"
         Assert-Equal @($json.dependencies)[0].name "stdlib_demo" "project-lock-json deveria listar dependencias"
         Assert-Equal $json.files_count 4 "project-lock-json deveria listar manifesto, entry, dependency e stdlib"
+        if ([string]::IsNullOrWhiteSpace($json.lock_fingerprint)) {
+            Fail "project-lock-json deveria gerar lock_fingerprint"
+        }
         if ([string]::IsNullOrWhiteSpace(@($json.files)[0].fingerprint)) {
             Fail "project-lock-json deveria gerar fingerprint para arquivos"
         }

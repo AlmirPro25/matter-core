@@ -54,7 +54,7 @@ They can also execute the whole project contract directly from the manifest:
 
 Project commands read `package.entry`, resolve `paths.stdlib` through `MATTER_STDLIB_PATH`, and route `paths.store` through `MATTER_STORE_PATH` for the current run. That lets a cloud worker mount a repository and call one stable command without knowing the internal file layout.
 
-`project-lock-json` returns the same project graph plus file sizes and deterministic fingerprints for the manifest, entrypoint, dependency aliases, and transitive imports. It is meant for API caching, cloud execution plans, and reproducibility checks.
+`project-lock-json` returns the same project graph plus file sizes, deterministic file fingerprints, and a top-level `lock_fingerprint` for the full project graph. It is meant for API caching, cloud execution plans, and reproducibility checks.
 
 `project-source-json` returns the resolved Matter source after expanding local imports, dependency aliases, and standard-library imports. This gives APIs and agents one canonical source string to review, cache, compile, or ship to an isolated worker.
 

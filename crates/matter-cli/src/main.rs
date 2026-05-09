@@ -591,13 +591,15 @@ fn project_lock_json(manifest_path: &str) {
 
     let file_items: Vec<String> = files.iter().map(project_file_lock_json).collect();
     let import_items: Vec<String> = imports.iter().map(import_info_json).collect();
+    let lock_fingerprint = project_lock_fingerprint(&files, &imports, &project.manifest.dependencies);
 
     println!(
-        "{{\"ok\":true,\"package\":{{\"name\":\"{}\",\"version\":\"{}\"}},\"manifest\":\"{}\",\"entry\":\"{}\",\"files_count\":{},\"files\":[{}],\"dependencies\":[{}],\"imports_count\":{},\"imports\":[{}]}}",
+        "{{\"ok\":true,\"package\":{{\"name\":\"{}\",\"version\":\"{}\"}},\"manifest\":\"{}\",\"entry\":\"{}\",\"lock_fingerprint\":\"{}\",\"files_count\":{},\"files\":[{}],\"dependencies\":[{}],\"imports_count\":{},\"imports\":[{}]}}",
         json_escape(&project.manifest.name),
         json_escape(&project.manifest.version),
         json_escape(&project.manifest_path),
         json_escape(&entry_label),
+        json_escape(&lock_fingerprint),
         files.len(),
         file_items.join(","),
         manifest_dependencies_json(&project.manifest.dependencies),
@@ -805,6 +807,47 @@ fn project_file_lock_json(file: &ProjectFileLock) -> String {
     )
 }
 
+fn project_lock_fingerprint(
+    files: &[ProjectFileLock],
+    imports: &[ImportInfo],
+    dependencies: &[ManifestDependency],
+) -> String {
+    let mut material = String::new();
+
+    for file in files {
+        material.push_str("file\t");
+        material.push_str(&file.kind);
+        material.push('\t');
+        material.push_str(&file.path);
+        material.push('\t');
+        material.push_str(&file.bytes.to_string());
+        material.push('\t');
+        material.push_str(&file.fingerprint);
+        material.push('\n');
+    }
+
+    for dependency in dependencies {
+        material.push_str("dependency\t");
+        material.push_str(&dependency.name);
+        material.push('\t');
+        material.push_str(&dependency.path);
+        material.push('\n');
+    }
+
+    for import in imports {
+        material.push_str("import\t");
+        material.push_str(&import.from);
+        material.push('\t');
+        material.push_str(&import.path);
+        material.push('\t');
+        material.push_str(&import.resolved);
+        material.push('\t');
+        material.push_str(&import.source);
+        material.push('\n');
+    }
+
+    fnv1a64_hex(material.as_bytes())
+}
 fn fnv1a64_hex(bytes: &[u8]) -> String {
     let mut hash = 0xcbf29ce484222325u64;
     for byte in bytes {
