@@ -5,6 +5,7 @@ visual.theme("surface", "#f8fafc")
 visual.theme("accent", "#0f766e")
 visual.theme("selected", "#f59e0b")
 visual.theme("regionFill", "rgba(15,118,110,.18)")
+visual.editor(true)
 
 visual.component("action_button", { "w": 280, "h": 86, "semantic": "primary_action", "text": "Finalizar compra", "textSize": 16, "material": "glass", "event": "checkout_tap", "state": "active", "layer": 10, "motion": "breathe", "motionSpeed": 1200 })
 visual.component("info_panel", { "w": 260, "h": 120, "semantic": "system_panel", "text": "Painel PXL", "event": "status_focus", "state": "idle", "layer": 4, "motion": "float", "motionSpeed": 1800 })

@@ -113,6 +113,7 @@ pub struct TraceVisualBackend {
     layouts: Vec<VisualLayoutSpec>,
     components: HashMap<String, VisualComponentSpec>,
     loop_state: VisualLoopState,
+    editor_enabled: bool,
     stdout_enabled: bool,
 }
 
@@ -137,6 +138,7 @@ impl TraceVisualBackend {
                 time_ms: 0,
                 running: false,
             },
+            editor_enabled: false,
             stdout_enabled: true,
         }
     }
@@ -800,6 +802,15 @@ impl Backend for TraceVisualBackend {
                     .map_err(|_| "visual.loop expects int delta".to_string())?;
                 self.run_loop(frames, delta_ms).map_err(|e| e.to_string())
             }
+            "editor" => {
+                if args.len() != 1 {
+                    return Err(format!("visual.editor expects 1 argument, got {}", args.len()));
+                }
+                self.editor_enabled = args[0]
+                    .as_bool()
+                    .map_err(|_| "visual.editor expects bool enabled".to_string())?;
+                Ok(Value::Bool(self.editor_enabled))
+            }
             "export" => {
                 if args.len() != 1 {
                     return Err(format!("visual.export expects 1 argument, got {}", args.len()));
@@ -895,6 +906,10 @@ fn render_loop_state(loop_state: &VisualLoopState) -> String {
         "{{\"frame\":{},\"timeMs\":{},\"running\":{}}}",
         loop_state.frame, loop_state.time_ms, loop_state.running
     )
+}
+
+fn render_editor_state(enabled: bool) -> String {
+    format!("{{\"enabled\":{}}}", enabled)
 }
 
 fn render_visual_state_document(backend: &TraceVisualBackend) -> String {
@@ -1078,6 +1093,7 @@ fn render_pxl_document(backend: &TraceVisualBackend) -> String {
         .collect::<Vec<_>>()
         .join(",");
     let loop_json = render_loop_state(&backend.loop_state);
+    let editor_json = render_editor_state(backend.editor_enabled);
     let scenes = if backend.scenes.is_empty() {
         vec!["main".to_string()]
     } else {
@@ -1096,7 +1112,7 @@ fn render_pxl_document(backend: &TraceVisualBackend) -> String {
         .unwrap_or_else(|| "null".to_string());
 
     format!(
-        "{{\"format\":\"PXL\",\"version\":1,\"surfaces\":[{}],\"regions\":[{}],\"pulses\":[{}],\"camera\":{},\"inputs\":[{}],\"theme\":{},\"scenes\":{},\"activeScene\":\"{}\",\"layouts\":[{}],\"components\":[{}],\"loop\":{},\"loaded\":{},\"apps\":{}}}",
+        "{{\"format\":\"PXL\",\"version\":1,\"surfaces\":[{}],\"regions\":[{}],\"pulses\":[{}],\"camera\":{},\"inputs\":[{}],\"theme\":{},\"scenes\":{},\"activeScene\":\"{}\",\"layouts\":[{}],\"components\":[{}],\"loop\":{},\"editor\":{},\"loaded\":{},\"apps\":{}}}",
         surface_json,
         region_json,
         pulse_json,
@@ -1108,6 +1124,7 @@ fn render_pxl_document(backend: &TraceVisualBackend) -> String {
         layout_json,
         component_json,
         loop_json,
+        editor_json,
         loaded_json,
         app_json
     )
@@ -1243,17 +1260,21 @@ fn value_json(value: &Value) -> String {
 fn render_pxl_canvas(backend: &TraceVisualBackend) -> String {
     let pxl = render_pxl_document(backend);
     // Use string concatenation to avoid format! escaping issues
-    let html_template = r#"<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>PXL Canvas Engine</title><style>body{margin:0;font-family:Arial,sans-serif;background:#f3f6fb;color:#111827}main{min-height:100vh;display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:18px;padding:20px;box-sizing:border-box}.stage{display:grid;place-items:center;background:white;border:1px solid #d8e1ee;border-radius:8px;min-height:calc(100vh - 40px);overflow:auto}canvas{background:#f8fafc;border:1px solid #cbd5e1;box-shadow:0 16px 38px rgba(15,23,42,.12);max-width:100%;height:auto}aside{background:#111827;color:#e2e8f0;border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:12px;min-height:0}h1{font-size:16px;margin:0;color:white}.meta,.bindings{font-size:12px;color:#cbd5e1;line-height:1.45}.bindings div{display:flex;justify-content:space-between;gap:8px;border-top:1px solid rgba(226,232,240,.16);padding-top:6px;margin-top:6px}.bindings button{border:1px solid #93c5fd;background:#e0f2fe;color:#0f172a;border-radius:5px;padding:3px 7px;cursor:pointer}kbd{background:#e2e8f0;color:#111827;border-radius:4px;padding:1px 5px;font-size:11px}button.trace{border:1px solid #93c5fd;background:#dbeafe;color:#0f172a;border-radius:6px;padding:8px 10px;font-weight:700;cursor:pointer}.event-log{display:flex;flex-direction:column;gap:6px;overflow:auto;font-size:12px}.event-log div{border-top:1px solid rgba(226,232,240,.16);padding-top:6px}@media (max-width: 760px){main{grid-template-columns:1fr}.stage{min-height:60vh}}</style></head><body><main><section class="stage"><canvas id="pxl-canvas" width="720" height="520"></canvas></section><aside><h1>PXL Canvas Engine</h1><div class="meta" id="pxl-meta">Loading PXL scene</div><section class="bindings" id="scene-list"></section><section class="bindings" id="input-bindings"></section><button class="trace" id="export-trace" type="button">Export trace</button><section class="event-log" id="event-log"><div>Click a PXL region</div></section></aside></main><script>const pxl="#;
+    let html_template = r#"<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>PXL Canvas Engine</title><style>body{margin:0;font-family:Arial,sans-serif;background:#f3f6fb;color:#111827}main{min-height:100vh;display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:18px;padding:20px;box-sizing:border-box}.stage{display:grid;place-items:center;background:white;border:1px solid #d8e1ee;border-radius:8px;min-height:calc(100vh - 40px);overflow:auto}canvas{background:#f8fafc;border:1px solid #cbd5e1;box-shadow:0 16px 38px rgba(15,23,42,.12);max-width:100%;height:auto}aside{background:#111827;color:#e2e8f0;border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:12px;min-height:0}h1{font-size:16px;margin:0;color:white}.meta,.bindings{font-size:12px;color:#cbd5e1;line-height:1.45}.bindings div{display:flex;justify-content:space-between;gap:8px;border-top:1px solid rgba(226,232,240,.16);padding-top:6px;margin-top:6px}.bindings button{border:1px solid #93c5fd;background:#e0f2fe;color:#0f172a;border-radius:5px;padding:3px 7px;cursor:pointer}kbd{background:#e2e8f0;color:#111827;border-radius:4px;padding:1px 5px;font-size:11px}button.trace{border:1px solid #93c5fd;background:#dbeafe;color:#0f172a;border-radius:6px;padding:8px 10px;font-weight:700;cursor:pointer}.event-log{display:flex;flex-direction:column;gap:6px;overflow:auto;font-size:12px}.event-log div{border-top:1px solid rgba(226,232,240,.16);padding-top:6px}@media (max-width: 760px){main{grid-template-columns:1fr}.stage{min-height:60vh}}</style></head><body><main><section class="stage"><canvas id="pxl-canvas" width="720" height="520"></canvas></section><aside><h1>PXL Canvas Engine</h1><div class="meta" id="pxl-meta">Loading PXL scene</div><section class="bindings" id="scene-list"></section><section class="bindings" id="input-bindings"></section><button class="trace" id="editor-toggle" type="button">Editor</button><button class="trace" id="export-trace" type="button">Export trace</button><section class="event-log" id="event-log"><div>Click a PXL region</div></section></aside></main><script>const pxl="#;
     let html_end = r#";const theme=pxl.theme||{};const events=[];const canvas=document.getElementById('pxl-canvas');const ctx=canvas.getContext('2d');const meta=document.getElementById('pxl-meta');const log=document.getElementById('event-log');const bindings=document.getElementById('input-bindings');const traceButton=document.getElementById('export-trace');function themeValue(key,fallback){return theme[key]||fallback;}document.body.style.background=themeValue('page','#f3f6fb');document.querySelector('aside').style.background=themeValue('panel','#111827');traceButton.style.background=themeValue('button','#dbeafe');const surface=pxl.surfaces[0]||{name:'empty',width:720,height:520};const camera=pxl.camera||{x:0,y:0,zoom:100};const pulseTargets=new Set((pxl.pulses||[]).map((pulse)=>pulse.target));let selected=null;const zoomScale=Math.max(1,camera.zoom||100)/100;let scale=Math.min(960/Math.max(1,surface.width),640/Math.max(1,surface.height),1);canvas.width=Math.max(1,Math.round(surface.width*scale));canvas.height=Math.max(1,Math.round(surface.height*scale));meta.textContent=surface.name+' '+surface.width+'x'+surface.height+' regions='+(pxl.regions||[]).length+' inputs='+(pxl.inputs||[]).length+' camera='+camera.x+','+camera.y+' zoom='+camera.zoom;bindings.innerHTML=(pxl.inputs||[]).map((input)=>'<div><kbd>'+input.key+'</kbd><span>'+input.target+' / '+input.event+'</span></div>').join('')||'<div>No input bindings</div>';function prop(region,key){return region.properties&&region.properties[key]!==undefined?region.properties[key]:region[key];}const spriteImages=new Map();(pxl.regions||[]).forEach((region)=>{const source=prop(region,'sprite');if(source){const image=new Image();image.src=source;spriteImages.set(region.name,image);}});function regionVisible(region){return prop(region,'visible')!==false;}function layerValue(region){const layer=Number(prop(region,'layer')||0);return Number.isFinite(layer)?layer:0;}function sortedRegions(){return [...(pxl.regions||[])].filter(regionVisible).sort((left,right)=>layerValue(left)-layerValue(right)||left.name.localeCompare(right.name));}function eventName(region){return prop(region,'event')||prop(region,'behavior')||'tap';}function regionState(region){return prop(region,'state')||'idle';}function regionText(region){return prop(region,'text')||region.name;}function textSize(region){const size=Number(prop(region,'textSize')||13);return Number.isFinite(size)?size:13;}function fillFor(region,time){const state=regionState(region);const pulsing=pulseTargets.has(region.name);if(state==='active')return themeValue('activeFill','rgba(5,150,105,.28)');if(state==='disabled')return themeValue('disabledFill','rgba(100,116,139,.24)');if(state==='error')return themeValue('errorFill','rgba(185,28,28,.30)');if(pulsing){const alpha=.18+Math.sin(time/180)*.08;return 'rgba(220,38,38,'+alpha.toFixed(3)+')';}return themeValue('regionFill','rgba(37,99,235,.18)');}function strokeFor(region){const state=regionState(region);if(region.name===selected)return themeValue('selected','#f59e0b');if(state==='active')return themeValue('active','#059669');if(state==='disabled')return themeValue('disabled','#64748b');if(state==='error')return themeValue('error','#b91c1c');if(pulseTargets.has(region.name))return themeValue('pulse','#dc2626');return themeValue('accent','#2563eb');}function motionOffset(region,time){const kind=prop(region,'motion')||'none';const speed=Math.max(1,Number(prop(region,'motionSpeed')||1000));const phase=time/speed*Math.PI*2;if(kind==='float')return {x:0,y:Math.sin(phase)*6,s:1};if(kind==='shake')return {x:Math.sin(phase*8)*3,y:0,s:1};if(kind==='breathe')return {x:0,y:0,s:1+Math.sin(phase)*.035};return {x:0,y:0,s:1};}function drawSprite(region,x,y,w,h){const image=spriteImages.get(region.name);if(!image||!image.complete||image.naturalWidth===0)return false;const fit=prop(region,'spriteFit')||'stretch';let dx=x,dy=y,dw=w,dh=h;if(fit==='contain'){const ratio=Math.min(w/image.naturalWidth,h/image.naturalHeight);dw=image.naturalWidth*ratio;dh=image.naturalHeight*ratio;dx=x+(w-dw)/2;dy=y+(h-dh)/2;}ctx.save();ctx.clip();ctx.drawImage(image,dx,dy,dw,dh);ctx.restore();return true;}function recordEvent(entry){const event={time:new Date().toISOString(),...entry};events.push(event);const line=document.createElement('div');line.textContent=Object.entries(event).filter(([key])=>key!=='time').map(([key,value])=>key+'='+value).join(' ');log.appendChild(line);log.scrollTop=log.scrollHeight;}function downloadTrace(){const blob=new Blob([JSON.stringify({format:'PXL_TRACE',version:1,events},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download='pxl-trace.json';link.click();URL.revokeObjectURL(url);}function drawRegion(region,time){if(!regionVisible(region))return;const motion=motionOffset(region,time);const x=(region.x-camera.x)*scale*zoomScale+motion.x;const y=(region.y-camera.y)*scale*zoomScale+motion.y;const w=Math.max(1,region.w*scale*zoomScale)*motion.s;const h=Math.max(1,region.h*scale*zoomScale)*motion.s;ctx.fillStyle=fillFor(region,time);ctx.strokeStyle=strokeFor(region);ctx.lineWidth=region.name===selected?4:2;ctx.beginPath();ctx.roundRect(x,y,w,h,8);ctx.fill();drawSprite(region,x,y,w,h);ctx.stroke();ctx.fillStyle=themeValue('text','#0f172a');ctx.font='700 '+textSize(region)+'px Arial';ctx.textBaseline='top';ctx.fillText(regionText(region),x+8,y+8,Math.max(10,w-16));ctx.font='11px Arial';ctx.fillStyle=themeValue('mutedText','#334155');ctx.fillText('id='+region.name+' z='+layerValue(region)+' '+regionState(region)+' / '+eventName(region),x+8,y+textSize(region)+14,Math.max(10,w-16));}function draw(time){ctx.clearRect(0,0,canvas.width,canvas.height);ctx.fillStyle=themeValue('surface','#f8fafc');ctx.fillRect(0,0,canvas.width,canvas.height);ctx.strokeStyle=themeValue('surfaceBorder','#d8e1ee');ctx.lineWidth=1;ctx.strokeRect(.5,.5,canvas.width-1,canvas.height-1);sortedRegions().forEach((region)=>drawRegion(region,time));requestAnimationFrame(draw);}function hit(clientX,clientY){const rect=canvas.getBoundingClientRect();const x=((clientX-rect.left)*(canvas.width/rect.width))/(scale*zoomScale)+camera.x;const y=((clientY-rect.top)*(canvas.height/rect.height))/(scale*zoomScale)+camera.y;return sortedRegions().reverse().find((region)=>x>=region.x&&x<=region.x+region.w&&y>=region.y&&y<=region.y+region.h);}canvas.addEventListener('click',(event)=>{const region=hit(event.clientX,event.clientY);if(!region)return;selected=region.name;recordEvent({type:'pointer',target:region.name,layer:layerValue(region),state:regionState(region),event:eventName(region)});});window.addEventListener('keydown',(event)=>{const binding=(pxl.inputs||[]).find((input)=>input.key.toLowerCase()===event.key.toLowerCase());if(!binding)return;const target=(pxl.regions||[]).find((region)=>region.name===binding.target);if(target&&!regionVisible(target))return;selected=binding.target;recordEvent({type:'keyboard',key:binding.key,target:binding.target,event:binding.event});});traceButton.addEventListener('click',downloadTrace);requestAnimationFrame(draw);</script></body></html>"#;
 
     let mut html = format!("{}{}{}", html_template, pxl, html_end);
     html = html.replace(
         "const bindings=document.getElementById('input-bindings');const traceButton=document.getElementById('export-trace');",
-        "const bindings=document.getElementById('input-bindings');const sceneList=document.getElementById('scene-list');const traceButton=document.getElementById('export-trace');",
+        "const bindings=document.getElementById('input-bindings');const sceneList=document.getElementById('scene-list');const editorButton=document.getElementById('editor-toggle');const traceButton=document.getElementById('export-trace');",
+    );
+    html = html.replace(
+        "traceButton.style.background=themeValue('button','#dbeafe');",
+        "traceButton.style.background=themeValue('button','#dbeafe');editorButton.style.background=themeValue('button','#dbeafe');",
     );
     html = html.replace(
         "let selected=null;const zoomScale",
-        "let selected=null;let activeScene=pxl.activeScene||(pxl.scenes&&pxl.scenes[0])||'main';let appFrame=(pxl.loop&&pxl.loop.frame)||0;let appTimeMs=(pxl.loop&&pxl.loop.timeMs)||0;const persistenceKey='PXL_STATE:'+surface.name;const eventQueueKey='PXL_EVENT_QUEUE:'+surface.name;function loadPersistedState(){try{const state=JSON.parse(localStorage.getItem(persistenceKey)||'{}');if(state.activeScene)activeScene=state.activeScene;if(state.selected)selected=state.selected;}catch(_error){}}function savePersistedState(){try{localStorage.setItem(persistenceKey,JSON.stringify({format:'PXL_BROWSER_STATE',version:1,activeScene,selected,updatedAt:new Date().toISOString()}));}catch(_error){}}function saveEventQueue(){try{localStorage.setItem(eventQueueKey,JSON.stringify({format:'PXL_EVENT_QUEUE',version:1,surface:surface.name,activeScene,appFrame,appTimeMs,events}));}catch(_error){}}loadPersistedState();const layoutsByScene=new Map((pxl.layouts||[]).map((layout)=>[layout.scene,layout]));const zoomScale",
+        "let selected=null;let activeScene=pxl.activeScene||(pxl.scenes&&pxl.scenes[0])||'main';let editorEnabled=!!(pxl.editor&&pxl.editor.enabled);let appFrame=(pxl.loop&&pxl.loop.frame)||0;let appTimeMs=(pxl.loop&&pxl.loop.timeMs)||0;const persistenceKey='PXL_STATE:'+surface.name;const eventQueueKey='PXL_EVENT_QUEUE:'+surface.name;const editorPositionsKey='PXL_EDITOR_POSITIONS:'+surface.name;let regionOverrides={};function loadEditorPositions(){try{regionOverrides=JSON.parse(localStorage.getItem(editorPositionsKey)||'{}');}catch(_error){regionOverrides={};}}function saveEditorPositions(){try{localStorage.setItem(editorPositionsKey,JSON.stringify(regionOverrides));}catch(_error){}}function updateEditorButton(){editorButton.textContent=editorEnabled?'Editor on':'Editor off';}function loadPersistedState(){try{const state=JSON.parse(localStorage.getItem(persistenceKey)||'{}');if(state.activeScene)activeScene=state.activeScene;if(state.selected)selected=state.selected;}catch(_error){}}function savePersistedState(){try{localStorage.setItem(persistenceKey,JSON.stringify({format:'PXL_BROWSER_STATE',version:1,activeScene,selected,updatedAt:new Date().toISOString()}));}catch(_error){}}function saveEventQueue(){try{localStorage.setItem(eventQueueKey,JSON.stringify({format:'PXL_EVENT_QUEUE',version:1,surface:surface.name,activeScene,appFrame,appTimeMs,events}));}catch(_error){}}loadPersistedState();loadEditorPositions();updateEditorButton();const layoutsByScene=new Map((pxl.layouts||[]).map((layout)=>[layout.scene,layout]));const zoomScale",
     );
     html = html.replace(
         "function draw(time){ctx.clearRect(0,0,canvas.width,canvas.height);",
@@ -1265,7 +1286,7 @@ fn render_pxl_canvas(backend: &TraceVisualBackend) -> String {
     );
     html = html.replace(
         "function regionVisible(region){return prop(region,'visible')!==false;}",
-        "function regionScene(region){return prop(region,'scene')||'main';}function regionVisible(region){return prop(region,'visible')!==false&&regionScene(region)===activeScene;}function sceneLayout(scene){return layoutsByScene.get(scene)||{kind:'absolute',gap:0};}function layoutedRegion(region,index){const layout=sceneLayout(regionScene(region));const kind=layout.kind||'absolute';if(kind==='absolute')return region;const gap=Math.max(0,Number(layout.gap||0));const copy={...region};if(kind==='vertical'){copy.x=40;copy.y=40+index*(region.h+gap);}else if(kind==='horizontal'){copy.x=40+index*(region.w+gap);copy.y=40;}else if(kind==='grid'){const columns=Math.max(1,Math.floor((surface.width-80+gap)/(Math.max(1,region.w)+gap)));copy.x=40+(index%columns)*(region.w+gap);copy.y=40+Math.floor(index/columns)*(region.h+gap);}return copy;}",
+        "function regionScene(region){return prop(region,'scene')||'main';}function regionVisible(region){return prop(region,'visible')!==false&&regionScene(region)===activeScene;}function sceneLayout(scene){return layoutsByScene.get(scene)||{kind:'absolute',gap:0};}function layoutedRegion(region,index){const layout=sceneLayout(regionScene(region));const kind=layout.kind||'absolute';const copy={...region};if(kind!=='absolute'){const gap=Math.max(0,Number(layout.gap||0));if(kind==='vertical'){copy.x=40;copy.y=40+index*(region.h+gap);}else if(kind==='horizontal'){copy.x=40+index*(region.w+gap);copy.y=40;}else if(kind==='grid'){const columns=Math.max(1,Math.floor((surface.width-80+gap)/(Math.max(1,region.w)+gap)));copy.x=40+(index%columns)*(region.w+gap);copy.y=40+Math.floor(index/columns)*(region.h+gap);}}const override=regionOverrides[region.name];if(override){copy.x=override.x;copy.y=override.y;}return copy;}",
     );
     html = html.replace(
         "sortedRegions().forEach((region)=>drawRegion(region,time));",
@@ -1274,6 +1295,10 @@ fn render_pxl_canvas(backend: &TraceVisualBackend) -> String {
     html = html.replace(
         "return sortedRegions().reverse().find((region)=>x>=region.x&&x<=region.x+region.w&&y>=region.y&&y<=region.y+region.h);",
         "const regions=sortedRegions();return regions.map((region,index)=>layoutedRegion(region,index)).reverse().find((region)=>x>=region.x&&x<=region.x+region.w&&y>=region.y&&y<=region.y+region.h);",
+    );
+    html = html.replace(
+        "canvas.addEventListener('click',(event)=>{const region=hit(event.clientX,event.clientY);",
+        "function pointerPosition(event){const rect=canvas.getBoundingClientRect();return {x:((event.clientX-rect.left)*(canvas.width/rect.width))/(scale*zoomScale)+camera.x,y:((event.clientY-rect.top)*(canvas.height/rect.height))/(scale*zoomScale)+camera.y};}let dragging=null;editorButton.addEventListener('click',()=>{editorEnabled=!editorEnabled;updateEditorButton();recordEvent({type:'editor',enabled:editorEnabled,event:'editor_toggle'});});canvas.addEventListener('pointerdown',(event)=>{if(!editorEnabled)return;const region=hit(event.clientX,event.clientY);if(!region)return;const point=pointerPosition(event);dragging={name:region.name,dx:point.x-region.x,dy:point.y-region.y};selected=region.name;canvas.setPointerCapture(event.pointerId);event.preventDefault();});canvas.addEventListener('pointermove',(event)=>{if(!dragging)return;const point=pointerPosition(event);regionOverrides[dragging.name]={x:Math.round(point.x-dragging.dx),y:Math.round(point.y-dragging.dy)};saveEditorPositions();event.preventDefault();});canvas.addEventListener('pointerup',(event)=>{if(!dragging)return;const moved=regionOverrides[dragging.name];recordEvent({type:'editor_move',target:dragging.name,x:moved.x,y:moved.y,event:'editor_move'});dragging=null;event.preventDefault();});canvas.addEventListener('click',(event)=>{if(dragging)return;const region=hit(event.clientX,event.clientY);",
     );
     html = html.replace(
         "selected=region.name;recordEvent({type:'pointer'",
@@ -1544,6 +1569,15 @@ mod tests {
 
         let snapshot = backend.call("snapshot", vec![]).unwrap().as_string().unwrap();
         assert!(snapshot.contains("\"loop\":{\"frame\":4,\"timeMs\":64,\"running\":true}"));
+    }
+
+    #[test]
+    fn test_visual_editor_mode_is_exported() {
+        let mut backend = TraceVisualBackend::new();
+        let result = backend.call("editor", vec![Value::Bool(true)]).unwrap();
+        assert_eq!(result, Value::Bool(true));
+        let snapshot = backend.call("snapshot", vec![]).unwrap().as_string().unwrap();
+        assert!(snapshot.contains("\"editor\":{\"enabled\":true}"));
     }
 
     #[test]
@@ -2029,6 +2063,7 @@ mod tests {
         backend
             .call("loop", vec![Value::Int(2), Value::Int(16)])
             .unwrap();
+        backend.call("editor", vec![Value::Bool(true)]).unwrap();
 
         let result = backend
             .call("canvas", vec![Value::String(path.display().to_string())])
@@ -2049,6 +2084,13 @@ mod tests {
         assert!(html.contains("\"component\":\"action_button\""));
         assert!(html.contains("\"semantic\":\"primary_action\""));
         assert!(html.contains("\"loop\":{\"frame\":2,\"timeMs\":32,\"running\":true}"));
+        assert!(html.contains("\"editor\":{\"enabled\":true}"));
+        assert!(html.contains("editor-toggle"));
+        assert!(html.contains("editorEnabled"));
+        assert!(html.contains("PXL_EDITOR_POSITIONS"));
+        assert!(html.contains("pointerdown"));
+        assert!(html.contains("pointermove"));
+        assert!(html.contains("editor_move"));
         assert!(html.contains("appFrame"));
         assert!(html.contains("appTimeMs"));
         assert!(html.contains("\"scene\":\"home\""));
