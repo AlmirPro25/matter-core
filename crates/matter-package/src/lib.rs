@@ -500,6 +500,17 @@ impl PackageManager {
         Ok(lockfile)
     }
 
+    pub fn ensure_lockfile(&self, package: &Package) -> Result<Lockfile, String> {
+        let lock_path = package.root.join("matter.lock");
+        if lock_path.exists() {
+            let lockfile = Lockfile::load(&lock_path)?;
+            self.verify_lockfile(package, &lockfile)?;
+            Ok(lockfile)
+        } else {
+            self.save_lockfile(package)
+        }
+    }
+
     pub fn verify_lockfile(&self, package: &Package, lockfile: &Lockfile) -> Result<(), String> {
         let expected = self.lock_dependencies(package)?;
         if &expected == lockfile {
@@ -697,6 +708,68 @@ math-utils = "^1.0.0"
         let loaded = Lockfile::load(&path).unwrap();
         assert_eq!(loaded, lockfile);
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn test_ensure_lockfile_creates_and_verifies_existing_lock() {
+        let root = std::env::temp_dir().join("matter_package_ensure_lock_test");
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+
+        let mut app_manifest = Manifest::new("app".to_string(), Version::new(0, 1, 0));
+        app_manifest.dependencies.insert(
+            "utils".to_string(),
+            Dependency::Registry(VersionReq::Caret(Version::new(1, 0, 0))),
+        );
+        let app = Package::new(app_manifest, root.clone());
+
+        let utils = Package::new(
+            Manifest::new("utils".to_string(), Version::new(1, 2, 0)),
+            PathBuf::from("registry/utils"),
+        );
+
+        let mut manager = PackageManager::new();
+        manager.register_package(utils);
+        let created = manager.ensure_lockfile(&app).unwrap();
+        assert!(root.join("matter.lock").exists());
+
+        let verified = manager.ensure_lockfile(&app).unwrap();
+        assert_eq!(verified, created);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn test_ensure_lockfile_rejects_stale_disk_lock() {
+        let root = std::env::temp_dir().join("matter_package_stale_lock_test");
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+
+        let mut app_manifest = Manifest::new("app".to_string(), Version::new(0, 1, 0));
+        app_manifest.dependencies.insert(
+            "utils".to_string(),
+            Dependency::Registry(VersionReq::Caret(Version::new(1, 0, 0))),
+        );
+        let app = Package::new(app_manifest, root.clone());
+
+        let utils = Package::new(
+            Manifest::new("utils".to_string(), Version::new(1, 2, 0)),
+            PathBuf::from("registry/utils"),
+        );
+        let stale = Lockfile::new(
+            &app,
+            vec![LockEntry {
+                name: "utils".to_string(),
+                version: Version::new(1, 0, 0),
+                source: "registry/utils".to_string(),
+            }],
+        );
+        stale.save(&root.join("matter.lock")).unwrap();
+
+        let mut manager = PackageManager::new();
+        manager.register_package(utils);
+        let error = manager.ensure_lockfile(&app).unwrap_err();
+        assert!(error.contains("matter.lock is stale"));
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
