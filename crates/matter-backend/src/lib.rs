@@ -205,6 +205,10 @@ impl Backend for GraphBackend {
                 let values = value_list_ints("graph.stats values", &args[0])?;
                 Ok(chart_stats(&values))
             }
+            "table" => {
+                let (title, labels, values) = chart_args("graph.table", args)?;
+                Ok(Value::String(render_table(&title, &labels, &values)))
+            }
             "save" => {
                 if args.len() != 5 {
                     return Err(format!("graph.save expects 5 arguments, got {}", args.len()));
@@ -544,6 +548,23 @@ fn render_dashboard(title: &str, charts: &[ChartSpec]) -> String {
         escape_svg(title),
         escape_svg(title),
         cards
+    )
+}
+
+fn render_table(title: &str, labels: &[String], values: &[i64]) -> String {
+    let mut rows = String::new();
+    for (label, value) in labels.iter().zip(values.iter()) {
+        rows.push_str(&format!(
+            "<tr><td>{}</td><td>{}</td></tr>",
+            escape_svg(label),
+            value
+        ));
+    }
+
+    format!(
+        "<table><caption>{}</caption><thead><tr><th>label</th><th>value</th></tr></thead><tbody>{}</tbody></table>",
+        escape_svg(title),
+        rows
     )
 }
 
@@ -1089,5 +1110,28 @@ mod tests {
         assert_eq!(stats.get("min"), Some(&Value::Int(12)));
         assert_eq!(stats.get("max"), Some(&Value::Int(28)));
         assert_eq!(stats.get("average"), Some(&Value::Int(19)));
+    }
+
+    #[test]
+    fn graph_table_returns_html_table() {
+        let mut graph = GraphBackend::new();
+        let result = graph
+            .call(
+                "table",
+                vec![
+                    Value::String("Resumo".to_string()),
+                    Value::List(vec![
+                        Value::String("Jan".to_string()),
+                        Value::String("Fev".to_string()),
+                    ]),
+                    Value::List(vec![Value::Int(10), Value::Int(20)]),
+                ],
+            )
+            .unwrap();
+
+        let html = result.as_string().unwrap();
+        assert!(html.contains("<table>"));
+        assert!(html.contains("<caption>Resumo</caption>"));
+        assert!(html.contains("<td>Jan</td><td>10</td>"));
     }
 }

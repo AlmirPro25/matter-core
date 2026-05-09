@@ -1,0 +1,5 @@
+let labels = ["Jan", "Feb", "Mar", "Apr"]
+let values = [12, 20, 16, 28]
+
+let table = graph.table("Matter usage table", labels, values)
+print table
