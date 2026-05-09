@@ -1,0 +1,21 @@
+visual.surface("main", 960, 540)
+
+visual.region("menu", 40, 36, 420, 64)
+visual.region("checkout", 120, 220, 280, 86)
+visual.region("status", 520, 120, 260, 120)
+
+visual.set("menu", "semantic", "navigation")
+visual.set("menu", "event", "menu_open")
+
+visual.set("checkout", "semantic", "primary_action")
+visual.set("checkout", "material", "glass")
+visual.set("checkout", "event", "checkout_tap")
+visual.state("checkout", "active")
+visual.pulse("checkout")
+
+visual.set("status", "semantic", "system_panel")
+visual.set("status", "event", "status_focus")
+visual.state("status", "idle")
+
+let canvas = visual.canvas("target/matter-visual-canvas.html")
+print canvas

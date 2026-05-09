@@ -120,6 +120,18 @@ impl TraceVisualBackend {
         fs::write(path, render_pxl_preview(self))
             .map_err(|error| VisualError::RuntimeError(error.to_string()))
     }
+
+    pub fn export_canvas(&self, path: &str) -> Result<(), VisualError> {
+        if let Some(parent) = Path::new(path).parent() {
+            if !parent.as_os_str().is_empty() {
+                fs::create_dir_all(parent)
+                    .map_err(|error| VisualError::RuntimeError(error.to_string()))?;
+            }
+        }
+
+        fs::write(path, render_pxl_canvas(self))
+            .map_err(|error| VisualError::RuntimeError(error.to_string()))
+    }
 }
 
 impl Default for TraceVisualBackend {
@@ -385,6 +397,16 @@ impl Backend for TraceVisualBackend {
                 self.export_preview(&path).map_err(|e| e.to_string())?;
                 Ok(Value::String(path))
             }
+            "canvas" => {
+                if args.len() != 1 {
+                    return Err(format!("visual.canvas expects 1 argument, got {}", args.len()));
+                }
+                let path = args[0]
+                    .as_string()
+                    .map_err(|_| "visual.canvas expects string path".to_string())?;
+                self.export_canvas(&path).map_err(|e| e.to_string())?;
+                Ok(Value::String(path))
+            }
             _ => Err(format!("Unknown visual method: {}", method)),
         }
     }
@@ -501,6 +523,15 @@ fn value_json(value: &Value) -> String {
             value_map_json(&values)
         }
     }
+}
+
+fn render_pxl_canvas(backend: &TraceVisualBackend) -> String {
+    let pxl = render_pxl_document(backend);
+
+    format!(
+        r#"<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>PXL Canvas Engine</title><style>body{{margin:0;font-family:Arial,sans-serif;background:#f3f6fb;color:#111827}}main{{min-height:100vh;display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:18px;padding:20px;box-sizing:border-box}}.stage{{display:grid;place-items:center;background:white;border:1px solid #d8e1ee;border-radius:8px;min-height:calc(100vh - 40px);overflow:auto}}canvas{{background:#f8fafc;border:1px solid #cbd5e1;box-shadow:0 16px 38px rgba(15,23,42,.12);max-width:100%;height:auto}}aside{{background:#111827;color:#e2e8f0;border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:12px;min-height:0}}h1{{font-size:16px;margin:0;color:white}}.meta{{font-size:12px;color:#cbd5e1;line-height:1.45}}.event-log{{display:flex;flex-direction:column;gap:6px;overflow:auto;font-size:12px}}.event-log div{{border-top:1px solid rgba(226,232,240,.16);padding-top:6px}}@media (max-width: 760px){{main{{grid-template-columns:1fr}}.stage{{min-height:60vh}}}}</style></head><body><main><section class="stage"><canvas id="pxl-canvas" width="720" height="520"></canvas></section><aside><h1>PXL Canvas Engine</h1><div class="meta" id="pxl-meta">Loading PXL scene</div><section class="event-log" id="event-log"><div>Click a PXL region</div></section></aside></main><script>const pxl={};const canvas=document.getElementById('pxl-canvas');const ctx=canvas.getContext('2d');const meta=document.getElementById('pxl-meta');const log=document.getElementById('event-log');const surface=pxl.surfaces[0]||{{name:'empty',width:720,height:520}};const pulseTargets=new Set((pxl.pulses||[]).map((pulse)=>pulse.target));let selected=null;let scale=Math.min(960/Math.max(1,surface.width),640/Math.max(1,surface.height),1);canvas.width=Math.max(1,Math.round(surface.width*scale));canvas.height=Math.max(1,Math.round(surface.height*scale));meta.textContent=surface.name+' '+surface.width+'x'+surface.height+' regions='+(pxl.regions||[]).length;function prop(region,key){{return region.properties&&region.properties[key]!==undefined?region.properties[key]:region[key];}}function eventName(region){{return prop(region,'event')||prop(region,'behavior')||'tap';}}function regionState(region){{return prop(region,'state')||'idle';}}function fillFor(region,time){{const state=regionState(region);const pulsing=pulseTargets.has(region.name);if(state==='active')return 'rgba(5,150,105,.28)';if(state==='disabled')return 'rgba(100,116,139,.24)';if(state==='error')return 'rgba(185,28,28,.30)';if(pulsing){{const alpha=.18+Math.sin(time/180)*.08;return 'rgba(220,38,38,'+alpha.toFixed(3)+')';}}return 'rgba(37,99,235,.18)';}}function strokeFor(region){{const state=regionState(region);if(region.name===selected)return '#f59e0b';if(state==='active')return '#059669';if(state==='disabled')return '#64748b';if(state==='error')return '#b91c1c';if(pulseTargets.has(region.name))return '#dc2626';return '#2563eb';}}function drawRegion(region,time){{const x=region.x*scale;const y=region.y*scale;const w=Math.max(1,region.w*scale);const h=Math.max(1,region.h*scale);ctx.fillStyle=fillFor(region,time);ctx.strokeStyle=strokeFor(region);ctx.lineWidth=region.name===selected?4:2;ctx.beginPath();ctx.roundRect(x,y,w,h,8);ctx.fill();ctx.stroke();ctx.fillStyle='#0f172a';ctx.font='700 13px Arial';ctx.textBaseline='top';ctx.fillText(region.name,x+8,y+8,Math.max(10,w-16));ctx.font='11px Arial';ctx.fillStyle='#334155';ctx.fillText(regionState(region)+' / '+eventName(region),x+8,y+28,Math.max(10,w-16));}}function draw(time){{ctx.clearRect(0,0,canvas.width,canvas.height);ctx.fillStyle='#f8fafc';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.strokeStyle='#d8e1ee';ctx.lineWidth=1;ctx.strokeRect(.5,.5,canvas.width-1,canvas.height-1);(pxl.regions||[]).forEach((region)=>drawRegion(region,time));requestAnimationFrame(draw);}}function hit(clientX,clientY){{const rect=canvas.getBoundingClientRect();const x=(clientX-rect.left)*(canvas.width/rect.width)/scale;const y=(clientY-rect.top)*(canvas.height/rect.height)/scale;return [...(pxl.regions||[])].reverse().find((region)=>x>=region.x&&x<=region.x+region.w&&y>=region.y&&y<=region.y+region.h);}}canvas.addEventListener('click',(event)=>{{const region=hit(event.clientX,event.clientY);if(!region)return;selected=region.name;const line=document.createElement('div');line.textContent='region='+region.name+' state='+regionState(region)+' event='+eventName(region);log.appendChild(line);log.scrollTop=log.scrollHeight;}});requestAnimationFrame(draw);</script></body></html>"#,
+        pxl
+    )
 }
 
 fn render_pxl_preview(backend: &TraceVisualBackend) -> String {
@@ -919,6 +950,69 @@ mod tests {
         let html = fs::read_to_string(&path).unwrap();
         assert!(html.contains("state-active"));
         assert!(html.contains("state: active"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn test_visual_canvas_writes_engine_html() {
+        let mut backend = TraceVisualBackend::new();
+        let path = std::env::temp_dir().join("matter_visual_canvas_test.html");
+        backend
+            .call(
+                "surface",
+                vec![
+                    Value::String("main".to_string()),
+                    Value::Int(960),
+                    Value::Int(540),
+                ],
+            )
+            .unwrap();
+        backend
+            .call(
+                "region",
+                vec![
+                    Value::String("checkout".to_string()),
+                    Value::Int(120),
+                    Value::Int(220),
+                    Value::Int(260),
+                    Value::Int(80),
+                ],
+            )
+            .unwrap();
+        backend
+            .call(
+                "set",
+                vec![
+                    Value::String("checkout".to_string()),
+                    Value::String("event".to_string()),
+                    Value::String("checkout_tap".to_string()),
+                ],
+            )
+            .unwrap();
+        backend
+            .call(
+                "state",
+                vec![
+                    Value::String("checkout".to_string()),
+                    Value::String("active".to_string()),
+                ],
+            )
+            .unwrap();
+        backend
+            .call("pulse", vec![Value::String("checkout".to_string())])
+            .unwrap();
+
+        let result = backend
+            .call("canvas", vec![Value::String(path.display().to_string())])
+            .unwrap();
+
+        assert_eq!(result, Value::String(path.display().to_string()));
+        let html = fs::read_to_string(&path).unwrap();
+        assert!(html.contains("PXL Canvas Engine"));
+        assert!(html.contains("<canvas id=\"pxl-canvas\""));
+        assert!(html.contains("requestAnimationFrame"));
+        assert!(html.contains("checkout_tap"));
+        assert!(html.contains("\"state\":\"active\""));
         let _ = fs::remove_file(path);
     }
 }
