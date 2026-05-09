@@ -368,6 +368,10 @@ impl PackageManager {
         Ok(())
     }
 
+    pub fn register_package(&mut self, package: Package) {
+        self.registry.register(package);
+    }
+
     pub fn resolve_dependencies(&self, package: &Package) -> Result<Vec<Package>, String> {
         let mut resolved = Vec::new();
 
@@ -409,6 +413,31 @@ impl PackageManager {
         let lockfile = self.lock_dependencies(package)?;
         lockfile.save(&package.root.join("matter.lock"))?;
         Ok(lockfile)
+    }
+
+    pub fn verify_lockfile(&self, package: &Package, lockfile: &Lockfile) -> Result<(), String> {
+        let expected = self.lock_dependencies(package)?;
+        if &expected == lockfile {
+            return Ok(());
+        }
+
+        let expected_names = expected
+            .entries
+            .iter()
+            .map(|entry| format!("{}@{}", entry.name, entry.version))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let actual_names = lockfile
+            .entries
+            .iter()
+            .map(|entry| format!("{}@{}", entry.name, entry.version))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        Err(format!(
+            "matter.lock is stale for package '{}': expected [{}], got [{}]",
+            package.manifest.name, expected_names, actual_names
+        ))
     }
 }
 
@@ -539,7 +568,7 @@ math-utils = "^1.0.0"
         );
 
         let mut manager = PackageManager::new();
-        manager.registry.register(utils);
+        manager.register_package(utils);
         let lockfile = manager.lock_dependencies(&app).unwrap();
         let toml = lockfile.to_toml();
 
@@ -548,5 +577,38 @@ math-utils = "^1.0.0"
         assert!(toml.contains("name = \"utils\""));
         assert!(toml.contains("version = \"1.2.0\""));
         assert!(toml.contains("source = \"registry/utils\""));
+    }
+
+    #[test]
+    fn test_verify_lockfile_detects_stale_dependencies() {
+        let mut app_manifest = Manifest::new("app".to_string(), Version::new(0, 1, 0));
+        app_manifest.dependencies.insert(
+            "utils".to_string(),
+            Dependency::Registry(VersionReq::Caret(Version::new(1, 0, 0))),
+        );
+        let app = Package::new(app_manifest, PathBuf::from("app"));
+
+        let utils = Package::new(
+            Manifest::new("utils".to_string(), Version::new(1, 2, 0)),
+            PathBuf::from("registry/utils"),
+        );
+
+        let mut manager = PackageManager::new();
+        manager.register_package(utils);
+        let lockfile = manager.lock_dependencies(&app).unwrap();
+        assert!(manager.verify_lockfile(&app, &lockfile).is_ok());
+
+        let stale_lockfile = Lockfile::new(
+            &app,
+            vec![LockEntry {
+                name: "utils".to_string(),
+                version: Version::new(1, 0, 0),
+                source: "registry/utils".to_string(),
+            }],
+        );
+        let error = manager.verify_lockfile(&app, &stale_lockfile).unwrap_err();
+        assert!(error.contains("matter.lock is stale"));
+        assert!(error.contains("expected [utils@1.2.0]"));
+        assert!(error.contains("got [utils@1.0.0]"));
     }
 }
