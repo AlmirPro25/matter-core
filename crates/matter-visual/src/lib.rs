@@ -108,6 +108,18 @@ impl TraceVisualBackend {
         fs::write(path, self.pxl_snapshot())
             .map_err(|error| VisualError::RuntimeError(error.to_string()))
     }
+
+    pub fn export_preview(&self, path: &str) -> Result<(), VisualError> {
+        if let Some(parent) = Path::new(path).parent() {
+            if !parent.as_os_str().is_empty() {
+                fs::create_dir_all(parent)
+                    .map_err(|error| VisualError::RuntimeError(error.to_string()))?;
+            }
+        }
+
+        fs::write(path, render_pxl_preview(self))
+            .map_err(|error| VisualError::RuntimeError(error.to_string()))
+    }
 }
 
 impl Default for TraceVisualBackend {
@@ -349,6 +361,16 @@ impl Backend for TraceVisualBackend {
                 self.export_pxl(&path).map_err(|e| e.to_string())?;
                 Ok(Value::String(path))
             }
+            "preview" => {
+                if args.len() != 1 {
+                    return Err(format!("visual.preview expects 1 argument, got {}", args.len()));
+                }
+                let path = args[0]
+                    .as_string()
+                    .map_err(|_| "visual.preview expects string path".to_string())?;
+                self.export_preview(&path).map_err(|e| e.to_string())?;
+                Ok(Value::String(path))
+            }
             _ => Err(format!("Unknown visual method: {}", method)),
         }
     }
@@ -465,6 +487,89 @@ fn value_json(value: &Value) -> String {
             value_map_json(&values)
         }
     }
+}
+
+fn render_pxl_preview(backend: &TraceVisualBackend) -> String {
+    let mut surfaces: Vec<&VisualSurfaceSpec> = backend.surfaces.values().collect();
+    surfaces.sort_by(|left, right| left.name.cmp(&right.name));
+
+    let mut content = String::new();
+    for surface in surfaces {
+        let scale = preview_scale(surface.width, surface.height);
+        let width = (surface.width as f64 * scale).round() as i64;
+        let height = (surface.height as f64 * scale).round() as i64;
+        content.push_str(&format!(
+            "<section class=\"surface\"><header>{} <span>{}x{}</span></header><div class=\"canvas\" style=\"width:{}px;height:{}px\">",
+            html_escape(&surface.name),
+            surface.width,
+            surface.height,
+            width.max(1),
+            height.max(1)
+        ));
+
+        let mut regions: Vec<&VisualRegionSpec> = backend.regions.values().collect();
+        regions.sort_by(|left, right| left.name.cmp(&right.name));
+        for region in regions {
+            let properties = backend.properties.get(&region.name);
+            let label = region_label(region, properties);
+            let is_pulsing = backend.pulses.iter().any(|target| target == &region.name);
+            let class_name = if is_pulsing { "region pulse" } else { "region" };
+            content.push_str(&format!(
+                "<div class=\"{}\" style=\"left:{}px;top:{}px;width:{}px;height:{}px\"><strong>{}</strong><small>{}</small></div>",
+                class_name,
+                (region.x as f64 * scale).round() as i64,
+                (region.y as f64 * scale).round() as i64,
+                (region.w as f64 * scale).round().max(1.0) as i64,
+                (region.h as f64 * scale).round().max(1.0) as i64,
+                html_escape(&region.name),
+                html_escape(&label)
+            ));
+        }
+
+        content.push_str("</div></section>");
+    }
+
+    if content.is_empty() {
+        content.push_str("<p class=\"empty\">No PXL surfaces recorded.</p>");
+    }
+
+    format!(
+        "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>PXL Preview</title><style>body{{margin:0;font-family:Arial,sans-serif;background:#eef2f7;color:#111827}}main{{padding:24px;display:grid;gap:20px}}.surface{{background:white;border:1px solid #d8e1ee;border-radius:8px;overflow:hidden;box-shadow:0 8px 24px rgba(15,23,42,.08)}}header{{display:flex;justify-content:space-between;padding:12px 14px;background:#111827;color:white;font-weight:700}}header span{{font-weight:400;color:#cbd5e1}}.canvas{{position:relative;margin:18px;background:#f8fafc;border:1px solid #cbd5e1;overflow:hidden}}.region{{position:absolute;box-sizing:border-box;border:2px solid #2563eb;background:rgba(37,99,235,.14);border-radius:6px;padding:6px;color:#0f172a;display:flex;flex-direction:column;gap:2px;overflow:hidden}}.region small{{font-size:11px;color:#334155}}.pulse{{border-color:#dc2626;background:rgba(220,38,38,.14)}}.empty{{padding:24px;background:white;border-radius:8px}}</style></head><body><main>{}</main></body></html>",
+        content
+    )
+}
+
+fn preview_scale(width: i64, height: i64) -> f64 {
+    let max_width = 720.0;
+    let max_height = 520.0;
+    let width = width.max(1) as f64;
+    let height = height.max(1) as f64;
+    (max_width / width).min(max_height / height).min(1.0)
+}
+
+fn region_label(region: &VisualRegionSpec, properties: Option<&HashMap<String, Value>>) -> String {
+    if let Some(properties) = properties {
+        if let Some(Value::String(semantic)) = properties.get("semantic") {
+            return semantic.clone();
+        }
+        if let Some(Value::String(material)) = properties.get("material") {
+            return material.clone();
+        }
+    }
+    region
+        .semantic
+        .clone()
+        .or_else(|| region.behavior.clone())
+        .or_else(|| region.material.clone())
+        .unwrap_or_else(|| "region".to_string())
+}
+
+fn html_escape(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 fn json_escape(value: &str) -> String {
@@ -647,6 +752,56 @@ mod tests {
         let exported = fs::read_to_string(&path).unwrap();
         assert!(exported.contains("\"format\":\"PXL\""));
         assert!(exported.contains("\"main\""));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn test_visual_preview_writes_html() {
+        let mut backend = TraceVisualBackend::new();
+        let path = std::env::temp_dir().join("matter_visual_preview_test.html");
+        backend
+            .call(
+                "surface",
+                vec![
+                    Value::String("main".to_string()),
+                    Value::Int(800),
+                    Value::Int(600),
+                ],
+            )
+            .unwrap();
+        backend
+            .call(
+                "region",
+                vec![
+                    Value::String("checkout".to_string()),
+                    Value::Int(120),
+                    Value::Int(220),
+                    Value::Int(260),
+                    Value::Int(80),
+                ],
+            )
+            .unwrap();
+        backend
+            .call(
+                "set",
+                vec![
+                    Value::String("checkout".to_string()),
+                    Value::String("semantic".to_string()),
+                    Value::String("primary_action".to_string()),
+                ],
+            )
+            .unwrap();
+
+        let result = backend
+            .call("preview", vec![Value::String(path.display().to_string())])
+            .unwrap();
+
+        assert_eq!(result, Value::String(path.display().to_string()));
+        let html = fs::read_to_string(&path).unwrap();
+        assert!(html.contains("<!doctype html>"));
+        assert!(html.contains("PXL Preview"));
+        assert!(html.contains("checkout"));
+        assert!(html.contains("primary_action"));
         let _ = fs::remove_file(path);
     }
 }

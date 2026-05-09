@@ -1,0 +1,10 @@
+visual.surface("main", 800, 600)
+visual.region("checkout", 120, 220, 260, 80)
+visual.region("menu", 40, 40, 360, 64)
+visual.set("checkout", "semantic", "primary_action")
+visual.set("checkout", "material", "glass")
+visual.set("menu", "semantic", "navigation")
+visual.pulse("checkout")
+
+let preview = visual.preview("target/matter-visual-preview.html")
+print preview
