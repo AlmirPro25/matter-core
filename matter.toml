@@ -1,0 +1,11 @@
+[package]
+name = "matter-core"
+version = "0.1.0"
+entry = "examples/showcase.matter"
+
+[paths]
+stdlib = "stdlib"
+store = ".matter_store.json"
+
+[dependencies]
+math_tools = "examples/modules/math_tools.matter"

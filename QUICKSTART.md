@@ -71,6 +71,12 @@ Ou enviar Matter Core por stdin usando `-`:
 .\target\release\matter-cli.exe capabilities-json
 ```
 
+### Inspecionar pacote
+```bash
+.\target\release\matter-cli.exe package-json
+.\target\release\matter-cli.exe package-json matter.toml
+```
+
 ## 🎯 Comandos Principais
 
 ### Executar programa

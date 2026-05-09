@@ -28,6 +28,15 @@ fn main() {
             print_capabilities_json();
         }
 
+        "package-json" => {
+            let manifest = if args.len() >= 3 {
+                &args[2]
+            } else {
+                "matter.toml"
+            };
+            package_json(manifest);
+        }
+
         "run" => {
             if args.len() < 3 {
                 eprintln!("Usage: matter-cli run <file.matter|->");
@@ -199,6 +208,7 @@ fn print_usage() {
     println!();
     println!("Usage:");
     println!("  matter-cli capabilities-json                Print machine-readable capabilities");
+    println!("  matter-cli package-json [matter.toml]       Inspect Matter package manifest as JSON");
     println!("  matter-cli run <file.matter|->              Run Matter source file or stdin");
     println!("  matter-cli eval <source>                    Run Matter source passed as text");
     println!("  matter-cli eval-json <source>               Run source text and print JSON result");
@@ -232,6 +242,7 @@ fn print_capabilities_json() {
             "\"stdin\":true,",
             "\"json_commands\":[",
             "\"capabilities-json\",",
+            "\"package-json\",",
             "\"eval-json\",",
             "\"tokens-json\",",
             "\"imports-json\",",
@@ -274,12 +285,146 @@ fn print_capabilities_json() {
             "\"stdlib\",",
             "\"persistence\",",
             "\"network\",",
-            "\"concurrency\"",
+            "\"concurrency\",",
+            "\"packages\"",
             "]",
             "}}"
         ),
         env!("CARGO_PKG_VERSION")
     );
+}
+
+#[derive(Debug, Default)]
+struct PackageManifest {
+    name: String,
+    version: String,
+    entry: String,
+    stdlib: String,
+    store: String,
+    dependencies: Vec<ManifestDependency>,
+}
+
+#[derive(Debug)]
+struct ManifestDependency {
+    name: String,
+    path: String,
+}
+
+fn package_json(path: &str) {
+    let source = fs::read_to_string(path).unwrap_or_else(|error| {
+        println!(
+            "{{\"ok\":false,\"stage\":\"read\",\"input\":\"{}\",\"error\":{{\"message\":\"{}\"}}}}",
+            json_escape(path),
+            json_escape(&error.to_string())
+        );
+        process::exit(1);
+    });
+
+    let manifest = parse_package_manifest(&source).unwrap_or_else(|error| {
+        println!(
+            "{{\"ok\":false,\"stage\":\"manifest\",\"input\":\"{}\",\"error\":{{\"message\":\"{}\"}}}}",
+            json_escape(path),
+            json_escape(&error)
+        );
+        process::exit(1);
+    });
+
+    println!(
+        concat!(
+            "{{",
+            "\"ok\":true,",
+            "\"input\":\"{}\",",
+            "\"package\":{{\"name\":\"{}\",\"version\":\"{}\",\"entry\":\"{}\"}},",
+            "\"paths\":{{\"stdlib\":\"{}\",\"store\":\"{}\"}},",
+            "\"dependencies\":[{}]",
+            "}}"
+        ),
+        json_escape(path),
+        json_escape(&manifest.name),
+        json_escape(&manifest.version),
+        json_escape(&manifest.entry),
+        json_escape(&manifest.stdlib),
+        json_escape(&manifest.store),
+        manifest_dependencies_json(&manifest.dependencies)
+    );
+}
+
+fn parse_package_manifest(source: &str) -> Result<PackageManifest, String> {
+    let mut manifest = PackageManifest::default();
+    let mut section = String::new();
+
+    for (line_index, raw_line) in source.lines().enumerate() {
+        let line = raw_line.split('#').next().unwrap_or("").trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        if line.starts_with('[') && line.ends_with(']') {
+            section = line[1..line.len() - 1].trim().to_string();
+            continue;
+        }
+
+        let (key, value) = line
+            .split_once('=')
+            .ok_or_else(|| format!("line {}: expected key = \"value\"", line_index + 1))?;
+        let key = key.trim();
+        let value = parse_manifest_string(value.trim())
+            .ok_or_else(|| format!("line {}: expected quoted string value", line_index + 1))?;
+
+        match section.as_str() {
+            "package" => match key {
+                "name" => manifest.name = value,
+                "version" => manifest.version = value,
+                "entry" => manifest.entry = value,
+                _ => return Err(format!("unknown package key '{}'", key)),
+            },
+            "paths" => match key {
+                "stdlib" => manifest.stdlib = value,
+                "store" => manifest.store = value,
+                _ => return Err(format!("unknown paths key '{}'", key)),
+            },
+            "dependencies" => manifest.dependencies.push(ManifestDependency {
+                name: key.to_string(),
+                path: value,
+            }),
+            "" => return Err(format!("line {}: key outside of section", line_index + 1)),
+            _ => return Err(format!("unknown section '{}'", section)),
+        }
+    }
+
+    if manifest.name.is_empty() {
+        return Err("package.name is required".to_string());
+    }
+    if manifest.version.is_empty() {
+        return Err("package.version is required".to_string());
+    }
+    if manifest.entry.is_empty() {
+        return Err("package.entry is required".to_string());
+    }
+
+    Ok(manifest)
+}
+
+fn parse_manifest_string(value: &str) -> Option<String> {
+    if value.len() < 2 || !value.starts_with('"') || !value.ends_with('"') {
+        return None;
+    }
+
+    Some(value[1..value.len() - 1].replace("\\\"", "\"").replace("\\\\", "\\"))
+}
+
+fn manifest_dependencies_json(dependencies: &[ManifestDependency]) -> String {
+    let items: Vec<String> = dependencies
+        .iter()
+        .map(|dependency| {
+            format!(
+                "{{\"name\":\"{}\",\"path\":\"{}\"}}",
+                json_escape(&dependency.name),
+                json_escape(&dependency.path)
+            )
+        })
+        .collect();
+    items.join(",")
 }
 
 fn run_file(path: &str) {

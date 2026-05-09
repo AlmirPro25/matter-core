@@ -87,6 +87,9 @@ try {
         if (@($json.json_commands) -notcontains "imports-json") {
             Fail "capabilities-json deveria listar imports-json"
         }
+        if (@($json.json_commands) -notcontains "package-json") {
+            Fail "capabilities-json deveria listar package-json"
+        }
         if (@($json.language_features) -notcontains "events") {
             Fail "capabilities-json deveria listar events"
         }
@@ -105,7 +108,21 @@ try {
         if (@($json.language_features) -notcontains "concurrency") {
             Fail "capabilities-json deveria listar concurrency"
         }
+        if (@($json.language_features) -notcontains "packages") {
+            Fail "capabilities-json deveria listar packages"
+        }
         Pass "capabilities-json"
+    }
+
+    Write-Host "Inspecionando pacote via package-json..."
+    $json = Invoke-JsonNoInput @("package-json") 0
+    if ($null -ne $json) {
+        Assert-Equal $json.ok $true "package-json deveria retornar ok=true"
+        Assert-Equal $json.package.name "matter-core" "package-json deveria ler nome do pacote"
+        Assert-Equal $json.package.entry "examples/showcase.matter" "package-json deveria ler entrada"
+        Assert-Equal $json.paths.stdlib "stdlib" "package-json deveria ler caminho da stdlib"
+        Assert-Equal @($json.dependencies)[0].name "math_tools" "package-json deveria listar dependencia local"
+        Pass "package-json"
     }
 
     Write-Host "Executando snippet via eval-json..."

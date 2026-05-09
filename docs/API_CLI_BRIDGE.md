@@ -7,6 +7,32 @@ The important idea is simple:
 human intent -> AI/API generates Matter source -> matter-cli validates/runs/compiles it
 ```
 
+## Package Manifest
+
+A Matter project can declare its package metadata in `matter.toml`:
+
+```toml
+[package]
+name = "matter-core"
+version = "0.1.0"
+entry = "examples/showcase.matter"
+
+[paths]
+stdlib = "stdlib"
+store = ".matter_store.json"
+
+[dependencies]
+math_tools = "examples/modules/math_tools.matter"
+```
+
+APIs and cloud CLIs can inspect it without running code:
+
+```bash
+.\target\release\matter-cli.exe package-json
+```
+
+This returns package identity, entrypoint, runtime paths, and local dependency aliases as JSON.
+
 ## Capability discovery
 
 APIs can discover the available contract at runtime:
