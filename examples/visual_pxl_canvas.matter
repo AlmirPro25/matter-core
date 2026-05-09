@@ -26,6 +26,7 @@ visual.pulse("checkout")
 
 visual.set("status", "semantic", "system_panel")
 visual.set("status", "event", "status_focus")
+visual.sprite("status", "https://dummyimage.com/520x240/0f766e/ffffff.png&text=PXL", "contain")
 visual.state("status", "idle")
 visual.layer("status", 4)
 visual.input("s", "status", "status_focus")
