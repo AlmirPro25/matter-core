@@ -87,6 +87,7 @@ pub struct TraceVisualBackend {
     apps: Vec<String>,
     camera: Option<VisualCameraSpec>,
     inputs: Vec<VisualInputBinding>,
+    theme: HashMap<String, String>,
     stdout_enabled: bool,
 }
 
@@ -101,6 +102,7 @@ impl TraceVisualBackend {
             apps: Vec::new(),
             camera: None,
             inputs: Vec::new(),
+            theme: HashMap::new(),
             stdout_enabled: true,
         }
     }
@@ -438,6 +440,19 @@ impl Backend for TraceVisualBackend {
                 self.inputs.push(VisualInputBinding { key, target, event });
                 Ok(Value::Unit)
             }
+            "theme" => {
+                if args.len() != 2 {
+                    return Err(format!("visual.theme expects 2 arguments, got {}", args.len()));
+                }
+                let key = args[0]
+                    .as_string()
+                    .map_err(|_| "visual.theme expects string key".to_string())?;
+                let value = args[1]
+                    .as_string()
+                    .map_err(|_| "visual.theme expects string value".to_string())?;
+                self.theme.insert(key, value);
+                Ok(Value::Unit)
+            }
             "snapshot" => {
                 if !args.is_empty() {
                     return Err(format!("visual.snapshot expects 0 arguments, got {}", args.len()));
@@ -510,6 +525,7 @@ fn render_pxl_document(backend: &TraceVisualBackend) -> String {
         .map(render_input)
         .collect::<Vec<_>>()
         .join(",");
+    let theme_json = string_map_json(&backend.theme);
 
     let camera_json = backend
         .camera
@@ -518,8 +534,8 @@ fn render_pxl_document(backend: &TraceVisualBackend) -> String {
         .unwrap_or_else(|| "null".to_string());
 
     format!(
-        "{{\"format\":\"PXL\",\"version\":1,\"surfaces\":[{}],\"regions\":[{}],\"pulses\":[{}],\"camera\":{},\"inputs\":[{}],\"loaded\":{},\"apps\":{}}}",
-        surface_json, region_json, pulse_json, camera_json, input_json, loaded_json, app_json
+        "{{\"format\":\"PXL\",\"version\":1,\"surfaces\":[{}],\"regions\":[{}],\"pulses\":[{}],\"camera\":{},\"inputs\":[{}],\"theme\":{},\"loaded\":{},\"apps\":{}}}",
+        surface_json, region_json, pulse_json, camera_json, input_json, theme_json, loaded_json, app_json
     )
 }
 
@@ -587,6 +603,19 @@ fn string_array_json(values: &[String]) -> String {
     )
 }
 
+fn string_map_json(values: &HashMap<String, String>) -> String {
+    let mut items: Vec<(&String, &String)> = values.iter().collect();
+    items.sort_by(|left, right| left.0.cmp(right.0));
+    format!(
+        "{{{}}}",
+        items
+            .into_iter()
+            .map(|(key, value)| format!("\"{}\":\"{}\"", json_escape(key), json_escape(value)))
+            .collect::<Vec<_>>()
+            .join(",")
+    )
+}
+
 fn value_map_json(values: &HashMap<String, Value>) -> String {
     let mut items: Vec<(&String, &Value)> = values.iter().collect();
     items.sort_by(|left, right| left.0.cmp(right.0));
@@ -624,7 +653,7 @@ fn render_pxl_canvas(backend: &TraceVisualBackend) -> String {
     let pxl = render_pxl_document(backend);
 
     format!(
-        r#"<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>PXL Canvas Engine</title><style>body{{margin:0;font-family:Arial,sans-serif;background:#f3f6fb;color:#111827}}main{{min-height:100vh;display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:18px;padding:20px;box-sizing:border-box}}.stage{{display:grid;place-items:center;background:white;border:1px solid #d8e1ee;border-radius:8px;min-height:calc(100vh - 40px);overflow:auto}}canvas{{background:#f8fafc;border:1px solid #cbd5e1;box-shadow:0 16px 38px rgba(15,23,42,.12);max-width:100%;height:auto}}aside{{background:#111827;color:#e2e8f0;border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:12px;min-height:0}}h1{{font-size:16px;margin:0;color:white}}.meta,.bindings{{font-size:12px;color:#cbd5e1;line-height:1.45}}.bindings div{{display:flex;justify-content:space-between;gap:8px;border-top:1px solid rgba(226,232,240,.16);padding-top:6px;margin-top:6px}}kbd{{background:#e2e8f0;color:#111827;border-radius:4px;padding:1px 5px;font-size:11px}}button.trace{{border:1px solid #93c5fd;background:#dbeafe;color:#0f172a;border-radius:6px;padding:8px 10px;font-weight:700;cursor:pointer}}.event-log{{display:flex;flex-direction:column;gap:6px;overflow:auto;font-size:12px}}.event-log div{{border-top:1px solid rgba(226,232,240,.16);padding-top:6px}}@media (max-width: 760px){{main{{grid-template-columns:1fr}}.stage{{min-height:60vh}}}}</style></head><body><main><section class="stage"><canvas id="pxl-canvas" width="720" height="520"></canvas></section><aside><h1>PXL Canvas Engine</h1><div class="meta" id="pxl-meta">Loading PXL scene</div><section class="bindings" id="input-bindings"></section><button class="trace" id="export-trace" type="button">Export trace</button><section class="event-log" id="event-log"><div>Click a PXL region</div></section></aside></main><script>const pxl={};const events=[];const canvas=document.getElementById('pxl-canvas');const ctx=canvas.getContext('2d');const meta=document.getElementById('pxl-meta');const log=document.getElementById('event-log');const bindings=document.getElementById('input-bindings');const traceButton=document.getElementById('export-trace');const surface=pxl.surfaces[0]||{{name:'empty',width:720,height:520}};const camera=pxl.camera||{{x:0,y:0,zoom:100}};const pulseTargets=new Set((pxl.pulses||[]).map((pulse)=>pulse.target));let selected=null;const zoomScale=Math.max(1,camera.zoom||100)/100;let scale=Math.min(960/Math.max(1,surface.width),640/Math.max(1,surface.height),1);canvas.width=Math.max(1,Math.round(surface.width*scale));canvas.height=Math.max(1,Math.round(surface.height*scale));meta.textContent=surface.name+' '+surface.width+'x'+surface.height+' regions='+(pxl.regions||[]).length+' inputs='+(pxl.inputs||[]).length+' camera='+camera.x+','+camera.y+' zoom='+camera.zoom;bindings.innerHTML=(pxl.inputs||[]).map((input)=>'<div><kbd>'+input.key+'</kbd><span>'+input.target+' / '+input.event+'</span></div>').join('')||'<div>No input bindings</div>';function prop(region,key){{return region.properties&&region.properties[key]!==undefined?region.properties[key]:region[key];}}function layerValue(region){{const layer=Number(prop(region,'layer')||0);return Number.isFinite(layer)?layer:0;}}function sortedRegions(){{return [...(pxl.regions||[])].sort((left,right)=>layerValue(left)-layerValue(right)||left.name.localeCompare(right.name));}}function eventName(region){{return prop(region,'event')||prop(region,'behavior')||'tap';}}function regionState(region){{return prop(region,'state')||'idle';}}function fillFor(region,time){{const state=regionState(region);const pulsing=pulseTargets.has(region.name);if(state==='active')return 'rgba(5,150,105,.28)';if(state==='disabled')return 'rgba(100,116,139,.24)';if(state==='error')return 'rgba(185,28,28,.30)';if(pulsing){{const alpha=.18+Math.sin(time/180)*.08;return 'rgba(220,38,38,'+alpha.toFixed(3)+')';}}return 'rgba(37,99,235,.18)';}}function strokeFor(region){{const state=regionState(region);if(region.name===selected)return '#f59e0b';if(state==='active')return '#059669';if(state==='disabled')return '#64748b';if(state==='error')return '#b91c1c';if(pulseTargets.has(region.name))return '#dc2626';return '#2563eb';}}function recordEvent(entry){{const event={{time:new Date().toISOString(),...entry}};events.push(event);const line=document.createElement('div');line.textContent=Object.entries(event).filter(([key])=>key!=='time').map(([key,value])=>key+'='+value).join(' ');log.appendChild(line);log.scrollTop=log.scrollHeight;}}function downloadTrace(){{const blob=new Blob([JSON.stringify({{format:'PXL_TRACE',version:1,events}},null,2)],{{type:'application/json'}});const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download='pxl-trace.json';link.click();URL.revokeObjectURL(url);}}function drawRegion(region,time){{const x=(region.x-camera.x)*scale*zoomScale;const y=(region.y-camera.y)*scale*zoomScale;const w=Math.max(1,region.w*scale*zoomScale);const h=Math.max(1,region.h*scale*zoomScale);ctx.fillStyle=fillFor(region,time);ctx.strokeStyle=strokeFor(region);ctx.lineWidth=region.name===selected?4:2;ctx.beginPath();ctx.roundRect(x,y,w,h,8);ctx.fill();ctx.stroke();ctx.fillStyle='#0f172a';ctx.font='700 13px Arial';ctx.textBaseline='top';ctx.fillText(region.name,x+8,y+8,Math.max(10,w-16));ctx.font='11px Arial';ctx.fillStyle='#334155';ctx.fillText('z='+layerValue(region)+' '+regionState(region)+' / '+eventName(region),x+8,y+28,Math.max(10,w-16));}}function draw(time){{ctx.clearRect(0,0,canvas.width,canvas.height);ctx.fillStyle='#f8fafc';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.strokeStyle='#d8e1ee';ctx.lineWidth=1;ctx.strokeRect(.5,.5,canvas.width-1,canvas.height-1);sortedRegions().forEach((region)=>drawRegion(region,time));requestAnimationFrame(draw);}}function hit(clientX,clientY){{const rect=canvas.getBoundingClientRect();const x=((clientX-rect.left)*(canvas.width/rect.width))/(scale*zoomScale)+camera.x;const y=((clientY-rect.top)*(canvas.height/rect.height))/(scale*zoomScale)+camera.y;return sortedRegions().reverse().find((region)=>x>=region.x&&x<=region.x+region.w&&y>=region.y&&y<=region.y+region.h);}}canvas.addEventListener('click',(event)=>{{const region=hit(event.clientX,event.clientY);if(!region)return;selected=region.name;recordEvent({{type:'pointer',target:region.name,layer:layerValue(region),state:regionState(region),event:eventName(region)}});}});window.addEventListener('keydown',(event)=>{{const binding=(pxl.inputs||[]).find((input)=>input.key.toLowerCase()===event.key.toLowerCase());if(!binding)return;selected=binding.target;recordEvent({{type:'keyboard',key:binding.key,target:binding.target,event:binding.event}});}});traceButton.addEventListener('click',downloadTrace);requestAnimationFrame(draw);</script></body></html>"#,
+        r#"<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>PXL Canvas Engine</title><style>body{{margin:0;font-family:Arial,sans-serif;background:#f3f6fb;color:#111827}}main{{min-height:100vh;display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:18px;padding:20px;box-sizing:border-box}}.stage{{display:grid;place-items:center;background:white;border:1px solid #d8e1ee;border-radius:8px;min-height:calc(100vh - 40px);overflow:auto}}canvas{{background:#f8fafc;border:1px solid #cbd5e1;box-shadow:0 16px 38px rgba(15,23,42,.12);max-width:100%;height:auto}}aside{{background:#111827;color:#e2e8f0;border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:12px;min-height:0}}h1{{font-size:16px;margin:0;color:white}}.meta,.bindings{{font-size:12px;color:#cbd5e1;line-height:1.45}}.bindings div{{display:flex;justify-content:space-between;gap:8px;border-top:1px solid rgba(226,232,240,.16);padding-top:6px;margin-top:6px}}kbd{{background:#e2e8f0;color:#111827;border-radius:4px;padding:1px 5px;font-size:11px}}button.trace{{border:1px solid #93c5fd;background:#dbeafe;color:#0f172a;border-radius:6px;padding:8px 10px;font-weight:700;cursor:pointer}}.event-log{{display:flex;flex-direction:column;gap:6px;overflow:auto;font-size:12px}}.event-log div{{border-top:1px solid rgba(226,232,240,.16);padding-top:6px}}@media (max-width: 760px){{main{{grid-template-columns:1fr}}.stage{{min-height:60vh}}}}</style></head><body><main><section class="stage"><canvas id="pxl-canvas" width="720" height="520"></canvas></section><aside><h1>PXL Canvas Engine</h1><div class="meta" id="pxl-meta">Loading PXL scene</div><section class="bindings" id="input-bindings"></section><button class="trace" id="export-trace" type="button">Export trace</button><section class="event-log" id="event-log"><div>Click a PXL region</div></section></aside></main><script>const pxl={};const theme=pxl.theme||{{}};const events=[];const canvas=document.getElementById('pxl-canvas');const ctx=canvas.getContext('2d');const meta=document.getElementById('pxl-meta');const log=document.getElementById('event-log');const bindings=document.getElementById('input-bindings');const traceButton=document.getElementById('export-trace');function themeValue(key,fallback){{return theme[key]||fallback;}}document.body.style.background=themeValue('page','#f3f6fb');document.querySelector('aside').style.background=themeValue('panel','#111827');traceButton.style.background=themeValue('button','#dbeafe');const surface=pxl.surfaces[0]||{{name:'empty',width:720,height:520}};const camera=pxl.camera||{{x:0,y:0,zoom:100}};const pulseTargets=new Set((pxl.pulses||[]).map((pulse)=>pulse.target));let selected=null;const zoomScale=Math.max(1,camera.zoom||100)/100;let scale=Math.min(960/Math.max(1,surface.width),640/Math.max(1,surface.height),1);canvas.width=Math.max(1,Math.round(surface.width*scale));canvas.height=Math.max(1,Math.round(surface.height*scale));meta.textContent=surface.name+' '+surface.width+'x'+surface.height+' regions='+(pxl.regions||[]).length+' inputs='+(pxl.inputs||[]).length+' camera='+camera.x+','+camera.y+' zoom='+camera.zoom;bindings.innerHTML=(pxl.inputs||[]).map((input)=>'<div><kbd>'+input.key+'</kbd><span>'+input.target+' / '+input.event+'</span></div>').join('')||'<div>No input bindings</div>';function prop(region,key){{return region.properties&&region.properties[key]!==undefined?region.properties[key]:region[key];}}function layerValue(region){{const layer=Number(prop(region,'layer')||0);return Number.isFinite(layer)?layer:0;}}function sortedRegions(){{return [...(pxl.regions||[])].sort((left,right)=>layerValue(left)-layerValue(right)||left.name.localeCompare(right.name));}}function eventName(region){{return prop(region,'event')||prop(region,'behavior')||'tap';}}function regionState(region){{return prop(region,'state')||'idle';}}function fillFor(region,time){{const state=regionState(region);const pulsing=pulseTargets.has(region.name);if(state==='active')return themeValue('activeFill','rgba(5,150,105,.28)');if(state==='disabled')return themeValue('disabledFill','rgba(100,116,139,.24)');if(state==='error')return themeValue('errorFill','rgba(185,28,28,.30)');if(pulsing){{const alpha=.18+Math.sin(time/180)*.08;return 'rgba(220,38,38,'+alpha.toFixed(3)+')';}}return themeValue('regionFill','rgba(37,99,235,.18)');}}function strokeFor(region){{const state=regionState(region);if(region.name===selected)return themeValue('selected','#f59e0b');if(state==='active')return themeValue('active','#059669');if(state==='disabled')return themeValue('disabled','#64748b');if(state==='error')return themeValue('error','#b91c1c');if(pulseTargets.has(region.name))return themeValue('pulse','#dc2626');return themeValue('accent','#2563eb');}}function recordEvent(entry){{const event={{time:new Date().toISOString(),...entry}};events.push(event);const line=document.createElement('div');line.textContent=Object.entries(event).filter(([key])=>key!=='time').map(([key,value])=>key+'='+value).join(' ');log.appendChild(line);log.scrollTop=log.scrollHeight;}}function downloadTrace(){{const blob=new Blob([JSON.stringify({{format:'PXL_TRACE',version:1,events}},null,2)],{{type:'application/json'}});const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download='pxl-trace.json';link.click();URL.revokeObjectURL(url);}}function drawRegion(region,time){{const x=(region.x-camera.x)*scale*zoomScale;const y=(region.y-camera.y)*scale*zoomScale;const w=Math.max(1,region.w*scale*zoomScale);const h=Math.max(1,region.h*scale*zoomScale);ctx.fillStyle=fillFor(region,time);ctx.strokeStyle=strokeFor(region);ctx.lineWidth=region.name===selected?4:2;ctx.beginPath();ctx.roundRect(x,y,w,h,8);ctx.fill();ctx.stroke();ctx.fillStyle=themeValue('text','#0f172a');ctx.font='700 13px Arial';ctx.textBaseline='top';ctx.fillText(region.name,x+8,y+8,Math.max(10,w-16));ctx.font='11px Arial';ctx.fillStyle=themeValue('mutedText','#334155');ctx.fillText('z='+layerValue(region)+' '+regionState(region)+' / '+eventName(region),x+8,y+28,Math.max(10,w-16));}}function draw(time){{ctx.clearRect(0,0,canvas.width,canvas.height);ctx.fillStyle=themeValue('surface','#f8fafc');ctx.fillRect(0,0,canvas.width,canvas.height);ctx.strokeStyle=themeValue('surfaceBorder','#d8e1ee');ctx.lineWidth=1;ctx.strokeRect(.5,.5,canvas.width-1,canvas.height-1);sortedRegions().forEach((region)=>drawRegion(region,time));requestAnimationFrame(draw);}}function hit(clientX,clientY){{const rect=canvas.getBoundingClientRect();const x=((clientX-rect.left)*(canvas.width/rect.width))/(scale*zoomScale)+camera.x;const y=((clientY-rect.top)*(canvas.height/rect.height))/(scale*zoomScale)+camera.y;return sortedRegions().reverse().find((region)=>x>=region.x&&x<=region.x+region.w&&y>=region.y&&y<=region.y+region.h);}}canvas.addEventListener('click',(event)=>{{const region=hit(event.clientX,event.clientY);if(!region)return;selected=region.name;recordEvent({{type:'pointer',target:region.name,layer:layerValue(region),state:regionState(region),event:eventName(region)}});}});window.addEventListener('keydown',(event)=>{{const binding=(pxl.inputs||[]).find((input)=>input.key.toLowerCase()===event.key.toLowerCase());if(!binding)return;selected=binding.target;recordEvent({{type:'keyboard',key:binding.key,target:binding.target,event:binding.event}});}});traceButton.addEventListener('click',downloadTrace);requestAnimationFrame(draw);</script></body></html>"#,
         pxl
     )
 }
@@ -1115,6 +1144,15 @@ mod tests {
                 ],
             )
             .unwrap();
+        backend
+            .call(
+                "theme",
+                vec![
+                    Value::String("accent".to_string()),
+                    Value::String("#0f766e".to_string()),
+                ],
+            )
+            .unwrap();
 
         let result = backend
             .call("canvas", vec![Value::String(path.display().to_string())])
@@ -1129,6 +1167,8 @@ mod tests {
         assert!(html.contains("\"camera\":{\"x\":20,\"y\":40,\"zoom\":125}"));
         assert!(html.contains("\"layer\":4"));
         assert!(html.contains("\"inputs\":[{\"key\":\"Enter\",\"target\":\"checkout\",\"event\":\"checkout_submit\"}]"));
+        assert!(html.contains("\"theme\":{\"accent\":\"#0f766e\"}"));
+        assert!(html.contains("themeValue"));
         assert!(html.contains("input-bindings"));
         assert!(html.contains("keydown"));
         assert!(html.contains("PXL_TRACE"));

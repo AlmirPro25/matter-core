@@ -1,5 +1,10 @@
 visual.surface("main", 960, 540)
 visual.camera(0, 0, 115)
+visual.theme("page", "#eef2f7")
+visual.theme("surface", "#f8fafc")
+visual.theme("accent", "#0f766e")
+visual.theme("selected", "#f59e0b")
+visual.theme("regionFill", "rgba(15,118,110,.18)")
 
 visual.region("menu", 40, 36, 420, 64)
 visual.region("checkout", 120, 220, 280, 86)
