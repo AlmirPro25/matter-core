@@ -273,6 +273,12 @@ pub struct Lockfile {
     pub entries: Vec<LockEntry>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstallReport {
+    pub lockfile: Lockfile,
+    pub installed: Vec<PathBuf>,
+}
+
 impl Lockfile {
     pub fn new(package: &Package, mut entries: Vec<LockEntry>) -> Self {
         entries.sort_by(|left, right| left.name.cmp(&right.name));
@@ -511,6 +517,29 @@ impl PackageManager {
         }
     }
 
+    pub fn install_dependencies(&self, package: &Package) -> Result<InstallReport, String> {
+        let lockfile = self.ensure_lockfile(package)?;
+        let resolved = self.resolve_dependencies(package)?;
+        let install_root = package.root.join(".matter").join("packages");
+        fs::create_dir_all(&install_root).map_err(|e| e.to_string())?;
+
+        let mut installed = Vec::new();
+        for dependency in resolved {
+            let target = install_root.join(&dependency.manifest.name);
+            if target.exists() {
+                fs::remove_dir_all(&target).map_err(|e| e.to_string())?;
+            }
+            copy_dir_all(&dependency.root, &target)?;
+            installed.push(target);
+        }
+        installed.sort();
+
+        Ok(InstallReport {
+            lockfile,
+            installed,
+        })
+    }
+
     pub fn verify_lockfile(&self, package: &Package, lockfile: &Lockfile) -> Result<(), String> {
         let expected = self.lock_dependencies(package)?;
         if &expected == lockfile {
@@ -535,6 +564,21 @@ impl PackageManager {
             package.manifest.name, expected_names, actual_names
         ))
     }
+}
+
+fn copy_dir_all(source: &Path, destination: &Path) -> Result<(), String> {
+    fs::create_dir_all(destination).map_err(|e| e.to_string())?;
+    for entry in fs::read_dir(source).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let entry_path = entry.path();
+        let target_path = destination.join(entry.file_name());
+        if entry_path.is_dir() {
+            copy_dir_all(&entry_path, &target_path)?;
+        } else {
+            fs::copy(&entry_path, &target_path).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
 }
 
 impl Default for PackageManager {
@@ -770,6 +814,43 @@ math-utils = "^1.0.0"
         let error = manager.ensure_lockfile(&app).unwrap_err();
         assert!(error.contains("matter.lock is stale"));
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn test_install_dependencies_materializes_local_packages() {
+        let root = std::env::temp_dir().join("matter_package_install_test");
+        let registry_root = std::env::temp_dir().join("matter_package_install_registry");
+        let _ = fs::remove_dir_all(&root);
+        let _ = fs::remove_dir_all(&registry_root);
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::create_dir_all(registry_root.join("utils").join("src")).unwrap();
+
+        let mut app_manifest = Manifest::new("app".to_string(), Version::new(0, 1, 0));
+        app_manifest.dependencies.insert(
+            "utils".to_string(),
+            Dependency::Registry(VersionReq::Caret(Version::new(1, 0, 0))),
+        );
+        let app = Package::new(app_manifest, root.clone());
+        app.manifest.save(&root.join("matter.toml")).unwrap();
+
+        let utils_manifest = Manifest::new("utils".to_string(), Version::new(1, 2, 0));
+        let utils_root = registry_root.join("utils");
+        utils_manifest.save(&utils_root.join("matter.toml")).unwrap();
+        fs::write(utils_root.join("src").join("lib.matter"), "fn util() { return 1 }\n").unwrap();
+        let utils = Package::new(utils_manifest, utils_root.clone());
+
+        let mut manager = PackageManager::new();
+        manager.register_package(utils);
+        let report = manager.install_dependencies(&app).unwrap();
+
+        let installed_root = root.join(".matter").join("packages").join("utils");
+        assert_eq!(report.installed, vec![installed_root.clone()]);
+        assert!(root.join("matter.lock").exists());
+        assert!(installed_root.join("matter.toml").exists());
+        assert!(installed_root.join("src").join("lib.matter").exists());
+
+        let _ = fs::remove_dir_all(root);
+        let _ = fs::remove_dir_all(registry_root);
     }
 
     #[test]
