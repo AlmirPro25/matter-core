@@ -39,6 +39,12 @@ pub struct VisualLayoutSpec {
     pub gap: i64,
 }
 
+#[derive(Debug, Clone)]
+pub struct VisualComponentSpec {
+    pub name: String,
+    pub defaults: HashMap<String, Value>,
+}
+
 /// Especificação de uma região visual (PXL)
 #[derive(Debug, Clone)]
 pub struct VisualRegionSpec {
@@ -98,6 +104,7 @@ pub struct TraceVisualBackend {
     scenes: Vec<String>,
     current_scene: Option<String>,
     layouts: Vec<VisualLayoutSpec>,
+    components: HashMap<String, VisualComponentSpec>,
     stdout_enabled: bool,
 }
 
@@ -116,6 +123,7 @@ impl TraceVisualBackend {
             scenes: Vec::new(),
             current_scene: None,
             layouts: Vec::new(),
+            components: HashMap::new(),
             stdout_enabled: true,
         }
     }
@@ -343,6 +351,80 @@ impl Backend for TraceVisualBackend {
                     layout.gap = gap;
                 } else {
                     self.layouts.push(VisualLayoutSpec { scene, kind, gap });
+                }
+                Ok(Value::Unit)
+            }
+            "component" => {
+                if args.len() != 2 {
+                    return Err(format!("visual.component expects 2 arguments, got {}", args.len()));
+                }
+                let name = args[0]
+                    .as_string()
+                    .map_err(|_| "visual.component expects string name".to_string())?;
+                let defaults = value_map("visual.component defaults", &args[1])?.clone();
+                if !defaults.contains_key("w") || !defaults.contains_key("h") {
+                    return Err("visual.component defaults require int w and h".to_string());
+                }
+                defaults
+                    .get("w")
+                    .ok_or_else(|| "visual.component defaults require int w".to_string())?
+                    .as_int()
+                    .map_err(|_| "visual.component defaults w must be int".to_string())?;
+                defaults
+                    .get("h")
+                    .ok_or_else(|| "visual.component defaults require int h".to_string())?
+                    .as_int()
+                    .map_err(|_| "visual.component defaults h must be int".to_string())?;
+                self.components.insert(
+                    name.clone(),
+                    VisualComponentSpec {
+                        name,
+                        defaults,
+                    },
+                );
+                Ok(Value::Unit)
+            }
+            "mount" | "use" => {
+                if args.len() != 4 {
+                    return Err(format!("visual.{} expects 4 arguments, got {}", method, args.len()));
+                }
+                let component_name = args[0]
+                    .as_string()
+                    .map_err(|_| format!("visual.{} expects string component", method))?;
+                let name = args[1]
+                    .as_string()
+                    .map_err(|_| format!("visual.{} expects string name", method))?;
+                let x = args[2]
+                    .as_int()
+                    .map_err(|_| format!("visual.{} expects int x", method))?;
+                let y = args[3]
+                    .as_int()
+                    .map_err(|_| format!("visual.{} expects int y", method))?;
+                let component = self
+                    .components
+                    .get(&component_name)
+                    .cloned()
+                    .ok_or_else(|| format!("visual.{} unknown component '{}'", method, component_name))?;
+                let w = component_int(&component, "w")?;
+                let h = component_int(&component, "h")?;
+                let region = VisualRegionSpec {
+                    name: name.clone(),
+                    x,
+                    y,
+                    w,
+                    h,
+                    semantic: component_string(&component, "semantic")?,
+                    behavior: component_string(&component, "behavior")?,
+                    material: component_string(&component, "material")?,
+                    energy: component_int_opt(&component, "energy")?.map(|value| value as f64),
+                };
+                self.create_region(region).map_err(|e| e.to_string())?;
+                self.set_property(&name, "component", Value::String(component_name))
+                    .map_err(|e| e.to_string())?;
+                for (key, value) in component.defaults {
+                    if !component_region_key(&key) {
+                        self.set_property(&name, &key, value).map_err(|e| e.to_string())?;
+                    }
                 }
                 Ok(Value::Unit)
             }
@@ -637,6 +719,53 @@ impl Backend for TraceVisualBackend {
     }
 }
 
+fn value_map<'a>(context: &str, value: &'a Value) -> Result<&'a HashMap<String, Value>, String> {
+    match value {
+        Value::Map(values) => Ok(values),
+        _ => Err(format!("{} must be a map", context)),
+    }
+}
+
+fn component_int(component: &VisualComponentSpec, key: &str) -> Result<i64, String> {
+    component
+        .defaults
+        .get(key)
+        .ok_or_else(|| format!("visual.component '{}' requires int {}", component.name, key))?
+        .as_int()
+        .map_err(|_| format!("visual.component '{}' {} must be int", component.name, key))
+}
+
+fn component_int_opt(component: &VisualComponentSpec, key: &str) -> Result<Option<i64>, String> {
+    component
+        .defaults
+        .get(key)
+        .map(|value| {
+            value
+                .as_int()
+                .map_err(|_| format!("visual.component '{}' {} must be int", component.name, key))
+        })
+        .transpose()
+}
+
+fn component_string(component: &VisualComponentSpec, key: &str) -> Result<Option<String>, String> {
+    component
+        .defaults
+        .get(key)
+        .map(|value| {
+            value
+                .as_string()
+                .map_err(|_| format!("visual.component '{}' {} must be string", component.name, key))
+        })
+        .transpose()
+}
+
+fn component_region_key(key: &str) -> bool {
+    matches!(
+        key,
+        "x" | "y" | "w" | "h" | "semantic" | "behavior" | "material" | "energy" | "scene"
+    )
+}
+
 fn render_pxl_document(backend: &TraceVisualBackend) -> String {
     let mut surfaces: Vec<&VisualSurfaceSpec> = backend.surfaces.values().collect();
     surfaces.sort_by(|left, right| left.name.cmp(&right.name));
@@ -676,6 +805,13 @@ fn render_pxl_document(backend: &TraceVisualBackend) -> String {
         .map(render_layout)
         .collect::<Vec<_>>()
         .join(",");
+    let mut components: Vec<&VisualComponentSpec> = backend.components.values().collect();
+    components.sort_by(|left, right| left.name.cmp(&right.name));
+    let component_json = components
+        .into_iter()
+        .map(render_component)
+        .collect::<Vec<_>>()
+        .join(",");
     let scenes = if backend.scenes.is_empty() {
         vec!["main".to_string()]
     } else {
@@ -694,7 +830,7 @@ fn render_pxl_document(backend: &TraceVisualBackend) -> String {
         .unwrap_or_else(|| "null".to_string());
 
     format!(
-        "{{\"format\":\"PXL\",\"version\":1,\"surfaces\":[{}],\"regions\":[{}],\"pulses\":[{}],\"camera\":{},\"inputs\":[{}],\"theme\":{},\"scenes\":{},\"activeScene\":\"{}\",\"layouts\":[{}],\"loaded\":{},\"apps\":{}}}",
+        "{{\"format\":\"PXL\",\"version\":1,\"surfaces\":[{}],\"regions\":[{}],\"pulses\":[{}],\"camera\":{},\"inputs\":[{}],\"theme\":{},\"scenes\":{},\"activeScene\":\"{}\",\"layouts\":[{}],\"components\":[{}],\"loaded\":{},\"apps\":{}}}",
         surface_json,
         region_json,
         pulse_json,
@@ -704,6 +840,7 @@ fn render_pxl_document(backend: &TraceVisualBackend) -> String {
         scene_json,
         json_escape(&active_scene),
         layout_json,
+        component_json,
         loaded_json,
         app_json
     )
@@ -740,6 +877,14 @@ fn render_layout(layout: &VisualLayoutSpec) -> String {
         json_escape(&layout.scene),
         json_escape(&layout.kind),
         layout.gap
+    )
+}
+
+fn render_component(component: &VisualComponentSpec) -> String {
+    format!(
+        "{{\"name\":\"{}\",\"defaults\":{}}}",
+        json_escape(&component.name),
+        value_map_json(&component.defaults)
     )
 }
 
@@ -1197,13 +1342,38 @@ mod tests {
             .unwrap();
         backend
             .call(
-                "region",
+                "component",
                 vec![
+                    Value::String("action_button".to_string()),
+                    Value::Map({
+                        let mut defaults = std::collections::HashMap::new();
+                        defaults.insert("w".to_string(), Value::Int(260));
+                        defaults.insert("h".to_string(), Value::Int(80));
+                        defaults.insert(
+                            "semantic".to_string(),
+                            Value::String("primary_action".to_string()),
+                        );
+                        defaults.insert(
+                            "text".to_string(),
+                            Value::String("Component button".to_string()),
+                        );
+                        defaults.insert(
+                            "event".to_string(),
+                            Value::String("component_tap".to_string()),
+                        );
+                        defaults
+                    }),
+                ],
+            )
+            .unwrap();
+        backend
+            .call(
+                "mount",
+                vec![
+                    Value::String("action_button".to_string()),
                     Value::String("checkout".to_string()),
                     Value::Int(120),
                     Value::Int(220),
-                    Value::Int(260),
-                    Value::Int(80),
                 ],
             )
             .unwrap();
@@ -1310,13 +1480,38 @@ mod tests {
             .unwrap();
         backend
             .call(
-                "region",
+                "component",
                 vec![
+                    Value::String("action_button".to_string()),
+                    Value::Map({
+                        let mut defaults = std::collections::HashMap::new();
+                        defaults.insert("w".to_string(), Value::Int(260));
+                        defaults.insert("h".to_string(), Value::Int(80));
+                        defaults.insert(
+                            "semantic".to_string(),
+                            Value::String("primary_action".to_string()),
+                        );
+                        defaults.insert(
+                            "text".to_string(),
+                            Value::String("Component button".to_string()),
+                        );
+                        defaults.insert(
+                            "event".to_string(),
+                            Value::String("component_tap".to_string()),
+                        );
+                        defaults
+                    }),
+                ],
+            )
+            .unwrap();
+        backend
+            .call(
+                "mount",
+                vec![
+                    Value::String("action_button".to_string()),
                     Value::String("checkout".to_string()),
                     Value::Int(120),
                     Value::Int(220),
-                    Value::Int(260),
-                    Value::Int(80),
                 ],
             )
             .unwrap();
@@ -1431,6 +1626,9 @@ mod tests {
         assert!(html.contains("\"scenes\":[\"home\"]"));
         assert!(html.contains("\"activeScene\":\"home\""));
         assert!(html.contains("\"layouts\":[{\"scene\":\"home\",\"kind\":\"grid\",\"gap\":12}]"));
+        assert!(html.contains("\"components\":[{\"name\":\"action_button\""));
+        assert!(html.contains("\"component\":\"action_button\""));
+        assert!(html.contains("\"semantic\":\"primary_action\""));
         assert!(html.contains("\"scene\":\"home\""));
         assert!(html.contains("scene-list"));
         assert!(html.contains("activeScene"));
