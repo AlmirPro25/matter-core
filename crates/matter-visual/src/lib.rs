@@ -269,6 +269,33 @@ impl TraceVisualBackend {
         ])))
     }
 
+    pub fn app_run(
+        &mut self,
+        event_path: &str,
+        frames: i64,
+        delta_ms: i64,
+    ) -> Result<Value, VisualError> {
+        if frames <= 0 {
+            return Err(VisualError::InvalidArgument(
+                "visual.app_run frames must be greater than 0".to_string(),
+            ));
+        }
+        if delta_ms <= 0 {
+            return Err(VisualError::InvalidArgument(
+                "visual.app_run delta must be greater than 0".to_string(),
+            ));
+        }
+        let dispatch = self.dispatch_events(event_path)?;
+        let loop_state = self.run_loop(frames, delta_ms)?;
+
+        Ok(Value::Map(HashMap::from([
+            ("dispatch".to_string(), dispatch),
+            ("loop".to_string(), loop_state),
+            ("frames".to_string(), Value::Int(frames)),
+            ("snapshot".to_string(), Value::String(self.pxl_snapshot())),
+        ])))
+    }
+
     pub fn tick(&mut self, delta_ms: i64) -> Result<Value, VisualError> {
         if delta_ms <= 0 {
             return Err(VisualError::InvalidArgument(
@@ -860,6 +887,22 @@ impl Backend for TraceVisualBackend {
                     .as_int()
                     .map_err(|_| "visual.app_step expects int delta".to_string())?;
                 self.app_step(&event_path, delta_ms).map_err(|e| e.to_string())
+            }
+            "app_run" => {
+                if args.len() != 3 {
+                    return Err(format!("visual.app_run expects 3 arguments, got {}", args.len()));
+                }
+                let event_path = args[0]
+                    .as_string()
+                    .map_err(|_| "visual.app_run expects string event path".to_string())?;
+                let frames = args[1]
+                    .as_int()
+                    .map_err(|_| "visual.app_run expects int frames".to_string())?;
+                let delta_ms = args[2]
+                    .as_int()
+                    .map_err(|_| "visual.app_run expects int delta".to_string())?;
+                self.app_run(&event_path, frames, delta_ms)
+                    .map_err(|e| e.to_string())
             }
             "tick" => {
                 if args.len() != 1 {
@@ -2405,6 +2448,75 @@ mod tests {
                 }
             }
             _ => panic!("visual.app_step must return a map"),
+        }
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn test_visual_app_run_dispatches_once_and_runs_frames() {
+        let path = std::env::temp_dir().join("matter_visual_app_run_test.json");
+        fs::write(
+            &path,
+            r#"{"format":"PXL_EVENT_QUEUE","version":1,"events":[{"type":"scene","scene":"game","event":"scene_change"},{"type":"keyboard","key":"Space","target":"ship","event":"boost"}]}"#,
+        )
+        .unwrap();
+
+        let mut backend = TraceVisualBackend::new();
+        backend
+            .call(
+                "region",
+                vec![
+                    Value::String("ship".to_string()),
+                    Value::Int(32),
+                    Value::Int(48),
+                    Value::Int(88),
+                    Value::Int(40),
+                ],
+            )
+            .unwrap();
+        let result = backend
+            .call(
+                "app_run",
+                vec![
+                    Value::String(path.display().to_string()),
+                    Value::Int(4),
+                    Value::Int(16),
+                ],
+            )
+            .unwrap();
+
+        match result {
+            Value::Map(result) => {
+                assert_eq!(result.get("frames"), Some(&Value::Int(4)));
+                match result.get("dispatch") {
+                    Some(Value::Map(dispatch)) => {
+                        assert_eq!(dispatch.get("processed"), Some(&Value::Int(2)));
+                        assert_eq!(
+                            dispatch.get("activeScene"),
+                            Some(&Value::String("game".to_string()))
+                        );
+                    }
+                    _ => panic!("visual.app_run must return dispatch map"),
+                }
+                match result.get("loop") {
+                    Some(Value::Map(loop_state)) => {
+                        assert_eq!(loop_state.get("frame"), Some(&Value::Int(4)));
+                        assert_eq!(loop_state.get("timeMs"), Some(&Value::Int(64)));
+                        assert_eq!(loop_state.get("running"), Some(&Value::Bool(true)));
+                    }
+                    _ => panic!("visual.app_run must return loop map"),
+                }
+                match result.get("snapshot") {
+                    Some(Value::String(snapshot)) => {
+                        assert!(snapshot.contains("\"activeScene\":\"game\""));
+                        assert!(snapshot.contains("\"lastEvent\":\"boost\""));
+                        assert!(snapshot.contains("\"loop\":{\"frame\":4,\"timeMs\":64,\"running\":true}"));
+                    }
+                    _ => panic!("visual.app_run must return snapshot"),
+                }
+            }
+            _ => panic!("visual.app_run must return a map"),
         }
 
         let _ = fs::remove_file(path);
