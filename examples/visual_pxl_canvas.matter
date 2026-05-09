@@ -14,12 +14,15 @@ visual.set("checkout", "material", "glass")
 visual.set("checkout", "event", "checkout_tap")
 visual.state("checkout", "active")
 visual.layer("checkout", 10)
+visual.input("Enter", "checkout", "checkout_submit")
+visual.input(" ", "checkout", "checkout_pulse")
 visual.pulse("checkout")
 
 visual.set("status", "semantic", "system_panel")
 visual.set("status", "event", "status_focus")
 visual.state("status", "idle")
 visual.layer("status", 4)
+visual.input("s", "status", "status_focus")
 
 let canvas = visual.canvas("target/matter-visual-canvas.html")
 print canvas
