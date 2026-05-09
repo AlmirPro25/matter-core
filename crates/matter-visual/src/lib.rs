@@ -32,6 +32,13 @@ pub struct VisualInputBinding {
     pub event: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct VisualLayoutSpec {
+    pub scene: String,
+    pub kind: String,
+    pub gap: i64,
+}
+
 /// Especificação de uma região visual (PXL)
 #[derive(Debug, Clone)]
 pub struct VisualRegionSpec {
@@ -90,6 +97,7 @@ pub struct TraceVisualBackend {
     theme: HashMap<String, String>,
     scenes: Vec<String>,
     current_scene: Option<String>,
+    layouts: Vec<VisualLayoutSpec>,
     stdout_enabled: bool,
 }
 
@@ -107,6 +115,7 @@ impl TraceVisualBackend {
             theme: HashMap::new(),
             scenes: Vec::new(),
             current_scene: None,
+            layouts: Vec::new(),
             stdout_enabled: true,
         }
     }
@@ -295,6 +304,46 @@ impl Backend for TraceVisualBackend {
                     self.scenes.push(name.clone());
                 }
                 self.current_scene = Some(name);
+                Ok(Value::Unit)
+            }
+            "layout" => {
+                if args.len() != 3 {
+                    return Err(format!("visual.layout expects 3 arguments, got {}", args.len()));
+                }
+                let scene = args[0]
+                    .as_string()
+                    .map_err(|_| "visual.layout expects string scene".to_string())?;
+                let kind = args[1]
+                    .as_string()
+                    .map_err(|_| "visual.layout expects string kind".to_string())?;
+                let gap = args[2]
+                    .as_int()
+                    .map_err(|_| "visual.layout expects int gap".to_string())?;
+                if gap < 0 {
+                    return Err("visual.layout gap must be greater than or equal to 0".to_string());
+                }
+                match kind.as_str() {
+                    "absolute" | "vertical" | "horizontal" | "grid" => {}
+                    _ => {
+                        return Err(
+                            "visual.layout kind must be absolute, vertical, horizontal, or grid"
+                                .to_string(),
+                        );
+                    }
+                }
+                if !self.scenes.iter().any(|known_scene| known_scene == &scene) {
+                    self.scenes.push(scene.clone());
+                }
+                if let Some(layout) = self
+                    .layouts
+                    .iter_mut()
+                    .find(|layout| layout.scene == scene)
+                {
+                    layout.kind = kind;
+                    layout.gap = gap;
+                } else {
+                    self.layouts.push(VisualLayoutSpec { scene, kind, gap });
+                }
                 Ok(Value::Unit)
             }
             "region" => {
@@ -620,6 +669,13 @@ fn render_pxl_document(backend: &TraceVisualBackend) -> String {
         .collect::<Vec<_>>()
         .join(",");
     let theme_json = string_map_json(&backend.theme);
+    let mut layouts: Vec<&VisualLayoutSpec> = backend.layouts.iter().collect();
+    layouts.sort_by(|left, right| left.scene.cmp(&right.scene));
+    let layout_json = layouts
+        .into_iter()
+        .map(render_layout)
+        .collect::<Vec<_>>()
+        .join(",");
     let scenes = if backend.scenes.is_empty() {
         vec!["main".to_string()]
     } else {
@@ -638,7 +694,7 @@ fn render_pxl_document(backend: &TraceVisualBackend) -> String {
         .unwrap_or_else(|| "null".to_string());
 
     format!(
-        "{{\"format\":\"PXL\",\"version\":1,\"surfaces\":[{}],\"regions\":[{}],\"pulses\":[{}],\"camera\":{},\"inputs\":[{}],\"theme\":{},\"scenes\":{},\"activeScene\":\"{}\",\"loaded\":{},\"apps\":{}}}",
+        "{{\"format\":\"PXL\",\"version\":1,\"surfaces\":[{}],\"regions\":[{}],\"pulses\":[{}],\"camera\":{},\"inputs\":[{}],\"theme\":{},\"scenes\":{},\"activeScene\":\"{}\",\"layouts\":[{}],\"loaded\":{},\"apps\":{}}}",
         surface_json,
         region_json,
         pulse_json,
@@ -647,6 +703,7 @@ fn render_pxl_document(backend: &TraceVisualBackend) -> String {
         theme_json,
         scene_json,
         json_escape(&active_scene),
+        layout_json,
         loaded_json,
         app_json
     )
@@ -674,6 +731,15 @@ fn render_input(input: &VisualInputBinding) -> String {
         json_escape(&input.key),
         json_escape(&input.target),
         json_escape(&input.event)
+    )
+}
+
+fn render_layout(layout: &VisualLayoutSpec) -> String {
+    format!(
+        "{{\"scene\":\"{}\",\"kind\":\"{}\",\"gap\":{}}}",
+        json_escape(&layout.scene),
+        json_escape(&layout.kind),
+        layout.gap
     )
 }
 
@@ -775,7 +841,7 @@ fn render_pxl_canvas(backend: &TraceVisualBackend) -> String {
     );
     html = html.replace(
         "let selected=null;const zoomScale",
-        "let selected=null;let activeScene=pxl.activeScene||(pxl.scenes&&pxl.scenes[0])||'main';const zoomScale",
+        "let selected=null;let activeScene=pxl.activeScene||(pxl.scenes&&pxl.scenes[0])||'main';const layoutsByScene=new Map((pxl.layouts||[]).map((layout)=>[layout.scene,layout]));const zoomScale",
     );
     html = html.replace(
         "bindings.innerHTML=(pxl.inputs||[]).map((input)=>'<div><kbd>'+input.key+'</kbd><span>'+input.target+' / '+input.event+'</span></div>').join('')||'<div>No input bindings</div>';",
@@ -783,7 +849,15 @@ fn render_pxl_canvas(backend: &TraceVisualBackend) -> String {
     );
     html = html.replace(
         "function regionVisible(region){return prop(region,'visible')!==false;}",
-        "function regionScene(region){return prop(region,'scene')||'main';}function regionVisible(region){return prop(region,'visible')!==false&&regionScene(region)===activeScene;}",
+        "function regionScene(region){return prop(region,'scene')||'main';}function regionVisible(region){return prop(region,'visible')!==false&&regionScene(region)===activeScene;}function sceneLayout(scene){return layoutsByScene.get(scene)||{kind:'absolute',gap:0};}function layoutedRegion(region,index){const layout=sceneLayout(regionScene(region));const kind=layout.kind||'absolute';if(kind==='absolute')return region;const gap=Math.max(0,Number(layout.gap||0));const copy={...region};if(kind==='vertical'){copy.x=40;copy.y=40+index*(region.h+gap);}else if(kind==='horizontal'){copy.x=40+index*(region.w+gap);copy.y=40;}else if(kind==='grid'){const columns=Math.max(1,Math.floor((surface.width-80+gap)/(Math.max(1,region.w)+gap)));copy.x=40+(index%columns)*(region.w+gap);copy.y=40+Math.floor(index/columns)*(region.h+gap);}return copy;}",
+    );
+    html = html.replace(
+        "sortedRegions().forEach((region)=>drawRegion(region,time));",
+        "const regions=sortedRegions();regions.forEach((region,index)=>drawRegion(layoutedRegion(region,index),time));",
+    );
+    html = html.replace(
+        "return sortedRegions().reverse().find((region)=>x>=region.x&&x<=region.x+region.w&&y>=region.y&&y<=region.y+region.h);",
+        "const regions=sortedRegions();return regions.map((region,index)=>layoutedRegion(region,index)).reverse().find((region)=>x>=region.x&&x<=region.x+region.w&&y>=region.y&&y<=region.y+region.h);",
     );
     html
 }
@@ -1226,6 +1300,16 @@ mod tests {
             .unwrap();
         backend
             .call(
+                "layout",
+                vec![
+                    Value::String("home".to_string()),
+                    Value::String("grid".to_string()),
+                    Value::Int(12),
+                ],
+            )
+            .unwrap();
+        backend
+            .call(
                 "region",
                 vec![
                     Value::String("checkout".to_string()),
@@ -1346,10 +1430,14 @@ mod tests {
         assert!(html.contains("\"layer\":4"));
         assert!(html.contains("\"scenes\":[\"home\"]"));
         assert!(html.contains("\"activeScene\":\"home\""));
+        assert!(html.contains("\"layouts\":[{\"scene\":\"home\",\"kind\":\"grid\",\"gap\":12}]"));
         assert!(html.contains("\"scene\":\"home\""));
         assert!(html.contains("scene-list"));
         assert!(html.contains("activeScene"));
         assert!(html.contains("regionScene"));
+        assert!(html.contains("layoutsByScene"));
+        assert!(html.contains("sceneLayout"));
+        assert!(html.contains("layoutedRegion"));
         assert!(html.contains("\"inputs\":[{\"key\":\"Enter\",\"target\":\"checkout\",\"event\":\"checkout_submit\"}]"));
         assert!(html.contains("\"theme\":{\"accent\":\"#0f766e\"}"));
         assert!(html.contains("themeValue"));
