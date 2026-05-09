@@ -1,0 +1,8 @@
+let labels = ["Jan", "Feb", "Mar", "Apr"]
+let values = [12, 20, 16, 28]
+
+let svg = graph.bar("Matter usage", labels, values)
+print svg
+
+let saved = graph.save("target/matter-usage.svg", "line", "Matter usage", labels, values)
+print saved

@@ -1,7 +1,7 @@
 /// Matter Runtime
 /// Sistema de eventos, estado e scheduler
 
-use matter_backend::{AgentBackend, Backend, NetBackend, StoreBackend, Value, VisualBackend};
+use matter_backend::{AgentBackend, Backend, GraphBackend, NetBackend, StoreBackend, Value, VisualBackend};
 use matter_bytecode::Bytecode;
 use matter_stdlib::{ListBackend, MathBackend, StringBackend};
 use matter_vm::Vm;
@@ -17,6 +17,7 @@ impl Runtime {
         // Register default backends
         vm.register_backend("agent".to_string(), Box::new(AgentBackend::new()));
         vm.register_backend("visual".to_string(), Box::new(VisualBackend::new()));
+        vm.register_backend("graph".to_string(), Box::new(GraphBackend::new()));
         vm.register_backend("store".to_string(), Box::new(StoreBackend::new()));
         vm.register_backend("net".to_string(), Box::new(NetBackend::new()));
         
@@ -33,6 +34,7 @@ impl Runtime {
 
         vm.register_backend("agent".to_string(), Box::new(SilentAgentBackend));
         vm.register_backend("visual".to_string(), Box::new(SilentVisualBackend));
+        vm.register_backend("graph".to_string(), Box::new(GraphBackend::new()));
         vm.register_backend("store".to_string(), Box::new(StoreBackend::new()));
         vm.register_backend("net".to_string(), Box::new(NetBackend::new()));
         

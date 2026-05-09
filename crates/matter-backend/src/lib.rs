@@ -168,6 +168,262 @@ impl Backend for VisualBackend {
     }
 }
 
+/// SVG chart backend for reports, dashboards, and API-generated visual output.
+pub struct GraphBackend;
+
+impl GraphBackend {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for GraphBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Backend for GraphBackend {
+    fn call(&mut self, method: &str, args: Vec<Value>) -> Result<Value, String> {
+        match method {
+            "bar" => {
+                let (title, labels, values) = chart_args("graph.bar", args)?;
+                Ok(Value::String(render_bar_chart(&title, &labels, &values)))
+            }
+            "line" => {
+                let (title, labels, values) = chart_args("graph.line", args)?;
+                Ok(Value::String(render_line_chart(&title, &labels, &values)))
+            }
+            "pie" => {
+                let (title, labels, values) = chart_args("graph.pie", args)?;
+                Ok(Value::String(render_pie_chart(&title, &labels, &values)))
+            }
+            "save" => {
+                if args.len() != 5 {
+                    return Err(format!("graph.save expects 5 arguments, got {}", args.len()));
+                }
+                let path = args[0].as_string().map_err(|e| format!("graph.save: {}", e))?;
+                let kind = args[1].as_string().map_err(|e| format!("graph.save: {}", e))?;
+                let title = args[2].as_string().map_err(|e| format!("graph.save: {}", e))?;
+                let labels = value_list_strings("graph.save labels", &args[3])?;
+                let values = value_list_ints("graph.save values", &args[4])?;
+                validate_chart_data("graph.save", &labels, &values)?;
+
+                let svg = match kind.as_str() {
+                    "bar" => render_bar_chart(&title, &labels, &values),
+                    "line" => render_line_chart(&title, &labels, &values),
+                    "pie" => render_pie_chart(&title, &labels, &values),
+                    _ => return Err(format!("graph.save: unknown chart kind '{}'", kind)),
+                };
+
+                if let Some(parent) = std::path::Path::new(&path).parent() {
+                    if !parent.as_os_str().is_empty() {
+                        fs::create_dir_all(parent)
+                            .map_err(|e| format!("graph.save could not create directory: {}", e))?;
+                    }
+                }
+                fs::write(&path, svg)
+                    .map_err(|e| format!("graph.save could not write '{}': {}", path, e))?;
+                Ok(Value::String(path))
+            }
+            _ => Err(format!("Unknown graph method: {}", method)),
+        }
+    }
+}
+
+fn chart_args(
+    name: &str,
+    args: Vec<Value>,
+) -> Result<(String, Vec<String>, Vec<i64>), String> {
+    if args.len() != 3 {
+        return Err(format!("{} expects 3 arguments, got {}", name, args.len()));
+    }
+    let title = args[0].as_string().map_err(|e| format!("{}: {}", name, e))?;
+    let labels = value_list_strings(&format!("{} labels", name), &args[1])?;
+    let values = value_list_ints(&format!("{} values", name), &args[2])?;
+    validate_chart_data(name, &labels, &values)?;
+    Ok((title, labels, values))
+}
+
+fn value_list_strings(context: &str, value: &Value) -> Result<Vec<String>, String> {
+    match value {
+        Value::List(items) => items
+            .iter()
+            .map(|item| item.as_string().map_err(|e| format!("{}: {}", context, e)))
+            .collect(),
+        _ => Err(format!("{} must be a list", context)),
+    }
+}
+
+fn value_list_ints(context: &str, value: &Value) -> Result<Vec<i64>, String> {
+    match value {
+        Value::List(items) => items
+            .iter()
+            .map(|item| item.as_int().map_err(|e| format!("{}: {}", context, e)))
+            .collect(),
+        _ => Err(format!("{} must be a list", context)),
+    }
+}
+
+fn validate_chart_data(name: &str, labels: &[String], values: &[i64]) -> Result<(), String> {
+    if labels.is_empty() {
+        return Err(format!("{} requires at least one data point", name));
+    }
+    if labels.len() != values.len() {
+        return Err(format!(
+            "{} requires labels and values with the same length",
+            name
+        ));
+    }
+    Ok(())
+}
+
+fn render_bar_chart(title: &str, labels: &[String], values: &[i64]) -> String {
+    let width = 720i64;
+    let height = 420i64;
+    let left = 64i64;
+    let top = 64i64;
+    let chart_w = 600i64;
+    let chart_h = 280i64;
+    let max = values.iter().map(|value| value.abs()).max().unwrap_or(1).max(1);
+    let step = (chart_w / labels.len() as i64).max(28);
+    let bar_w = (step - 12).max(12);
+
+    let mut body = String::new();
+    for (index, (label, value)) in labels.iter().zip(values.iter()).enumerate() {
+        let magnitude = value.abs();
+        let bar_h = (magnitude * chart_h / max).max(if magnitude == 0 { 0 } else { 2 });
+        let x = left + index as i64 * step + 6;
+        let y = top + chart_h - bar_h;
+        body.push_str(&format!(
+            "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"#2563eb\" rx=\"3\"/><text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"12\" fill=\"#111827\">{}</text><text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"11\" fill=\"#4b5563\">{}</text>",
+            x,
+            y,
+            bar_w,
+            bar_h,
+            x + bar_w / 2,
+            y - 8,
+            value,
+            x + bar_w / 2,
+            top + chart_h + 24,
+            escape_svg(label)
+        ));
+    }
+
+    chart_shell(width, height, title, &body)
+}
+
+fn render_line_chart(title: &str, labels: &[String], values: &[i64]) -> String {
+    let width = 720i64;
+    let height = 420i64;
+    let left = 64i64;
+    let top = 64i64;
+    let chart_w = 600i64;
+    let chart_h = 280i64;
+    let max = values.iter().copied().max().unwrap_or(1).max(1);
+    let min = values.iter().copied().min().unwrap_or(0).min(0);
+    let range = (max - min).max(1);
+    let denom = (values.len() as i64 - 1).max(1);
+
+    let mut points = Vec::new();
+    for (index, value) in values.iter().enumerate() {
+        let x = left + index as i64 * chart_w / denom;
+        let y = top + chart_h - ((*value - min) * chart_h / range);
+        points.push((x, y, value));
+    }
+
+    let path = points
+        .iter()
+        .enumerate()
+        .map(|(index, (x, y, _))| {
+            if index == 0 {
+                format!("M {} {}", x, y)
+            } else {
+                format!("L {} {}", x, y)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    let mut body = format!(
+        "<path d=\"{}\" fill=\"none\" stroke=\"#059669\" stroke-width=\"4\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>",
+        path
+    );
+    for (index, (x, y, value)) in points.iter().enumerate() {
+        body.push_str(&format!(
+            "<circle cx=\"{}\" cy=\"{}\" r=\"5\" fill=\"#059669\"/><text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"12\" fill=\"#111827\">{}</text><text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"11\" fill=\"#4b5563\">{}</text>",
+            x,
+            y,
+            x,
+            y - 12,
+            value,
+            x,
+            top + chart_h + 24,
+            escape_svg(&labels[index])
+        ));
+    }
+
+    chart_shell(width, height, title, &body)
+}
+
+fn render_pie_chart(title: &str, labels: &[String], values: &[i64]) -> String {
+    let width = 720i64;
+    let height = 420i64;
+    let cx = 250.0f64;
+    let cy = 220.0f64;
+    let radius = 120.0f64;
+    let total: i64 = values.iter().map(|value| value.abs()).sum::<i64>().max(1);
+    let colors = ["#2563eb", "#059669", "#dc2626", "#d97706", "#7c3aed", "#0891b2"];
+    let mut start = -std::f64::consts::FRAC_PI_2;
+    let mut body = String::new();
+
+    for (index, (label, value)) in labels.iter().zip(values.iter()).enumerate() {
+        let slice = value.abs() as f64 / total as f64;
+        let end = start + slice * std::f64::consts::TAU;
+        let large_arc = if end - start > std::f64::consts::PI { 1 } else { 0 };
+        let x1 = cx + radius * start.cos();
+        let y1 = cy + radius * start.sin();
+        let x2 = cx + radius * end.cos();
+        let y2 = cy + radius * end.sin();
+        let color = colors[index % colors.len()];
+        body.push_str(&format!(
+            "<path d=\"M {} {} L {:.2} {:.2} A {} {} 0 {} 1 {:.2} {:.2} Z\" fill=\"{}\"/>",
+            cx, cy, x1, y1, radius, radius, large_arc, x2, y2, color
+        ));
+        body.push_str(&format!(
+            "<rect x=\"470\" y=\"{}\" width=\"14\" height=\"14\" fill=\"{}\"/><text x=\"492\" y=\"{}\" font-size=\"13\" fill=\"#111827\">{} ({})</text>",
+            128 + index as i64 * 28,
+            color,
+            140 + index as i64 * 28,
+            escape_svg(label),
+            value
+        ));
+        start = end;
+    }
+
+    chart_shell(width, height, title, &body)
+}
+
+fn chart_shell(width: i64, height: i64, title: &str, body: &str) -> String {
+    format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\"><rect width=\"100%\" height=\"100%\" fill=\"#f8fafc\"/><text x=\"36\" y=\"38\" font-size=\"22\" font-family=\"Arial, sans-serif\" font-weight=\"700\" fill=\"#111827\">{}</text><line x1=\"64\" y1=\"344\" x2=\"664\" y2=\"344\" stroke=\"#cbd5e1\"/><line x1=\"64\" y1=\"64\" x2=\"64\" y2=\"344\" stroke=\"#cbd5e1\"/>{}</svg>",
+        width,
+        height,
+        width,
+        height,
+        escape_svg(title),
+        body
+    )
+}
+
+fn escape_svg(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
 /// HTTP network backend.
 pub struct NetBackend {
     timeout: Duration,
@@ -582,5 +838,50 @@ fn decode_value(json: &serde_json::Value) -> Result<Value, String> {
                 .to_string(),
         )),
         _ => Err(format!("unknown stored value type '{}'", value_type)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn graph_bar_returns_svg() {
+        let mut graph = GraphBackend::new();
+        let result = graph
+            .call(
+                "bar",
+                vec![
+                    Value::String("Vendas".to_string()),
+                    Value::List(vec![
+                        Value::String("Jan".to_string()),
+                        Value::String("Fev".to_string()),
+                    ]),
+                    Value::List(vec![Value::Int(10), Value::Int(24)]),
+                ],
+            )
+            .unwrap();
+
+        let svg = result.as_string().unwrap();
+        assert!(svg.starts_with("<svg"));
+        assert!(svg.contains("Vendas"));
+        assert!(svg.contains("Jan"));
+    }
+
+    #[test]
+    fn graph_rejects_mismatched_lengths() {
+        let mut graph = GraphBackend::new();
+        let error = graph
+            .call(
+                "line",
+                vec![
+                    Value::String("Uso".to_string()),
+                    Value::List(vec![Value::String("A".to_string())]),
+                    Value::List(vec![Value::Int(1), Value::Int(2)]),
+                ],
+            )
+            .unwrap_err();
+
+        assert!(error.contains("same length"));
     }
 }
