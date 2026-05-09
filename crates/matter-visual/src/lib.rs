@@ -253,6 +253,22 @@ impl TraceVisualBackend {
         apply_visual_event_document(self, &content)
     }
 
+    pub fn app_step(&mut self, event_path: &str, delta_ms: i64) -> Result<Value, VisualError> {
+        if delta_ms <= 0 {
+            return Err(VisualError::InvalidArgument(
+                "visual.app_step delta must be greater than 0".to_string(),
+            ));
+        }
+        let dispatch = self.dispatch_events(event_path)?;
+        let loop_state = self.tick(delta_ms)?;
+
+        Ok(Value::Map(HashMap::from([
+            ("dispatch".to_string(), dispatch),
+            ("loop".to_string(), loop_state),
+            ("snapshot".to_string(), Value::String(self.pxl_snapshot())),
+        ])))
+    }
+
     pub fn tick(&mut self, delta_ms: i64) -> Result<Value, VisualError> {
         if delta_ms <= 0 {
             return Err(VisualError::InvalidArgument(
@@ -832,6 +848,18 @@ impl Backend for TraceVisualBackend {
                     .as_string()
                     .map_err(|_| "visual.dispatch_events expects string path".to_string())?;
                 self.dispatch_events(&path).map_err(|e| e.to_string())
+            }
+            "app_step" => {
+                if args.len() != 2 {
+                    return Err(format!("visual.app_step expects 2 arguments, got {}", args.len()));
+                }
+                let event_path = args[0]
+                    .as_string()
+                    .map_err(|_| "visual.app_step expects string event path".to_string())?;
+                let delta_ms = args[1]
+                    .as_int()
+                    .map_err(|_| "visual.app_step expects int delta".to_string())?;
+                self.app_step(&event_path, delta_ms).map_err(|e| e.to_string())
             }
             "tick" => {
                 if args.len() != 1 {
@@ -2316,6 +2344,69 @@ mod tests {
         assert!(snapshot.contains("\"state\":\"active\""));
         assert!(snapshot.contains("\"selected\":true"));
         assert!(snapshot.contains("\"lastEvent\":\"editor_move\""));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn test_visual_app_step_dispatches_events_and_advances_loop() {
+        let path = std::env::temp_dir().join("matter_visual_app_step_test.json");
+        fs::write(
+            &path,
+            r#"{"format":"PXL_EVENT_QUEUE","version":1,"events":[{"type":"pointer","target":"play","event":"play_tap"}]}"#,
+        )
+        .unwrap();
+
+        let mut backend = TraceVisualBackend::new();
+        backend
+            .call(
+                "region",
+                vec![
+                    Value::String("play".to_string()),
+                    Value::Int(12),
+                    Value::Int(18),
+                    Value::Int(140),
+                    Value::Int(48),
+                ],
+            )
+            .unwrap();
+        let result = backend
+            .call(
+                "app_step",
+                vec![Value::String(path.display().to_string()), Value::Int(33)],
+            )
+            .unwrap();
+
+        match result {
+            Value::Map(result) => {
+                match result.get("dispatch") {
+                    Some(Value::Map(dispatch)) => {
+                        assert_eq!(dispatch.get("processed"), Some(&Value::Int(1)));
+                        assert_eq!(
+                            dispatch.get("selected"),
+                            Some(&Value::String("play".to_string()))
+                        );
+                    }
+                    _ => panic!("visual.app_step must return dispatch map"),
+                }
+                match result.get("loop") {
+                    Some(Value::Map(loop_state)) => {
+                        assert_eq!(loop_state.get("frame"), Some(&Value::Int(1)));
+                        assert_eq!(loop_state.get("timeMs"), Some(&Value::Int(33)));
+                        assert_eq!(loop_state.get("running"), Some(&Value::Bool(true)));
+                    }
+                    _ => panic!("visual.app_step must return loop map"),
+                }
+                match result.get("snapshot") {
+                    Some(Value::String(snapshot)) => {
+                        assert!(snapshot.contains("\"lastEvent\":\"play_tap\""));
+                        assert!(snapshot.contains("\"loop\":{\"frame\":1,\"timeMs\":33,\"running\":true}"));
+                    }
+                    _ => panic!("visual.app_step must return snapshot"),
+                }
+            }
+            _ => panic!("visual.app_step must return a map"),
+        }
+
         let _ = fs::remove_file(path);
     }
 
