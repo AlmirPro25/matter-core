@@ -124,6 +124,9 @@ stdlib_demo = "api_bridge_project_dependency.matter"
         if (@($json.json_commands) -notcontains "project-lock-json") {
             Fail "capabilities-json deveria listar project-lock-json"
         }
+        if (@($json.json_commands) -notcontains "project-source-json") {
+            Fail "capabilities-json deveria listar project-source-json"
+        }
         if (@($json.language_features) -notcontains "events") {
             Fail "capabilities-json deveria listar events"
         }
@@ -201,6 +204,23 @@ stdlib_demo = "api_bridge_project_dependency.matter"
             Fail "project-lock-json deveria gerar fingerprint para arquivos"
         }
         Pass "project-lock-json"
+    }
+
+    Write-Host "Gerando source resolvido via project-source-json..."
+    $json = Invoke-JsonNoInput @("project-source-json", $projectManifestFile) 0
+    if ($null -ne $json) {
+        Assert-Equal $json.ok $true "project-source-json deveria retornar ok=true"
+        Assert-Equal $json.package "api-bridge-project" "project-source-json deveria usar nome do pacote"
+        if ($json.source -notlike "*fn square*") {
+            Fail "project-source-json deveria expandir imports da stdlib"
+        }
+        if ($json.source -like '*import "stdlib_demo"*') {
+            Fail "project-source-json nao deveria manter alias importado no source final"
+        }
+        if ([string]::IsNullOrWhiteSpace($json.fingerprint)) {
+            Fail "project-source-json deveria gerar fingerprint do source final"
+        }
+        Pass "project-source-json"
     }
 
     Write-Host "Compilando projeto via project-compile-json..."

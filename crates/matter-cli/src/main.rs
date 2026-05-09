@@ -72,6 +72,15 @@ fn main() {
             project_lock_json(manifest);
         }
 
+        "project-source-json" => {
+            let manifest = if args.len() >= 3 {
+                &args[2]
+            } else {
+                "matter.toml"
+            };
+            project_source_json(manifest);
+        }
+
         "project-compile-json" => {
             let manifest = if args.len() >= 3 {
                 &args[2]
@@ -262,6 +271,7 @@ fn print_usage() {
     println!("  matter-cli project-run-json [matter.toml]   Run package entrypoint as JSON");
     println!("  matter-cli project-imports-json [matter.toml] Inspect package import graph as JSON");
     println!("  matter-cli project-lock-json [matter.toml]  Print reproducible package lock JSON");
+    println!("  matter-cli project-source-json [matter.toml] Print resolved package source as JSON");
     println!("  matter-cli project-compile-json [matter.toml] [-o out] Compile package entrypoint as JSON");
     println!("  matter-cli run <file.matter|->              Run Matter source file or stdin");
     println!("  matter-cli eval <source>                    Run Matter source passed as text");
@@ -301,6 +311,7 @@ fn print_capabilities_json() {
             "\"project-run-json\",",
             "\"project-imports-json\",",
             "\"project-lock-json\",",
+            "\"project-source-json\",",
             "\"project-compile-json\",",
             "\"eval-json\",",
             "\"tokens-json\",",
@@ -592,6 +603,22 @@ fn project_lock_json(manifest_path: &str) {
         manifest_dependencies_json(&project.manifest.dependencies),
         imports.len(),
         import_items.join(",")
+    );
+}
+fn project_source_json(manifest_path: &str) {
+    let project = load_project_or_json_exit(manifest_path);
+    let _env = apply_project_env(&project);
+    let (source, entry_label) = read_project_entry_or_json_exit(&project);
+    let fingerprint = fnv1a64_hex(source.as_bytes());
+
+    println!(
+        "{{\"ok\":true,\"package\":\"{}\",\"manifest\":\"{}\",\"input\":\"{}\",\"bytes\":{},\"fingerprint\":\"{}\",\"source\":\"{}\"}}",
+        json_escape(&project.manifest.name),
+        json_escape(&project.manifest_path),
+        json_escape(&entry_label),
+        source.as_bytes().len(),
+        json_escape(&fingerprint),
+        json_escape(&source)
     );
 }
 fn project_compile_json(manifest_path: &str, output: &str) {
