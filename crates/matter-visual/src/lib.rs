@@ -192,13 +192,29 @@ impl TraceVisualBackend {
     pub fn export_web_runtime(&self, dir: &str, app_name: &str) -> Result<(), VisualError> {
         let root = Path::new(dir);
         fs::create_dir_all(root).map_err(|error| VisualError::RuntimeError(error.to_string()))?;
-        fs::write(root.join("index.html"), render_pxl_canvas(self))
+        let index = render_pxl_canvas(self);
+        let pxl = self.pxl_snapshot();
+        let manifest = render_web_manifest(app_name);
+        let package = render_web_package_manifest(app_name);
+        let lock = render_web_package_lock(
+            app_name,
+            &[
+                ("index.html", &index),
+                ("pxl.json", &pxl),
+                ("manifest.json", &manifest),
+                ("matter-package.json", &package),
+            ],
+        );
+
+        fs::write(root.join("index.html"), index)
             .map_err(|error| VisualError::RuntimeError(error.to_string()))?;
-        fs::write(root.join("pxl.json"), self.pxl_snapshot())
+        fs::write(root.join("pxl.json"), pxl)
             .map_err(|error| VisualError::RuntimeError(error.to_string()))?;
-        fs::write(root.join("manifest.json"), render_web_manifest(app_name))
+        fs::write(root.join("manifest.json"), manifest)
             .map_err(|error| VisualError::RuntimeError(error.to_string()))?;
-        fs::write(root.join("matter-package.json"), render_web_package_manifest(app_name))
+        fs::write(root.join("matter-package.json"), package)
+            .map_err(|error| VisualError::RuntimeError(error.to_string()))?;
+        fs::write(root.join("matter-lock.json"), lock)
             .map_err(|error| VisualError::RuntimeError(error.to_string()))?;
         Ok(())
     }
@@ -942,7 +958,7 @@ fn render_editor_state(enabled: bool) -> String {
 
 fn render_web_manifest(app_name: &str) -> String {
     format!(
-        "{{\"format\":\"MATTER_WEB_RUNTIME\",\"version\":1,\"app\":\"{}\",\"entry\":\"index.html\",\"pxl\":\"pxl.json\",\"runtime\":\"pxl-canvas\",\"package\":\"matter-package.json\",\"files\":[\"index.html\",\"pxl.json\",\"manifest.json\",\"matter-package.json\"]}}",
+        "{{\"format\":\"MATTER_WEB_RUNTIME\",\"version\":1,\"app\":\"{}\",\"entry\":\"index.html\",\"pxl\":\"pxl.json\",\"runtime\":\"pxl-canvas\",\"package\":\"matter-package.json\",\"lock\":\"matter-lock.json\",\"files\":[\"index.html\",\"pxl.json\",\"manifest.json\",\"matter-package.json\",\"matter-lock.json\"]}}",
         json_escape(app_name)
     )
 }
@@ -950,10 +966,40 @@ fn render_web_manifest(app_name: &str) -> String {
 fn render_web_package_manifest(app_name: &str) -> String {
     let package_name = package_slug(app_name);
     format!(
-        "{{\"format\":\"MATTER_PACKAGE\",\"version\":1,\"name\":\"{}\",\"displayName\":\"{}\",\"kind\":\"web-runtime\",\"entry\":\"index.html\",\"artifacts\":[{{\"kind\":\"pxl\",\"path\":\"pxl.json\"}},{{\"kind\":\"web\",\"path\":\"index.html\"}}],\"dependencies\":{{\"matter.pxl\":\"^0.1.0\"}}}}",
+        "{{\"format\":\"MATTER_PACKAGE\",\"version\":1,\"name\":\"{}\",\"displayName\":\"{}\",\"kind\":\"web-runtime\",\"entry\":\"index.html\",\"lock\":\"matter-lock.json\",\"artifacts\":[{{\"kind\":\"pxl\",\"path\":\"pxl.json\"}},{{\"kind\":\"web\",\"path\":\"index.html\"}}],\"dependencies\":{{\"matter.pxl\":\"^0.1.0\"}}}}",
         json_escape(&package_name),
         json_escape(app_name)
     )
+}
+
+fn render_web_package_lock(app_name: &str, files: &[(&str, &str)]) -> String {
+    let package_name = package_slug(app_name);
+    let entries = files
+        .iter()
+        .map(|(path, content)| {
+            format!(
+                "{{\"path\":\"{}\",\"bytes\":{},\"fingerprint\":\"{}\"}}",
+                json_escape(path),
+                content.as_bytes().len(),
+                stable_fingerprint(content.as_bytes())
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    format!(
+        "{{\"format\":\"MATTER_LOCK\",\"version\":1,\"package\":\"{}\",\"files\":[{}]}}",
+        json_escape(&package_name),
+        entries
+    )
+}
+
+fn stable_fingerprint(bytes: &[u8]) -> String {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for byte in bytes {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("{:016x}", hash)
 }
 
 fn package_slug(value: &str) -> String {
@@ -1774,17 +1820,25 @@ mod tests {
         let pxl = fs::read_to_string(dir.join("pxl.json")).unwrap();
         let manifest = fs::read_to_string(dir.join("manifest.json")).unwrap();
         let package = fs::read_to_string(dir.join("matter-package.json")).unwrap();
+        let lock = fs::read_to_string(dir.join("matter-lock.json")).unwrap();
         assert!(index.contains("PXL Canvas Engine"));
         assert!(pxl.contains("\"format\":\"PXL\""));
         assert!(manifest.contains("\"format\":\"MATTER_WEB_RUNTIME\""));
         assert!(manifest.contains("\"entry\":\"index.html\""));
         assert!(manifest.contains("\"pxl\":\"pxl.json\""));
         assert!(manifest.contains("\"package\":\"matter-package.json\""));
+        assert!(manifest.contains("\"lock\":\"matter-lock.json\""));
         assert!(manifest.contains("\"app\":\"Matter PXL Demo\""));
         assert!(package.contains("\"format\":\"MATTER_PACKAGE\""));
         assert!(package.contains("\"name\":\"matter-pxl-demo\""));
         assert!(package.contains("\"kind\":\"web-runtime\""));
         assert!(package.contains("\"matter.pxl\":\"^0.1.0\""));
+        assert!(package.contains("\"lock\":\"matter-lock.json\""));
+        assert!(lock.contains("\"format\":\"MATTER_LOCK\""));
+        assert!(lock.contains("\"package\":\"matter-pxl-demo\""));
+        assert!(lock.contains("\"path\":\"index.html\""));
+        assert!(lock.contains("\"path\":\"pxl.json\""));
+        assert!(lock.contains("\"fingerprint\""));
         let _ = fs::remove_dir_all(dir);
     }
 
