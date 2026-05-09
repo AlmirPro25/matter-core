@@ -6,6 +6,7 @@ visual.theme("accent", "#0f766e")
 visual.theme("selected", "#f59e0b")
 visual.theme("regionFill", "rgba(15,118,110,.18)")
 
+visual.scene("home")
 visual.region("menu", 40, 36, 420, 64)
 visual.region("checkout", 120, 220, 280, 86)
 visual.region("status", 520, 120, 260, 120)
@@ -41,5 +42,12 @@ visual.text("debug", "Debug oculto")
 visual.visible("debug", false)
 visual.layer("debug", 99)
 
+visual.scene("settings")
+visual.region("settings_panel", 160, 120, 520, 220)
+visual.text("settings_panel", "Tela de configuracoes")
+visual.set("settings_panel", "event", "settings_focus")
+visual.layer("settings_panel", 1)
+
+visual.scene("home")
 let canvas = visual.canvas("target/matter-visual-canvas.html")
 print canvas
