@@ -540,6 +540,35 @@ impl PackageManager {
         })
     }
 
+    pub fn resolve_import(&self, package: &Package, name: &str) -> Result<PathBuf, String> {
+        if !package.manifest.dependencies.contains_key(name) {
+            return Err(format!(
+                "Package '{}' does not declare dependency '{}'",
+                package.manifest.name, name
+            ));
+        }
+
+        let installed_root = package.root.join(".matter").join("packages").join(name);
+        if !installed_root.exists() {
+            return Err(format!(
+                "Dependency '{}' is not installed; run package install first",
+                name
+            ));
+        }
+
+        let dependency = Package::load(&installed_root)?;
+        let entry_path = dependency.entry_path();
+        if !entry_path.exists() {
+            return Err(format!(
+                "Dependency '{}' entry '{}' does not exist",
+                name,
+                dependency.manifest.entry
+            ));
+        }
+
+        Ok(entry_path)
+    }
+
     pub fn verify_lockfile(&self, package: &Package, lockfile: &Lockfile) -> Result<(), String> {
         let expected = self.lock_dependencies(package)?;
         if &expected == lockfile {
@@ -851,6 +880,59 @@ math-utils = "^1.0.0"
 
         let _ = fs::remove_dir_all(root);
         let _ = fs::remove_dir_all(registry_root);
+    }
+
+    #[test]
+    fn test_resolve_import_returns_installed_entry_path() {
+        let root = std::env::temp_dir().join("matter_package_import_test");
+        let registry_root = std::env::temp_dir().join("matter_package_import_registry");
+        let _ = fs::remove_dir_all(&root);
+        let _ = fs::remove_dir_all(&registry_root);
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::create_dir_all(registry_root.join("utils").join("src")).unwrap();
+
+        let mut app_manifest = Manifest::new("app".to_string(), Version::new(0, 1, 0));
+        app_manifest.dependencies.insert(
+            "utils".to_string(),
+            Dependency::Registry(VersionReq::Caret(Version::new(1, 0, 0))),
+        );
+        let app = Package::new(app_manifest, root.clone());
+        app.manifest.save(&root.join("matter.toml")).unwrap();
+
+        let mut utils_manifest = Manifest::new("utils".to_string(), Version::new(1, 2, 0));
+        utils_manifest.entry = "src/lib.matter".to_string();
+        let utils_root = registry_root.join("utils");
+        utils_manifest.save(&utils_root.join("matter.toml")).unwrap();
+        fs::write(utils_root.join("src").join("lib.matter"), "fn util() { return 1 }\n").unwrap();
+        let utils = Package::new(utils_manifest, utils_root.clone());
+
+        let mut manager = PackageManager::new();
+        manager.register_package(utils);
+        manager.install_dependencies(&app).unwrap();
+
+        let import_path = manager.resolve_import(&app, "utils").unwrap();
+        assert_eq!(
+            import_path,
+            root.join(".matter")
+                .join("packages")
+                .join("utils")
+                .join("src")
+                .join("lib.matter")
+        );
+
+        let _ = fs::remove_dir_all(root);
+        let _ = fs::remove_dir_all(registry_root);
+    }
+
+    #[test]
+    fn test_resolve_import_requires_declared_dependency() {
+        let app = Package::new(
+            Manifest::new("app".to_string(), Version::new(0, 1, 0)),
+            PathBuf::from("app"),
+        );
+        let manager = PackageManager::new();
+        let error = manager.resolve_import(&app, "utils").unwrap_err();
+        assert!(error.contains("does not declare dependency"));
     }
 
     #[test]
