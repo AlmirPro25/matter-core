@@ -9,6 +9,7 @@ visual.theme("regionFill", "rgba(15,118,110,.18)")
 visual.region("menu", 40, 36, 420, 64)
 visual.region("checkout", 120, 220, 280, 86)
 visual.region("status", 520, 120, 260, 120)
+visual.region("debug", 40, 430, 280, 56)
 
 visual.set("menu", "semantic", "navigation")
 visual.text("menu", "Navegacao")
@@ -35,6 +36,10 @@ visual.state("status", "idle")
 visual.layer("status", 4)
 visual.input("s", "status", "status_focus")
 visual.motion("status", "float", 1800)
+
+visual.text("debug", "Debug oculto")
+visual.visible("debug", false)
+visual.layer("debug", 99)
 
 let canvas = visual.canvas("target/matter-visual-canvas.html")
 print canvas
