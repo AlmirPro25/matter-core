@@ -150,6 +150,21 @@ fn main() {
             project_run_build_json(manifest, output);
         }
 
+        "project-emit-build-json" => {
+            if args.len() < 4 {
+                eprintln!("Usage: matter-cli project-emit-build-json [matter.toml] <event> [-o out]");
+                process::exit(1);
+            }
+            let manifest = &args[2];
+            let event = &args[3];
+            let output = if args.len() >= 6 && args[4] == "-o" {
+                Some(args[5].as_str())
+            } else {
+                None
+            };
+            project_emit_build_json(manifest, event, output);
+        }
+
         "run" => {
             if args.len() < 3 {
                 eprintln!("Usage: matter-cli run <file.matter|->");
@@ -333,6 +348,7 @@ fn print_usage() {
     println!("  matter-cli project-compile-json [matter.toml] [-o out] Compile package entrypoint as JSON");
     println!("  matter-cli project-build-json [matter.toml] [-o out] Verify and build cacheable bytecode JSON");
     println!("  matter-cli project-run-build-json [matter.toml] [-o out] Build bytecode and run it as JSON");
+    println!("  matter-cli project-emit-build-json [matter.toml] <event> [-o out] Build bytecode and emit event as JSON");
     println!("  matter-cli run <file.matter|->              Run Matter source file or stdin");
     println!("  matter-cli eval <source>                    Run Matter source passed as text");
     println!("  matter-cli eval-json <source>               Run source text and print JSON result");
@@ -378,6 +394,7 @@ fn print_capabilities_json() {
             "\"project-compile-json\",",
             "\"project-build-json\",",
             "\"project-run-build-json\",",
+            "\"project-emit-build-json\",",
             "\"eval-json\",",
             "\"tokens-json\",",
             "\"imports-json\",",
@@ -1201,6 +1218,169 @@ fn project_run_build_json(manifest_path: &str, output: Option<&str>) {
         json_escape(&project.manifest.name),
         json_escape(&project.manifest_path),
         json_escape(&entry_label),
+        json_escape(&output_path),
+        json_escape(&lock_fingerprint),
+        json_escape(&fnv1a64_hex(&bytecode_bytes)),
+        bytecode_bytes.len(),
+        files.len(),
+        imports.len(),
+        project.manifest.dependencies.len(),
+        json_string_array(&runtime.take_output()),
+        summary
+    );
+}
+
+fn project_emit_build_json(manifest_path: &str, event: &str, output: Option<&str>) {
+    let project = load_project_or_json_exit(manifest_path);
+    let _env = apply_project_env(&project);
+    let entry_path = project_path(&project.base_dir, &project.manifest.entry);
+    let entry_label = entry_path.display().to_string();
+    let source = fs::read_to_string(&entry_path).unwrap_or_else(|error| {
+        println!(
+            "{{\"ok\":false,\"stage\":\"read\",\"package\":\"{}\",\"manifest\":\"{}\",\"input\":\"{}\",\"event\":\"{}\",\"error\":{{\"message\":\"{}\"}}}}",
+            json_escape(&project.manifest.name),
+            json_escape(&project.manifest_path),
+            json_escape(&entry_label),
+            json_escape(event),
+            json_escape(&error.to_string())
+        );
+        process::exit(1);
+    });
+
+    let base_dir = entry_path
+        .parent()
+        .unwrap_or(Path::new("."))
+        .to_path_buf();
+    let mut imports = Vec::new();
+    let mut stack = vec![entry_path
+        .canonicalize()
+        .unwrap_or_else(|_| entry_path.clone())];
+
+    if let Err(error) = collect_imports_with_dependencies(
+        &source,
+        &base_dir,
+        &entry_label,
+        &project.base_dir,
+        &project.manifest.dependencies,
+        &mut stack,
+        &mut imports,
+    ) {
+        println!(
+            "{{\"ok\":false,\"stage\":\"import\",\"package\":\"{}\",\"manifest\":\"{}\",\"input\":\"{}\",\"event\":\"{}\",\"error\":{{\"message\":\"{}\"}}}}",
+            json_escape(&project.manifest.name),
+            json_escape(&project.manifest_path),
+            json_escape(&entry_label),
+            json_escape(event),
+            json_escape(&error)
+        );
+        process::exit(1);
+    }
+
+    let resolved_source = resolve_imports_with_dependencies(
+        &source,
+        &base_dir,
+        &project.base_dir,
+        &project.manifest.dependencies,
+        &mut HashSet::new(),
+    ).unwrap_or_else(|error| {
+        println!(
+            "{{\"ok\":false,\"stage\":\"import\",\"package\":\"{}\",\"manifest\":\"{}\",\"input\":\"{}\",\"event\":\"{}\",\"error\":{{\"message\":\"{}\"}}}}",
+            json_escape(&project.manifest.name),
+            json_escape(&project.manifest_path),
+            json_escape(&entry_label),
+            json_escape(event),
+            json_escape(&error)
+        );
+        process::exit(1);
+    });
+
+    let bytecode = build_json_or_exit(
+        &resolved_source,
+        &entry_label,
+        &[("package", &project.manifest.name), ("event", event)],
+    );
+    let summary = bytecode_summary_json(&bytecode);
+
+    let mut files = Vec::new();
+    let mut seen_files = HashSet::new();
+    push_lock_file(&mut files, &mut seen_files, "manifest", Path::new(&project.manifest_path));
+    push_lock_file(&mut files, &mut seen_files, "entry", &entry_path);
+    for import in &imports {
+        push_lock_file(&mut files, &mut seen_files, &import.source, Path::new(&import.resolved));
+    }
+    let lock_fingerprint = project_lock_fingerprint(&files, &imports, &project.manifest.dependencies);
+
+    let output_path = output
+        .map(|path| path.to_string())
+        .unwrap_or_else(|| project_artifact_path(&project.manifest.name, &lock_fingerprint));
+
+    if let Some(parent) = Path::new(&output_path).parent() {
+        if !parent.as_os_str().is_empty() {
+            if let Err(error) = fs::create_dir_all(parent) {
+                println!(
+                    "{{\"ok\":false,\"stage\":\"write\",\"package\":\"{}\",\"manifest\":\"{}\",\"input\":\"{}\",\"event\":\"{}\",\"output\":\"{}\",\"error\":{{\"message\":\"{}\"}}}}",
+                    json_escape(&project.manifest.name),
+                    json_escape(&project.manifest_path),
+                    json_escape(&entry_label),
+                    json_escape(event),
+                    json_escape(&output_path),
+                    json_escape(&error.to_string())
+                );
+                process::exit(1);
+            }
+        }
+    }
+
+    if let Err(error) = bytecode.save_to_file(&output_path) {
+        println!(
+            "{{\"ok\":false,\"stage\":\"write\",\"package\":\"{}\",\"manifest\":\"{}\",\"input\":\"{}\",\"event\":\"{}\",\"output\":\"{}\",\"error\":{{\"message\":\"{}\"}}}}",
+            json_escape(&project.manifest.name),
+            json_escape(&project.manifest_path),
+            json_escape(&entry_label),
+            json_escape(event),
+            json_escape(&output_path),
+            json_escape(&error.to_string())
+        );
+        process::exit(1);
+    }
+
+    let bytecode_bytes = fs::read(&output_path).unwrap_or_else(|error| {
+        println!(
+            "{{\"ok\":false,\"stage\":\"read\",\"package\":\"{}\",\"manifest\":\"{}\",\"input\":\"{}\",\"event\":\"{}\",\"output\":\"{}\",\"error\":{{\"message\":\"{}\"}}}}",
+            json_escape(&project.manifest.name),
+            json_escape(&project.manifest_path),
+            json_escape(&entry_label),
+            json_escape(event),
+            json_escape(&output_path),
+            json_escape(&error.to_string())
+        );
+        process::exit(1);
+    });
+
+    let mut runtime = Runtime::new_silent(bytecode);
+    runtime.set_stdout_enabled(false);
+    if let Err(error) = runtime.emit_event(event) {
+        println!(
+            "{{\"ok\":false,\"stage\":\"runtime\",\"package\":\"{}\",\"manifest\":\"{}\",\"input\":\"{}\",\"event\":\"{}\",\"output_file\":\"{}\",\"lock_fingerprint\":\"{}\",\"bytecode_fingerprint\":\"{}\",\"error\":{{\"message\":\"{}\"}},\"output\":{}}}",
+            json_escape(&project.manifest.name),
+            json_escape(&project.manifest_path),
+            json_escape(&entry_label),
+            json_escape(event),
+            json_escape(&output_path),
+            json_escape(&lock_fingerprint),
+            json_escape(&fnv1a64_hex(&bytecode_bytes)),
+            json_escape(&error),
+            json_string_array(&runtime.take_output())
+        );
+        process::exit(1);
+    }
+
+    println!(
+        "{{\"ok\":true,\"package\":\"{}\",\"manifest\":\"{}\",\"input\":\"{}\",\"event\":\"{}\",\"output_file\":\"{}\",\"lock_fingerprint\":\"{}\",\"bytecode_fingerprint\":\"{}\",\"bytecode_bytes\":{},\"files_count\":{},\"imports_count\":{},\"dependencies_count\":{},\"output\":{},\"summary\":{}}}",
+        json_escape(&project.manifest.name),
+        json_escape(&project.manifest_path),
+        json_escape(&entry_label),
+        json_escape(event),
         json_escape(&output_path),
         json_escape(&lock_fingerprint),
         json_escape(&fnv1a64_hex(&bytecode_bytes)),

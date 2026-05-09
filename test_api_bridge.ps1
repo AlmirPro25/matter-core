@@ -70,9 +70,12 @@ $eventBytecodeFile = "target\api_bridge_event_test.mbc"
 $projectManifestFile = "target\api_bridge_project.toml"
 $projectEntryFile = "target\api_bridge_project_entry.matter"
 $projectDependencyFile = "target\api_bridge_project_dependency.matter"
+$projectEventManifestFile = "target\api_bridge_project_event.toml"
+$projectEventEntryFile = "target\api_bridge_project_event_entry.matter"
 $projectBytecodeFile = "target\api_bridge_project.mbc"
 $projectBuildFile = "target\api_bridge_project_build.mbc"
 $projectRunBuildFile = "target\api_bridge_project_run_build.mbc"
+$projectEmitBuildFile = "target\api_bridge_project_emit_build.mbc"
 
 try {
     'import "stdlib_demo"' | Set-Content -Path $projectEntryFile -Encoding UTF8
@@ -95,6 +98,19 @@ store = "api_bridge_project_store.json"
 [dependencies]
 stdlib_demo = "api_bridge_project_dependency.matter"
 '@ | Set-Content -Path $projectManifestFile -Encoding UTF8
+
+    @'
+on boot {
+    print "project event boot"
+}
+'@ | Set-Content -Path $projectEventEntryFile -Encoding UTF8
+
+    @'
+[package]
+name = "api-bridge-event-project"
+version = "0.1.0"
+entry = "api_bridge_project_event_entry.matter"
+'@ | Set-Content -Path $projectEventManifestFile -Encoding UTF8
 
     Write-Host "Descobrindo capacidades via capabilities-json..."
     $json = Invoke-JsonNoInput @("capabilities-json") 0
@@ -143,6 +159,9 @@ stdlib_demo = "api_bridge_project_dependency.matter"
         }
         if (@($json.json_commands) -notcontains "project-run-build-json") {
             Fail "capabilities-json deveria listar project-run-build-json"
+        }
+        if (@($json.json_commands) -notcontains "project-emit-build-json") {
+            Fail "capabilities-json deveria listar project-emit-build-json"
         }
         if (@($json.language_features) -notcontains "events") {
             Fail "capabilities-json deveria listar events"
@@ -331,6 +350,25 @@ stdlib_demo = "api_bridge_project_dependency.matter"
         }
         else {
             Pass "project-run-build-json"
+        }
+    }
+
+    Write-Host "Construindo projeto e emitindo evento via project-emit-build-json..."
+    $json = Invoke-JsonNoInput @("project-emit-build-json", $projectEventManifestFile, "boot", "-o", $projectEmitBuildFile) 0
+    if ($null -ne $json) {
+        Assert-Equal $json.ok $true "project-emit-build-json deveria retornar ok=true"
+        Assert-Equal $json.package "api-bridge-event-project" "project-emit-build-json deveria usar nome do pacote"
+        Assert-Equal $json.event "boot" "project-emit-build-json deveria devolver evento"
+        Assert-Equal $json.output_file $projectEmitBuildFile "project-emit-build-json deveria devolver output_file"
+        Assert-Equal @($json.output)[0] "project event boot" "project-emit-build-json deveria capturar output do evento"
+        if ([string]::IsNullOrWhiteSpace($json.bytecode_fingerprint)) {
+            Fail "project-emit-build-json deveria gerar bytecode_fingerprint"
+        }
+        if (-not (Test-Path $projectEmitBuildFile)) {
+            Fail "project-emit-build-json nao criou $projectEmitBuildFile"
+        }
+        else {
+            Pass "project-emit-build-json"
         }
     }
 

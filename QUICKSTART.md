@@ -90,6 +90,7 @@ Ou enviar Matter Core por stdin usando `-`:
 .\target\release\matter-cli.exe project-compile-json -o target\project.mbc
 .\target\release\matter-cli.exe project-build-json
 .\target\release\matter-cli.exe project-run-build-json
+.\target\release\matter-cli.exe project-emit-build-json matter.toml boot
 ```
 
 Dentro de comandos de projeto, dependências locais do `matter.toml` também podem ser importadas por alias:
