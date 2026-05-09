@@ -226,9 +226,40 @@ impl Backend for GraphBackend {
                     .map_err(|e| format!("graph.save could not write '{}': {}", path, e))?;
                 Ok(Value::String(path))
             }
+            "dashboard" => {
+                if args.len() != 3 {
+                    return Err(format!("graph.dashboard expects 3 arguments, got {}", args.len()));
+                }
+                let path = args[0]
+                    .as_string()
+                    .map_err(|e| format!("graph.dashboard: {}", e))?;
+                let title = args[1]
+                    .as_string()
+                    .map_err(|e| format!("graph.dashboard: {}", e))?;
+                let charts = dashboard_charts(&args[2])?;
+                let html = render_dashboard(&title, &charts);
+
+                if let Some(parent) = std::path::Path::new(&path).parent() {
+                    if !parent.as_os_str().is_empty() {
+                        fs::create_dir_all(parent).map_err(|e| {
+                            format!("graph.dashboard could not create directory: {}", e)
+                        })?;
+                    }
+                }
+                fs::write(&path, html)
+                    .map_err(|e| format!("graph.dashboard could not write '{}': {}", path, e))?;
+                Ok(Value::String(path))
+            }
             _ => Err(format!("Unknown graph method: {}", method)),
         }
     }
+}
+
+struct ChartSpec {
+    kind: String,
+    title: String,
+    labels: Vec<String>,
+    values: Vec<i64>,
 }
 
 fn chart_args(
@@ -243,6 +274,64 @@ fn chart_args(
     let values = value_list_ints(&format!("{} values", name), &args[2])?;
     validate_chart_data(name, &labels, &values)?;
     Ok((title, labels, values))
+}
+
+fn dashboard_charts(value: &Value) -> Result<Vec<ChartSpec>, String> {
+    let items = match value {
+        Value::List(items) => items,
+        _ => return Err("graph.dashboard charts must be a list".to_string()),
+    };
+    if items.is_empty() {
+        return Err("graph.dashboard requires at least one chart".to_string());
+    }
+
+    let mut charts = Vec::new();
+    for (index, item) in items.iter().enumerate() {
+        let map = match item {
+            Value::Map(map) => map,
+            _ => {
+                return Err(format!(
+                    "graph.dashboard chart {} must be a map",
+                    index
+                ))
+            }
+        };
+        let kind = required_string(map, "kind", index)?;
+        let title = required_string(map, "title", index)?;
+        let labels_value = map
+            .get("labels")
+            .ok_or_else(|| format!("graph.dashboard chart {} missing labels", index))?;
+        let values_value = map
+            .get("values")
+            .ok_or_else(|| format!("graph.dashboard chart {} missing values", index))?;
+        let labels = value_list_strings("graph.dashboard labels", labels_value)?;
+        let values = value_list_ints("graph.dashboard values", values_value)?;
+        validate_chart_data("graph.dashboard", &labels, &values)?;
+        if !matches!(kind.as_str(), "bar" | "line" | "pie") {
+            return Err(format!(
+                "graph.dashboard chart {} has unknown kind '{}'",
+                index, kind
+            ));
+        }
+        charts.push(ChartSpec {
+            kind,
+            title,
+            labels,
+            values,
+        });
+    }
+    Ok(charts)
+}
+
+fn required_string(
+    map: &HashMap<String, Value>,
+    key: &str,
+    index: usize,
+) -> Result<String, String> {
+    map.get(key)
+        .ok_or_else(|| format!("graph.dashboard chart {} missing {}", index, key))?
+        .as_string()
+        .map_err(|e| format!("graph.dashboard chart {} {}: {}", index, key, e))
 }
 
 fn value_list_strings(context: &str, value: &Value) -> Result<Vec<String>, String> {
@@ -402,6 +491,31 @@ fn render_pie_chart(title: &str, labels: &[String], values: &[i64]) -> String {
     }
 
     chart_shell(width, height, title, &body)
+}
+
+fn render_chart_by_kind(chart: &ChartSpec) -> String {
+    match chart.kind.as_str() {
+        "bar" => render_bar_chart(&chart.title, &chart.labels, &chart.values),
+        "line" => render_line_chart(&chart.title, &chart.labels, &chart.values),
+        "pie" => render_pie_chart(&chart.title, &chart.labels, &chart.values),
+        _ => String::new(),
+    }
+}
+
+fn render_dashboard(title: &str, charts: &[ChartSpec]) -> String {
+    let mut cards = String::new();
+    for chart in charts {
+        cards.push_str("<section class=\"chart-card\">");
+        cards.push_str(&render_chart_by_kind(chart));
+        cards.push_str("</section>");
+    }
+
+    format!(
+        "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>{}</title><style>body{{margin:0;font-family:Arial,sans-serif;background:#eef2f7;color:#111827}}header{{padding:28px 32px;background:#111827;color:white}}main{{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:18px;padding:24px}}.chart-card{{background:white;border:1px solid #dbe3ef;border-radius:8px;overflow:hidden;box-shadow:0 8px 24px rgba(15,23,42,.08)}}svg{{display:block;width:100%;height:auto}}</style></head><body><header><h1>{}</h1></header><main>{}</main></body></html>",
+        escape_svg(title),
+        escape_svg(title),
+        cards
+    )
 }
 
 fn chart_shell(width: i64, height: i64, title: &str, body: &str) -> String {
@@ -883,5 +997,43 @@ mod tests {
             .unwrap_err();
 
         assert!(error.contains("same length"));
+    }
+
+    #[test]
+    fn graph_dashboard_writes_html() {
+        let mut graph = GraphBackend::new();
+        let path = std::env::temp_dir().join("matter_graph_dashboard_test.html");
+        let mut chart = HashMap::new();
+        chart.insert("kind".to_string(), Value::String("bar".to_string()));
+        chart.insert("title".to_string(), Value::String("Receita".to_string()));
+        chart.insert(
+            "labels".to_string(),
+            Value::List(vec![
+                Value::String("Jan".to_string()),
+                Value::String("Fev".to_string()),
+            ]),
+        );
+        chart.insert(
+            "values".to_string(),
+            Value::List(vec![Value::Int(10), Value::Int(20)]),
+        );
+
+        let result = graph
+            .call(
+                "dashboard",
+                vec![
+                    Value::String(path.display().to_string()),
+                    Value::String("Painel".to_string()),
+                    Value::List(vec![Value::Map(chart)]),
+                ],
+            )
+            .unwrap();
+
+        assert_eq!(result, Value::String(path.display().to_string()));
+        let html = fs::read_to_string(&path).unwrap();
+        assert!(html.contains("<!doctype html>"));
+        assert!(html.contains("Painel"));
+        assert!(html.contains("<svg"));
+        let _ = fs::remove_file(path);
     }
 }

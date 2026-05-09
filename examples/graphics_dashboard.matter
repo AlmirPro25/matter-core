@@ -1,0 +1,29 @@
+let labels = ["Jan", "Feb", "Mar", "Apr"]
+let usage = [12, 20, 16, 28]
+let revenue = [8, 14, 19, 31]
+let channels = ["API", "CLI", "Cloud"]
+let channel_values = [45, 25, 30]
+
+let dashboard = [
+    {
+        "kind": "bar",
+        "title": "Usage",
+        "labels": labels,
+        "values": usage
+    },
+    {
+        "kind": "line",
+        "title": "Revenue",
+        "labels": labels,
+        "values": revenue
+    },
+    {
+        "kind": "pie",
+        "title": "Channels",
+        "labels": channels,
+        "values": channel_values
+    }
+]
+
+let path = graph.dashboard("target/matter-dashboard.html", "Matter Dashboard", dashboard)
+print path
