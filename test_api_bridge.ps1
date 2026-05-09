@@ -72,6 +72,7 @@ $projectEntryFile = "target\api_bridge_project_entry.matter"
 $projectDependencyFile = "target\api_bridge_project_dependency.matter"
 $projectBytecodeFile = "target\api_bridge_project.mbc"
 $projectBuildFile = "target\api_bridge_project_build.mbc"
+$projectRunBuildFile = "target\api_bridge_project_run_build.mbc"
 
 try {
     'import "stdlib_demo"' | Set-Content -Path $projectEntryFile -Encoding UTF8
@@ -139,6 +140,9 @@ stdlib_demo = "api_bridge_project_dependency.matter"
         }
         if (@($json.json_commands) -notcontains "project-build-json") {
             Fail "capabilities-json deveria listar project-build-json"
+        }
+        if (@($json.json_commands) -notcontains "project-run-build-json") {
+            Fail "capabilities-json deveria listar project-run-build-json"
         }
         if (@($json.language_features) -notcontains "events") {
             Fail "capabilities-json deveria listar events"
@@ -309,6 +313,24 @@ stdlib_demo = "api_bridge_project_dependency.matter"
         }
         else {
             Pass "project-build-json"
+        }
+    }
+
+    Write-Host "Construindo e executando projeto via project-run-build-json..."
+    $json = Invoke-JsonNoInput @("project-run-build-json", $projectManifestFile, "-o", $projectRunBuildFile) 0
+    if ($null -ne $json) {
+        Assert-Equal $json.ok $true "project-run-build-json deveria retornar ok=true"
+        Assert-Equal $json.package "api-bridge-project" "project-run-build-json deveria usar nome do pacote"
+        Assert-Equal $json.output_file $projectRunBuildFile "project-run-build-json deveria devolver output_file"
+        Assert-Equal @($json.output)[0] "16" "project-run-build-json deveria executar bytecode do projeto"
+        if ([string]::IsNullOrWhiteSpace($json.lock_fingerprint)) {
+            Fail "project-run-build-json deveria gerar lock_fingerprint"
+        }
+        if (-not (Test-Path $projectRunBuildFile)) {
+            Fail "project-run-build-json nao criou $projectRunBuildFile"
+        }
+        else {
+            Pass "project-run-build-json"
         }
     }
 
