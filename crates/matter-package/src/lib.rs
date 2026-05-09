@@ -305,8 +305,93 @@ impl Lockfile {
         toml
     }
 
+    pub fn parse(content: &str) -> Result<Self, String> {
+        let mut package = String::new();
+        let mut version = Version::new(0, 0, 0);
+        let mut entries = Vec::new();
+        let mut current_section = "";
+        let mut current_entry: Option<LockEntry> = None;
+
+        for line in content.lines() {
+            let line = line.trim();
+
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+
+            if line == "[package]" {
+                if let Some(entry) = current_entry.take() {
+                    entries.push(entry);
+                }
+                current_section = "package";
+                continue;
+            }
+
+            if line == "[[dependencies]]" {
+                if let Some(entry) = current_entry.take() {
+                    entries.push(entry);
+                }
+                current_section = "dependencies";
+                current_entry = Some(LockEntry {
+                    name: String::new(),
+                    version: Version::new(0, 0, 0),
+                    source: String::new(),
+                });
+                continue;
+            }
+
+            let Some((key, value)) = line.split_once('=') else {
+                continue;
+            };
+            let key = key.trim();
+            let value = value.trim().trim_matches('"');
+
+            match current_section {
+                "package" => match key {
+                    "name" => package = value.to_string(),
+                    "version" => version = Version::parse(value)?,
+                    _ => {}
+                },
+                "dependencies" => {
+                    let entry = current_entry
+                        .as_mut()
+                        .ok_or_else(|| "matter.lock dependency field outside dependency block".to_string())?;
+                    match key {
+                        "name" => entry.name = value.to_string(),
+                        "version" => entry.version = Version::parse(value)?,
+                        "source" => entry.source = value.to_string(),
+                        _ => {}
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if let Some(entry) = current_entry {
+            entries.push(entry);
+        }
+
+        if package.is_empty() {
+            return Err("matter.lock package name is required".to_string());
+        }
+
+        entries.retain(|entry| !entry.name.is_empty());
+        entries.sort_by(|left, right| left.name.cmp(&right.name));
+
+        Ok(Self {
+            package,
+            version,
+            entries,
+        })
+    }
+
     pub fn save(&self, path: &Path) -> Result<(), String> {
         fs::write(path, self.to_toml()).map_err(|e| e.to_string())
+    }
+
+    pub fn load(path: &Path) -> Result<Self, String> {
+        let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
+        Self::parse(&content)
     }
 }
 
@@ -577,6 +662,41 @@ math-utils = "^1.0.0"
         assert!(toml.contains("name = \"utils\""));
         assert!(toml.contains("version = \"1.2.0\""));
         assert!(toml.contains("source = \"registry/utils\""));
+    }
+
+    #[test]
+    fn test_lockfile_round_trips_through_toml() {
+        let lockfile = Lockfile {
+            package: "app".to_string(),
+            version: Version::new(0, 1, 0),
+            entries: vec![LockEntry {
+                name: "utils".to_string(),
+                version: Version::new(1, 2, 0),
+                source: "registry/utils".to_string(),
+            }],
+        };
+
+        let parsed = Lockfile::parse(&lockfile.to_toml()).unwrap();
+        assert_eq!(parsed, lockfile);
+    }
+
+    #[test]
+    fn test_lockfile_loads_from_disk() {
+        let path = std::env::temp_dir().join("matter_package_lock_load_test.lock");
+        let lockfile = Lockfile {
+            package: "app".to_string(),
+            version: Version::new(0, 1, 0),
+            entries: vec![LockEntry {
+                name: "utils".to_string(),
+                version: Version::new(1, 2, 0),
+                source: "registry/utils".to_string(),
+            }],
+        };
+
+        lockfile.save(&path).unwrap();
+        let loaded = Lockfile::load(&path).unwrap();
+        assert_eq!(loaded, lockfile);
+        let _ = fs::remove_file(path);
     }
 
     #[test]
