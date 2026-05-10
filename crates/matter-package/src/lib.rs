@@ -279,6 +279,14 @@ pub struct InstallReport {
     pub installed: Vec<PathBuf>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SyncReport {
+    pub lockfile: Lockfile,
+    pub installed: Vec<PathBuf>,
+    pub removed: Vec<PathBuf>,
+    pub verified: Vec<PathBuf>,
+}
+
 impl Lockfile {
     pub fn new(package: &Package, mut entries: Vec<LockEntry>) -> Self {
         entries.sort_by(|left, right| left.name.cmp(&right.name));
@@ -537,6 +545,19 @@ impl PackageManager {
         Ok(InstallReport {
             lockfile,
             installed,
+        })
+    }
+
+    pub fn sync_dependencies(&self, package: &Package) -> Result<SyncReport, String> {
+        let install_report = self.install_dependencies(package)?;
+        let removed = self.prune_installed_packages(package)?;
+        let verified = self.verify_installation(package)?;
+
+        Ok(SyncReport {
+            lockfile: install_report.lockfile,
+            installed: install_report.installed,
+            removed,
+            verified,
         })
     }
 
@@ -1193,6 +1214,51 @@ math-utils = "^1.0.0"
         assert_eq!(removed, vec![extra.clone()]);
         assert!(!extra.exists());
         assert!(root.join(".matter").join("packages").join("utils").exists());
+
+        let _ = fs::remove_dir_all(root);
+        let _ = fs::remove_dir_all(registry_root);
+    }
+
+    #[test]
+    fn test_sync_dependencies_installs_prunes_and_verifies() {
+        let root = std::env::temp_dir().join("matter_package_sync_test");
+        let registry_root = std::env::temp_dir().join("matter_package_sync_registry");
+        let _ = fs::remove_dir_all(&root);
+        let _ = fs::remove_dir_all(&registry_root);
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::create_dir_all(registry_root.join("utils").join("src")).unwrap();
+
+        let mut app_manifest = Manifest::new("app".to_string(), Version::new(0, 1, 0));
+        app_manifest.dependencies.insert(
+            "utils".to_string(),
+            Dependency::Registry(VersionReq::Caret(Version::new(1, 0, 0))),
+        );
+        let app = Package::new(app_manifest, root.clone());
+        app.manifest.save(&root.join("matter.toml")).unwrap();
+
+        let mut utils_manifest = Manifest::new("utils".to_string(), Version::new(1, 2, 0));
+        utils_manifest.entry = "src/lib.matter".to_string();
+        let utils_root = registry_root.join("utils");
+        utils_manifest.save(&utils_root.join("matter.toml")).unwrap();
+        fs::write(utils_root.join("src").join("lib.matter"), "fn util() { return 1 }\n").unwrap();
+
+        let extra = root.join(".matter").join("packages").join("old");
+        fs::create_dir_all(&extra).unwrap();
+        fs::write(extra.join("matter.toml"), "[package]\nname = \"old\"\nversion = \"0.1.0\"\n").unwrap();
+
+        let mut manager = PackageManager::new();
+        manager.register_package(Package::new(utils_manifest, utils_root));
+        let report = manager.sync_dependencies(&app).unwrap();
+        let installed = root.join(".matter").join("packages").join("utils");
+
+        assert_eq!(report.installed, vec![installed.clone()]);
+        assert_eq!(report.verified, vec![installed.clone()]);
+        assert_eq!(report.removed, vec![extra.clone()]);
+        assert!(!extra.exists());
+        assert!(installed.join("src").join("lib.matter").exists());
+
+        let removed = manager.prune_installed_packages(&app).unwrap();
+        assert!(removed.is_empty());
 
         let _ = fs::remove_dir_all(root);
         let _ = fs::remove_dir_all(registry_root);
