@@ -477,7 +477,7 @@ impl AgentHandoffPacket {
             ),
         };
 
-        Ok(Self {
+        let packet = Self {
             context: AgentSessionContext {
                 session_id: decode_field(require_pair(&pairs, "session_id")?)?,
                 event_count,
@@ -492,7 +492,57 @@ impl AgentHandoffPacket {
                 terminal,
             },
             recent_events: decode_list(require_pair(&pairs, "recent_events")?)?,
-        })
+        };
+
+        if !packet.is_consistent() {
+            return Err(format!(
+                "inconsistent handoff packet: {}",
+                packet.validation_errors().join("; ")
+            ));
+        }
+
+        Ok(packet)
+    }
+
+    pub fn is_consistent(&self) -> bool {
+        self.validation_errors().is_empty()
+    }
+
+    pub fn validation_errors(&self) -> Vec<String> {
+        let mut errors = Vec::new();
+
+        if self.context.event_count < self.recent_events.len() {
+            errors.push("event_count is smaller than recent_events length".to_string());
+        }
+        if self.context.terminal && self.context.next_action != "none" {
+            errors.push("terminal packet must use next_action=none".to_string());
+        }
+        if !self.context.terminal && self.context.next_action == "none" {
+            errors.push("non-terminal packet cannot use next_action=none".to_string());
+        }
+        if self.context.latest_task_id.trim().is_empty() && self.context.event_count > 0 {
+            errors.push("latest_task_id is missing while event_count > 0".to_string());
+        }
+
+        match self.context.last_response_kind {
+            Some(ResponseKind::Completed) => {
+                if !self.context.terminal {
+                    errors.push(
+                        "last_response_kind=completed requires terminal=true".to_string(),
+                    );
+                }
+            }
+            Some(ResponseKind::Blocked) => {
+                if self.context.blockers.is_empty() {
+                    errors.push(
+                        "last_response_kind=blocked requires at least one blocker".to_string(),
+                    );
+                }
+            }
+            _ => {}
+        }
+
+        errors
     }
 }
 
@@ -989,5 +1039,39 @@ mod tests {
         let wire = format!("{}\nchecksum=deadbeef", payload);
         let error = AgentHandoffPacket::from_wire(&wire).unwrap_err();
         assert!(error.contains("wire checksum mismatch"));
+    }
+
+    #[test]
+    fn handoff_packet_reports_semantic_inconsistency() {
+        let packet = AgentHandoffPacket {
+            context: AgentSessionContext {
+                session_id: "s".to_string(),
+                event_count: 1,
+                latest_task_id: "task".to_string(),
+                latest_goal: String::new(),
+                latest_summary: String::new(),
+                facts: vec![],
+                blockers: vec![],
+                requests: vec![],
+                last_response_kind: Some(ResponseKind::Completed),
+                next_action: "execute".to_string(),
+                terminal: false,
+            },
+            recent_events: vec!["response worker -> planner (task) [completed]".to_string()],
+        };
+
+        assert!(!packet.is_consistent());
+        let errors = packet.validation_errors();
+        assert!(errors
+            .iter()
+            .any(|error| error.contains("completed requires terminal=true")));
+    }
+
+    #[test]
+    fn handoff_packet_rejects_inconsistent_wire_payload() {
+        let payload = "version=1\nsession_id=s\nevent_count=1\nlatest_task_id=task\nlatest_goal=\nlatest_summary=\nfacts=\nblockers=\nrequests=\nlast_response_kind=completed\nnext_action=execute\nterminal=false\nrecent_events=response%20x";
+        let wire = format!("{}\nchecksum={}", payload, wire_checksum(payload));
+        let error = AgentHandoffPacket::from_wire(&wire).unwrap_err();
+        assert!(error.contains("inconsistent handoff packet"));
     }
 }
