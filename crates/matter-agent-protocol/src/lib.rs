@@ -410,6 +410,82 @@ impl AgentSession {
     }
 }
 
+impl AgentHandoffPacket {
+    pub fn to_wire(&self) -> String {
+        let last_kind = self
+            .context
+            .last_response_kind
+            .map(response_kind_word)
+            .unwrap_or("none");
+
+        [
+            "version=1".to_string(),
+            format!("session_id={}", encode_field(&self.context.session_id)),
+            format!("event_count={}", self.context.event_count),
+            format!("latest_task_id={}", encode_field(&self.context.latest_task_id)),
+            format!("latest_goal={}", encode_field(&self.context.latest_goal)),
+            format!(
+                "latest_summary={}",
+                encode_field(&self.context.latest_summary)
+            ),
+            format!("facts={}", encode_list(&self.context.facts)),
+            format!("blockers={}", encode_list(&self.context.blockers)),
+            format!("requests={}", encode_list(&self.context.requests)),
+            format!("last_response_kind={}", last_kind),
+            format!("next_action={}", encode_field(&self.context.next_action)),
+            format!("terminal={}", self.context.terminal),
+            format!("recent_events={}", encode_list(&self.recent_events)),
+        ]
+        .join("\n")
+    }
+
+    pub fn from_wire(wire: &str) -> Result<Self, String> {
+        let mut pairs = std::collections::HashMap::new();
+        for line in wire.lines().filter(|line| !line.trim().is_empty()) {
+            let (key, value) = line
+                .split_once('=')
+                .ok_or_else(|| format!("invalid wire line: {}", line))?;
+            pairs.insert(key.trim().to_string(), value.to_string());
+        }
+
+        let version = require_pair(&pairs, "version")?;
+        if version != "1" {
+            return Err(format!("unsupported wire version: {}", version));
+        }
+
+        let event_count = require_pair(&pairs, "event_count")?
+            .parse::<usize>()
+            .map_err(|error| format!("invalid event_count: {}", error))?;
+        let terminal = require_pair(&pairs, "terminal")?
+            .parse::<bool>()
+            .map_err(|error| format!("invalid terminal: {}", error))?;
+        let last_response_kind = match require_pair(&pairs, "last_response_kind")? {
+            "none" => None,
+            value => Some(
+                response_kind_from_word(value)
+                    .ok_or_else(|| format!("invalid last_response_kind: {}", value))?,
+            ),
+        };
+
+        Ok(Self {
+            context: AgentSessionContext {
+                session_id: decode_field(require_pair(&pairs, "session_id")?)?,
+                event_count,
+                latest_task_id: decode_field(require_pair(&pairs, "latest_task_id")?)?,
+                latest_goal: decode_field(require_pair(&pairs, "latest_goal")?)?,
+                latest_summary: decode_field(require_pair(&pairs, "latest_summary")?)?,
+                facts: decode_list(require_pair(&pairs, "facts")?)?,
+                blockers: decode_list(require_pair(&pairs, "blockers")?)?,
+                requests: decode_list(require_pair(&pairs, "requests")?)?,
+                last_response_kind,
+                next_action: decode_field(require_pair(&pairs, "next_action")?)?,
+                terminal,
+            },
+            recent_events: decode_list(require_pair(&pairs, "recent_events")?)?,
+        })
+    }
+}
+
 fn list_or_none(values: &[String]) -> String {
     if values.is_empty() {
         "none".to_string()
@@ -468,6 +544,80 @@ fn static_list_or_none(values: &[&'static str]) -> String {
         "none".to_string()
     } else {
         values.join("; ")
+    }
+}
+
+fn require_pair<'a>(
+    pairs: &'a std::collections::HashMap<String, String>,
+    key: &str,
+) -> Result<&'a str, String> {
+    pairs
+        .get(key)
+        .map(|value| value.as_str())
+        .ok_or_else(|| format!("missing wire field: {}", key))
+}
+
+fn encode_list(values: &[String]) -> String {
+    if values.is_empty() {
+        return String::new();
+    }
+    values
+        .iter()
+        .map(|value| encode_field(value))
+        .collect::<Vec<_>>()
+        .join("|")
+}
+
+fn decode_list(value: &str) -> Result<Vec<String>, String> {
+    if value.is_empty() {
+        return Ok(Vec::new());
+    }
+    value.split('|').map(decode_field).collect()
+}
+
+fn encode_field(value: &str) -> String {
+    let mut out = String::new();
+    for ch in value.chars() {
+        match ch {
+            '%' => out.push_str("%25"),
+            '\n' => out.push_str("%0A"),
+            '|' => out.push_str("%7C"),
+            '=' => out.push_str("%3D"),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+fn decode_field(value: &str) -> Result<String, String> {
+    let bytes = value.as_bytes();
+    let mut out = String::new();
+    let mut idx = 0;
+    while idx < bytes.len() {
+        if bytes[idx] == b'%' {
+            if idx + 2 >= bytes.len() {
+                return Err("invalid escape sequence in wire field".to_string());
+            }
+            let hex = &value[idx + 1..idx + 3];
+            let parsed = u8::from_str_radix(hex, 16)
+                .map_err(|error| format!("invalid escape sequence {}: {}", hex, error))?;
+            out.push(parsed as char);
+            idx += 3;
+        } else {
+            out.push(bytes[idx] as char);
+            idx += 1;
+        }
+    }
+    Ok(out)
+}
+
+fn response_kind_from_word(word: &str) -> Option<ResponseKind> {
+    match word {
+        "accepted" => Some(ResponseKind::Accepted),
+        "needs_context" => Some(ResponseKind::NeedsContext),
+        "blocked" => Some(ResponseKind::Blocked),
+        "completed" => Some(ResponseKind::Completed),
+        _ => None,
     }
 }
 
@@ -755,5 +905,48 @@ mod tests {
         assert_eq!(packet.context.next_action, "execute");
         assert_eq!(packet.recent_events.len(), 1);
         assert!(packet.recent_events[0].contains("response worker -> planner"));
+    }
+
+    #[test]
+    fn handoff_packet_round_trip_wire_format() {
+        let session = AgentSession::new("wire-session")
+            .add_frame(
+                AgentFrame::new(
+                    AgentId::new("planner", AgentRole::Planner),
+                    AgentId::new("worker", AgentRole::Worker),
+                    "wire-task",
+                )
+                .with_goal("Sync a|b=c")
+                .with_summary("Need newline\nsafe transport")
+                .add_fact("fact|one")
+                .add_request("request=one")
+                .with_next_action("execute"),
+            )
+            .add_response(AgentResponse::completed(
+                AgentId::new("worker", AgentRole::Worker),
+                AgentId::new("planner", AgentRole::Planner),
+                "wire-task",
+                "done=ok|complete",
+            ));
+        let packet = session.handoff_packet(3);
+
+        let wire = packet.to_wire();
+        let decoded = AgentHandoffPacket::from_wire(&wire).unwrap();
+
+        assert_eq!(decoded, packet);
+    }
+
+    #[test]
+    fn handoff_packet_rejects_unknown_version() {
+        let wire = "version=2\nsession_id=s\nevent_count=0\nlatest_task_id=\nlatest_goal=\nlatest_summary=\nfacts=\nblockers=\nrequests=\nlast_response_kind=none\nnext_action=start\nterminal=false\nrecent_events=\n";
+        let error = AgentHandoffPacket::from_wire(wire).unwrap_err();
+        assert!(error.contains("unsupported wire version"));
+    }
+
+    #[test]
+    fn handoff_packet_rejects_missing_fields() {
+        let wire = "version=1\nsession_id=s\n";
+        let error = AgentHandoffPacket::from_wire(wire).unwrap_err();
+        assert!(error.contains("missing wire field"));
     }
 }
