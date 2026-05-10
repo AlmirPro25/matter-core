@@ -544,6 +544,76 @@ impl AgentHandoffPacket {
 
         errors
     }
+
+    pub fn merge_with(&self, other: &Self) -> Result<Self, String> {
+        self.try_merge_with(other)
+    }
+
+    fn try_merge_with(&self, other: &Self) -> Result<Self, String> {
+        if self.context.session_id != other.context.session_id {
+            return Err("cannot merge handoff packets from different sessions".to_string());
+        }
+
+        let self_task = self.context.latest_task_id.trim();
+        let other_task = other.context.latest_task_id.trim();
+        if !self_task.is_empty() && !other_task.is_empty() && self_task != other_task {
+            return Err("cannot merge handoff packets with different latest_task_id".to_string());
+        }
+
+        let preferred = if other.context.event_count > self.context.event_count {
+            other
+        } else {
+            self
+        };
+
+        let merged_context = AgentSessionContext {
+            session_id: self.context.session_id.clone(),
+            event_count: self.context.event_count.max(other.context.event_count),
+            latest_task_id: choose_preferred_text(
+                &preferred.context.latest_task_id,
+                &self.context.latest_task_id,
+                &other.context.latest_task_id,
+            ),
+            latest_goal: choose_preferred_text(
+                &preferred.context.latest_goal,
+                &self.context.latest_goal,
+                &other.context.latest_goal,
+            ),
+            latest_summary: choose_preferred_text(
+                &preferred.context.latest_summary,
+                &self.context.latest_summary,
+                &other.context.latest_summary,
+            ),
+            facts: merge_dedup_strings(&self.context.facts, &other.context.facts),
+            blockers: merge_dedup_strings(&self.context.blockers, &other.context.blockers),
+            requests: merge_dedup_strings(&self.context.requests, &other.context.requests),
+            last_response_kind: preferred
+                .context
+                .last_response_kind
+                .or(self.context.last_response_kind)
+                .or(other.context.last_response_kind),
+            next_action: choose_preferred_text(
+                &preferred.context.next_action,
+                &self.context.next_action,
+                &other.context.next_action,
+            ),
+            terminal: self.context.terminal || other.context.terminal,
+        };
+
+        let merged = Self {
+            context: merged_context,
+            recent_events: merge_dedup_strings(&self.recent_events, &other.recent_events),
+        };
+
+        if merged.is_consistent() {
+            Ok(merged)
+        } else {
+            Err(format!(
+                "merged handoff packet is inconsistent: {}",
+                merged.validation_errors().join("; ")
+            ))
+        }
+    }
 }
 
 fn list_or_none(values: &[String]) -> String {
@@ -679,6 +749,27 @@ fn response_kind_from_word(word: &str) -> Option<ResponseKind> {
         "completed" => Some(ResponseKind::Completed),
         _ => None,
     }
+}
+
+fn choose_preferred_text(preferred: &str, left: &str, right: &str) -> String {
+    if !preferred.trim().is_empty() {
+        return preferred.to_string();
+    }
+    if !left.trim().is_empty() {
+        return left.to_string();
+    }
+    right.to_string()
+}
+
+fn merge_dedup_strings(left: &[String], right: &[String]) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for value in left.iter().chain(right.iter()) {
+        if seen.insert(value.clone()) {
+            out.push(value.clone());
+        }
+    }
+    out
 }
 
 fn split_payload_and_checksum(wire: &str) -> Result<(&str, &str), String> {
@@ -1073,5 +1164,141 @@ mod tests {
         let wire = format!("{}\nchecksum={}", payload, wire_checksum(payload));
         let error = AgentHandoffPacket::from_wire(&wire).unwrap_err();
         assert!(error.contains("inconsistent handoff packet"));
+    }
+
+    #[test]
+    fn handoff_packets_merge_incrementally() {
+        let left = AgentHandoffPacket {
+            context: AgentSessionContext {
+                session_id: "s1".to_string(),
+                event_count: 2,
+                latest_task_id: "task".to_string(),
+                latest_goal: "goal a".to_string(),
+                latest_summary: "summary a".to_string(),
+                facts: vec!["f1".to_string()],
+                blockers: vec![],
+                requests: vec!["r1".to_string()],
+                last_response_kind: Some(ResponseKind::Accepted),
+                next_action: "execute".to_string(),
+                terminal: false,
+            },
+            recent_events: vec!["frame planner -> worker (task)".to_string()],
+        };
+        let right = AgentHandoffPacket {
+            context: AgentSessionContext {
+                session_id: "s1".to_string(),
+                event_count: 3,
+                latest_task_id: "task".to_string(),
+                latest_goal: "goal b".to_string(),
+                latest_summary: "summary b".to_string(),
+                facts: vec!["f1".to_string(), "f2".to_string()],
+                blockers: vec!["b1".to_string()],
+                requests: vec!["r2".to_string()],
+                last_response_kind: Some(ResponseKind::Blocked),
+                next_action: "resolve-blockers".to_string(),
+                terminal: false,
+            },
+            recent_events: vec![
+                "frame planner -> worker (task)".to_string(),
+                "response worker -> planner (task) [blocked]".to_string(),
+            ],
+        };
+
+        let merged = left.merge_with(&right).unwrap();
+
+        assert_eq!(merged.context.event_count, 3);
+        assert_eq!(merged.context.latest_goal, "goal b");
+        assert_eq!(merged.context.latest_summary, "summary b");
+        assert_eq!(merged.context.next_action, "resolve-blockers");
+        assert_eq!(merged.context.last_response_kind, Some(ResponseKind::Blocked));
+        assert_eq!(merged.context.facts, vec!["f1", "f2"]);
+        assert_eq!(merged.context.blockers, vec!["b1"]);
+        assert_eq!(merged.context.requests, vec!["r1", "r2"]);
+        assert_eq!(
+            merged.recent_events,
+            vec![
+                "frame planner -> worker (task)",
+                "response worker -> planner (task) [blocked]"
+            ]
+        );
+        assert!(merged.is_consistent());
+    }
+
+    #[test]
+    fn handoff_merge_rejects_different_sessions() {
+        let left = AgentHandoffPacket {
+            context: AgentSessionContext {
+                session_id: "s1".to_string(),
+                event_count: 0,
+                latest_task_id: String::new(),
+                latest_goal: String::new(),
+                latest_summary: String::new(),
+                facts: vec![],
+                blockers: vec![],
+                requests: vec![],
+                last_response_kind: None,
+                next_action: "start".to_string(),
+                terminal: false,
+            },
+            recent_events: vec![],
+        };
+        let right = AgentHandoffPacket {
+            context: AgentSessionContext {
+                session_id: "s2".to_string(),
+                event_count: 0,
+                latest_task_id: String::new(),
+                latest_goal: String::new(),
+                latest_summary: String::new(),
+                facts: vec![],
+                blockers: vec![],
+                requests: vec![],
+                last_response_kind: None,
+                next_action: "start".to_string(),
+                terminal: false,
+            },
+            recent_events: vec![],
+        };
+
+        let error = left.merge_with(&right).unwrap_err();
+        assert!(error.contains("different sessions"));
+    }
+
+    #[test]
+    fn handoff_merge_rejects_different_tasks() {
+        let left = AgentHandoffPacket {
+            context: AgentSessionContext {
+                session_id: "s1".to_string(),
+                event_count: 1,
+                latest_task_id: "task-a".to_string(),
+                latest_goal: String::new(),
+                latest_summary: String::new(),
+                facts: vec![],
+                blockers: vec![],
+                requests: vec![],
+                last_response_kind: Some(ResponseKind::Accepted),
+                next_action: "execute".to_string(),
+                terminal: false,
+            },
+            recent_events: vec!["frame planner -> worker (task-a)".to_string()],
+        };
+        let right = AgentHandoffPacket {
+            context: AgentSessionContext {
+                session_id: "s1".to_string(),
+                event_count: 1,
+                latest_task_id: "task-b".to_string(),
+                latest_goal: String::new(),
+                latest_summary: String::new(),
+                facts: vec![],
+                blockers: vec![],
+                requests: vec![],
+                last_response_kind: Some(ResponseKind::Accepted),
+                next_action: "execute".to_string(),
+                terminal: false,
+            },
+            recent_events: vec!["frame planner -> worker (task-b)".to_string()],
+        };
+
+        let error = left.merge_with(&right).unwrap_err();
+        assert!(error.contains("different latest_task_id"));
     }
 }
