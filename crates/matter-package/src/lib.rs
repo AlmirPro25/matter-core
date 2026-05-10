@@ -358,6 +358,7 @@ pub struct PackageStatus {
 pub struct PackageStatusDiagnostics {
     pub state: &'static str,
     pub failed_checks: Vec<&'static str>,
+    pub next_action: &'static str,
     pub errors: Vec<String>,
 }
 
@@ -388,10 +389,23 @@ impl PackageStatus {
         checks
     }
 
+    pub fn next_action(&self) -> &'static str {
+        if self.is_ready() {
+            "none"
+        } else if !self.lockfile_ok || !self.installation_ok {
+            "sync"
+        } else if !self.imports_ok {
+            "fix-imports"
+        } else {
+            "inspect-errors"
+        }
+    }
+
     pub fn diagnostics(&self) -> PackageStatusDiagnostics {
         PackageStatusDiagnostics {
             state: self.state(),
             failed_checks: self.failed_checks(),
+            next_action: self.next_action(),
             errors: self.errors.clone(),
         }
     }
@@ -1501,12 +1515,14 @@ math-utils = "^1.0.0"
         assert!(status.errors.is_empty());
         assert!(status.is_ready());
         assert_eq!(status.state(), "ready");
+        assert_eq!(status.next_action(), "none");
         assert!(status.failed_checks().is_empty());
         assert_eq!(
             status.diagnostics(),
             PackageStatusDiagnostics {
                 state: "ready",
                 failed_checks: vec![],
+                next_action: "none",
                 errors: vec![]
             }
         );
@@ -1541,6 +1557,7 @@ math-utils = "^1.0.0"
         assert!(!status.imports_ok);
         assert!(!status.is_ready());
         assert_eq!(status.state(), "error");
+        assert_eq!(status.next_action(), "sync");
         assert_eq!(
             status.failed_checks(),
             vec!["lockfile", "installation", "imports"]
@@ -1551,6 +1568,7 @@ math-utils = "^1.0.0"
             diagnostics.failed_checks,
             vec!["lockfile", "installation", "imports"]
         );
+        assert_eq!(diagnostics.next_action, "sync");
         assert_eq!(diagnostics.errors, status.errors);
         assert!(status.summary().contains("lockfile: error"));
         assert!(status.summary().contains("installation: error"));
