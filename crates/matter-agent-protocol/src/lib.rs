@@ -101,6 +101,7 @@ pub struct AgentSessionContext {
 pub struct AgentHandoffPacket {
     pub packet_id: String,
     pub parent_packet_id: Option<String>,
+    pub lineage_depth: usize,
     pub context: AgentSessionContext,
     pub recent_events: Vec<String>,
     pub merge_strategy: MergeStrategy,
@@ -423,6 +424,7 @@ impl AgentSession {
             recent_events,
             packet_id,
             parent_packet_id: None,
+            lineage_depth: 0,
             merge_strategy: MergeStrategy::PreferLatest,
         }
     }
@@ -447,6 +449,7 @@ impl AgentHandoffPacket {
                 "parent_packet_id={}",
                 encode_field(self.parent_packet_id.as_deref().unwrap_or(""))
             ),
+            format!("lineage_depth={}", self.lineage_depth),
             format!("session_id={}", encode_field(&self.context.session_id)),
             format!("event_count={}", self.context.event_count),
             format!("latest_task_id={}", encode_field(&self.context.latest_task_id)),
@@ -498,6 +501,12 @@ impl AgentHandoffPacket {
         let event_count = require_pair(&pairs, "event_count")?
             .parse::<usize>()
             .map_err(|error| format!("invalid event_count: {}", error))?;
+        let lineage_depth = match pairs.get("lineage_depth") {
+            Some(value) => value
+                .parse::<usize>()
+                .map_err(|error| format!("invalid lineage_depth: {}", error))?,
+            None => 0,
+        };
         let terminal = require_pair(&pairs, "terminal")?
             .parse::<bool>()
             .map_err(|error| format!("invalid terminal: {}", error))?;
@@ -542,6 +551,7 @@ impl AgentHandoffPacket {
         let packet = Self {
             packet_id,
             parent_packet_id,
+            lineage_depth,
             context: AgentSessionContext {
                 session_id: decode_field(require_pair(&pairs, "session_id")?)?,
                 event_count,
@@ -582,6 +592,9 @@ impl AgentHandoffPacket {
         if self.parent_packet_id.as_deref() == Some(self.packet_id.as_str()) {
             errors.push("parent_packet_id cannot equal packet_id".to_string());
         }
+        if self.lineage_depth > 1024 {
+            errors.push("lineage_depth exceeds hard safety limit".to_string());
+        }
         if self.context.event_count < self.recent_events.len() {
             errors.push("event_count is smaller than recent_events length".to_string());
         }
@@ -617,7 +630,7 @@ impl AgentHandoffPacket {
     }
 
     pub fn merge_with(&self, other: &Self) -> Result<Self, String> {
-        self.try_merge_with(other, self.merge_strategy)
+        self.try_merge_with(other, self.merge_strategy, 1024)
     }
 
     pub fn merge_with_strategy(
@@ -625,10 +638,24 @@ impl AgentHandoffPacket {
         other: &Self,
         strategy: MergeStrategy,
     ) -> Result<Self, String> {
-        self.try_merge_with(other, strategy)
+        self.try_merge_with(other, strategy, 1024)
     }
 
-    fn try_merge_with(&self, other: &Self, strategy: MergeStrategy) -> Result<Self, String> {
+    pub fn merge_with_strategy_and_limit(
+        &self,
+        other: &Self,
+        strategy: MergeStrategy,
+        max_lineage_depth: usize,
+    ) -> Result<Self, String> {
+        self.try_merge_with(other, strategy, max_lineage_depth)
+    }
+
+    fn try_merge_with(
+        &self,
+        other: &Self,
+        strategy: MergeStrategy,
+        max_lineage_depth: usize,
+    ) -> Result<Self, String> {
         if self.context.session_id != other.context.session_id {
             return Err("cannot merge handoff packets from different sessions".to_string());
         }
@@ -637,6 +664,13 @@ impl AgentHandoffPacket {
         let other_task = other.context.latest_task_id.trim();
         if !self_task.is_empty() && !other_task.is_empty() && self_task != other_task {
             return Err("cannot merge handoff packets with different latest_task_id".to_string());
+        }
+        let merged_depth = self.lineage_depth.max(other.lineage_depth).saturating_add(1);
+        if merged_depth > max_lineage_depth {
+            return Err(format!(
+                "cannot merge handoff packets beyond lineage depth {}",
+                max_lineage_depth
+            ));
         }
 
         let preferred = preferred_packet(self, other, strategy);
@@ -679,14 +713,16 @@ impl AgentHandoffPacket {
             packet_id: build_packet_id(
                 "merge",
                 &format!(
-                    "{}:{}:{}:{}",
+                    "{}:{}:{}:{}:{}",
                     self.context.session_id,
                     self.packet_id,
                     other.packet_id,
-                    merge_strategy_word(strategy)
+                    merge_strategy_word(strategy),
+                    merged_depth
                 ),
             ),
             parent_packet_id: Some(preferred.packet_id.clone()),
+            lineage_depth: merged_depth,
             context: merged_context,
             recent_events: merge_dedup_strings(&self.recent_events, &other.recent_events),
             merge_strategy: strategy,
@@ -1257,6 +1293,7 @@ mod tests {
         let decoded = AgentHandoffPacket::from_wire(&wire).unwrap();
 
         assert_eq!(decoded, packet);
+        assert_eq!(decoded.lineage_depth, 0);
     }
 
     #[test]
@@ -1280,12 +1317,16 @@ mod tests {
             ));
         let mut packet = session.handoff_packet(2);
         packet.merge_strategy = MergeStrategy::PreferBlocked;
+        packet.parent_packet_id = Some("pkt_parent".to_string());
+        packet.lineage_depth = 7;
 
         let wire = packet.to_wire_with_strategy(MergeStrategy::PreferBlocked);
         let decoded = AgentHandoffPacket::from_wire_with_strategy(&wire).unwrap();
 
         assert_eq!(decoded, packet);
         assert_eq!(decoded.merge_strategy, MergeStrategy::PreferBlocked);
+        assert_eq!(decoded.parent_packet_id, Some("pkt_parent".to_string()));
+        assert_eq!(decoded.lineage_depth, 7);
     }
 
     #[test]
@@ -1327,6 +1368,7 @@ mod tests {
         let packet = AgentHandoffPacket {
             packet_id: "pkt_test_completed".to_string(),
             parent_packet_id: None,
+            lineage_depth: 0,
             context: AgentSessionContext {
                 session_id: "s".to_string(),
                 event_count: 1,
@@ -1360,10 +1402,19 @@ mod tests {
     }
 
     #[test]
+    fn handoff_packet_rejects_excessive_lineage_depth() {
+        let payload = "version=1\npacket_id=pkt_x\nparent_packet_id=\nlineage_depth=2048\nsession_id=s\nevent_count=0\nlatest_task_id=\nlatest_goal=\nlatest_summary=\nfacts=\nblockers=\nrequests=\nlast_response_kind=none\nmerge_strategy=prefer_latest\nnext_action=start\nterminal=false\nrecent_events=";
+        let wire = format!("{}\nchecksum={}", payload, wire_checksum(payload));
+        let error = AgentHandoffPacket::from_wire(&wire).unwrap_err();
+        assert!(error.contains("lineage_depth exceeds hard safety limit"));
+    }
+
+    #[test]
     fn handoff_packets_merge_incrementally() {
         let left = AgentHandoffPacket {
             packet_id: "pkt_left_merge".to_string(),
             parent_packet_id: None,
+            lineage_depth: 1,
             context: AgentSessionContext {
                 session_id: "s1".to_string(),
                 event_count: 2,
@@ -1383,6 +1434,7 @@ mod tests {
         let right = AgentHandoffPacket {
             packet_id: "pkt_right_merge".to_string(),
             parent_packet_id: None,
+            lineage_depth: 2,
             context: AgentSessionContext {
                 session_id: "s1".to_string(),
                 event_count: 3,
@@ -1422,6 +1474,7 @@ mod tests {
         );
         assert!(merged.packet_id.starts_with("merge_"));
         assert_eq!(merged.parent_packet_id, Some("pkt_right_merge".to_string()));
+        assert_eq!(merged.lineage_depth, 3);
         assert!(merged.is_consistent());
     }
 
@@ -1430,6 +1483,7 @@ mod tests {
         let left = AgentHandoffPacket {
             packet_id: "pkt_s1".to_string(),
             parent_packet_id: None,
+            lineage_depth: 0,
             context: AgentSessionContext {
                 session_id: "s1".to_string(),
                 event_count: 0,
@@ -1449,6 +1503,7 @@ mod tests {
         let right = AgentHandoffPacket {
             packet_id: "pkt_s2".to_string(),
             parent_packet_id: None,
+            lineage_depth: 0,
             context: AgentSessionContext {
                 session_id: "s2".to_string(),
                 event_count: 0,
@@ -1475,6 +1530,7 @@ mod tests {
         let left = AgentHandoffPacket {
             packet_id: "pkt_task_a".to_string(),
             parent_packet_id: None,
+            lineage_depth: 0,
             context: AgentSessionContext {
                 session_id: "s1".to_string(),
                 event_count: 1,
@@ -1494,6 +1550,7 @@ mod tests {
         let right = AgentHandoffPacket {
             packet_id: "pkt_task_b".to_string(),
             parent_packet_id: None,
+            lineage_depth: 0,
             context: AgentSessionContext {
                 session_id: "s1".to_string(),
                 event_count: 1,
@@ -1520,6 +1577,7 @@ mod tests {
         let left = AgentHandoffPacket {
             packet_id: "pkt_terminal_left".to_string(),
             parent_packet_id: None,
+            lineage_depth: 2,
             context: AgentSessionContext {
                 session_id: "s1".to_string(),
                 event_count: 5,
@@ -1539,6 +1597,7 @@ mod tests {
         let right = AgentHandoffPacket {
             packet_id: "pkt_terminal_right".to_string(),
             parent_packet_id: None,
+            lineage_depth: 1,
             context: AgentSessionContext {
                 session_id: "s1".to_string(),
                 event_count: 4,
@@ -1569,6 +1628,7 @@ mod tests {
         let left = AgentHandoffPacket {
             packet_id: "pkt_blocked_left".to_string(),
             parent_packet_id: None,
+            lineage_depth: 4,
             context: AgentSessionContext {
                 session_id: "s1".to_string(),
                 event_count: 3,
@@ -1588,6 +1648,7 @@ mod tests {
         let right = AgentHandoffPacket {
             packet_id: "pkt_blocked_right".to_string(),
             parent_packet_id: None,
+            lineage_depth: 1,
             context: AgentSessionContext {
                 session_id: "s1".to_string(),
                 event_count: 6,
@@ -1611,5 +1672,54 @@ mod tests {
         assert_eq!(merged.context.latest_summary, "left-summary");
         assert_eq!(merged.context.next_action, "resolve-blockers");
         assert!(merged.context.blockers.contains(&"left blocker".to_string()));
+    }
+
+    #[test]
+    fn merge_rejects_when_lineage_limit_is_reached() {
+        let left = AgentHandoffPacket {
+            packet_id: "pkt_limit_left".to_string(),
+            parent_packet_id: None,
+            lineage_depth: 5,
+            context: AgentSessionContext {
+                session_id: "s1".to_string(),
+                event_count: 1,
+                latest_task_id: "task".to_string(),
+                latest_goal: String::new(),
+                latest_summary: String::new(),
+                facts: vec![],
+                blockers: vec![],
+                requests: vec![],
+                last_response_kind: Some(ResponseKind::Accepted),
+                next_action: "execute".to_string(),
+                terminal: false,
+            },
+            recent_events: vec!["frame planner -> worker (task)".to_string()],
+            merge_strategy: MergeStrategy::PreferLatest,
+        };
+        let right = AgentHandoffPacket {
+            packet_id: "pkt_limit_right".to_string(),
+            parent_packet_id: None,
+            lineage_depth: 5,
+            context: AgentSessionContext {
+                session_id: "s1".to_string(),
+                event_count: 2,
+                latest_task_id: "task".to_string(),
+                latest_goal: String::new(),
+                latest_summary: String::new(),
+                facts: vec![],
+                blockers: vec![],
+                requests: vec![],
+                last_response_kind: Some(ResponseKind::Accepted),
+                next_action: "execute".to_string(),
+                terminal: false,
+            },
+            recent_events: vec!["response worker -> planner (task) [accepted]".to_string()],
+            merge_strategy: MergeStrategy::PreferLatest,
+        };
+
+        let error = left
+            .merge_with_strategy_and_limit(&right, MergeStrategy::PreferLatest, 5)
+            .unwrap_err();
+        assert!(error.contains("beyond lineage depth"));
     }
 }
