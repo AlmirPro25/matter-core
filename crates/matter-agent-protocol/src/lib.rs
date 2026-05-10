@@ -99,6 +99,8 @@ pub struct AgentSessionContext {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentHandoffPacket {
+    pub packet_id: String,
+    pub parent_packet_id: Option<String>,
     pub context: AgentSessionContext,
     pub recent_events: Vec<String>,
     pub merge_strategy: MergeStrategy,
@@ -411,9 +413,16 @@ impl AgentSession {
     }
 
     pub fn handoff_packet(&self, limit: usize) -> AgentHandoffPacket {
+        let recent_events = self.recent_event_summaries(limit);
+        let packet_id = build_packet_id(
+            "pkt",
+            &format!("{}:{}:{}", self.session_id, self.event_count(), recent_events.join("|")),
+        );
         AgentHandoffPacket {
             context: self.context(),
-            recent_events: self.recent_event_summaries(limit),
+            recent_events,
+            packet_id,
+            parent_packet_id: None,
             merge_strategy: MergeStrategy::PreferLatest,
         }
     }
@@ -433,6 +442,11 @@ impl AgentHandoffPacket {
 
         let lines = [
             "version=1".to_string(),
+            format!("packet_id={}", encode_field(&self.packet_id)),
+            format!(
+                "parent_packet_id={}",
+                encode_field(self.parent_packet_id.as_deref().unwrap_or(""))
+            ),
             format!("session_id={}", encode_field(&self.context.session_id)),
             format!("event_count={}", self.context.event_count),
             format!("latest_task_id={}", encode_field(&self.context.latest_task_id)),
@@ -500,7 +514,34 @@ impl AgentHandoffPacket {
                 .ok_or_else(|| format!("invalid merge_strategy: {}", value))?,
         };
 
+        let recent_events = decode_list(require_pair(&pairs, "recent_events")?)?;
+        let packet_id = match pairs.get("packet_id") {
+            Some(value) => decode_field(value)?,
+            None => build_packet_id(
+                "legacy",
+                &format!(
+                    "{}:{}:{}",
+                    require_pair(&pairs, "session_id")?,
+                    event_count,
+                    recent_events.join("|")
+                ),
+            ),
+        };
+        let parent_packet_id = match pairs.get("parent_packet_id") {
+            Some(value) => {
+                let decoded = decode_field(value)?;
+                if decoded.trim().is_empty() {
+                    None
+                } else {
+                    Some(decoded)
+                }
+            }
+            None => None,
+        };
+
         let packet = Self {
+            packet_id,
+            parent_packet_id,
             context: AgentSessionContext {
                 session_id: decode_field(require_pair(&pairs, "session_id")?)?,
                 event_count,
@@ -514,7 +555,7 @@ impl AgentHandoffPacket {
                 next_action: decode_field(require_pair(&pairs, "next_action")?)?,
                 terminal,
             },
-            recent_events: decode_list(require_pair(&pairs, "recent_events")?)?,
+            recent_events,
             merge_strategy: strategy,
         };
 
@@ -535,6 +576,12 @@ impl AgentHandoffPacket {
     pub fn validation_errors(&self) -> Vec<String> {
         let mut errors = Vec::new();
 
+        if self.packet_id.trim().is_empty() {
+            errors.push("packet_id cannot be empty".to_string());
+        }
+        if self.parent_packet_id.as_deref() == Some(self.packet_id.as_str()) {
+            errors.push("parent_packet_id cannot equal packet_id".to_string());
+        }
         if self.context.event_count < self.recent_events.len() {
             errors.push("event_count is smaller than recent_events length".to_string());
         }
@@ -629,6 +676,17 @@ impl AgentHandoffPacket {
         };
 
         let merged = Self {
+            packet_id: build_packet_id(
+                "merge",
+                &format!(
+                    "{}:{}:{}:{}",
+                    self.context.session_id,
+                    self.packet_id,
+                    other.packet_id,
+                    merge_strategy_word(strategy)
+                ),
+            ),
+            parent_packet_id: Some(preferred.packet_id.clone()),
             context: merged_context,
             recent_events: merge_dedup_strings(&self.recent_events, &other.recent_events),
             merge_strategy: strategy,
@@ -795,6 +853,12 @@ fn merge_strategy_from_word(word: &str) -> Option<MergeStrategy> {
         "prefer_blocked" => Some(MergeStrategy::PreferBlocked),
         _ => None,
     }
+}
+
+fn build_packet_id(prefix: &str, seed: &str) -> String {
+    let checksum = wire_checksum(seed);
+    let short = &checksum[..12];
+    format!("{}_{}", prefix, short)
 }
 
 fn choose_preferred_text(preferred: &str, left: &str, right: &str) -> String {
@@ -1261,6 +1325,8 @@ mod tests {
     #[test]
     fn handoff_packet_reports_semantic_inconsistency() {
         let packet = AgentHandoffPacket {
+            packet_id: "pkt_test_completed".to_string(),
+            parent_packet_id: None,
             context: AgentSessionContext {
                 session_id: "s".to_string(),
                 event_count: 1,
@@ -1296,6 +1362,8 @@ mod tests {
     #[test]
     fn handoff_packets_merge_incrementally() {
         let left = AgentHandoffPacket {
+            packet_id: "pkt_left_merge".to_string(),
+            parent_packet_id: None,
             context: AgentSessionContext {
                 session_id: "s1".to_string(),
                 event_count: 2,
@@ -1313,6 +1381,8 @@ mod tests {
             merge_strategy: MergeStrategy::PreferLatest,
         };
         let right = AgentHandoffPacket {
+            packet_id: "pkt_right_merge".to_string(),
+            parent_packet_id: None,
             context: AgentSessionContext {
                 session_id: "s1".to_string(),
                 event_count: 3,
@@ -1350,12 +1420,16 @@ mod tests {
                 "response worker -> planner (task) [blocked]"
             ]
         );
+        assert!(merged.packet_id.starts_with("merge_"));
+        assert_eq!(merged.parent_packet_id, Some("pkt_right_merge".to_string()));
         assert!(merged.is_consistent());
     }
 
     #[test]
     fn handoff_merge_rejects_different_sessions() {
         let left = AgentHandoffPacket {
+            packet_id: "pkt_s1".to_string(),
+            parent_packet_id: None,
             context: AgentSessionContext {
                 session_id: "s1".to_string(),
                 event_count: 0,
@@ -1373,6 +1447,8 @@ mod tests {
             merge_strategy: MergeStrategy::PreferLatest,
         };
         let right = AgentHandoffPacket {
+            packet_id: "pkt_s2".to_string(),
+            parent_packet_id: None,
             context: AgentSessionContext {
                 session_id: "s2".to_string(),
                 event_count: 0,
@@ -1397,6 +1473,8 @@ mod tests {
     #[test]
     fn handoff_merge_rejects_different_tasks() {
         let left = AgentHandoffPacket {
+            packet_id: "pkt_task_a".to_string(),
+            parent_packet_id: None,
             context: AgentSessionContext {
                 session_id: "s1".to_string(),
                 event_count: 1,
@@ -1414,6 +1492,8 @@ mod tests {
             merge_strategy: MergeStrategy::PreferLatest,
         };
         let right = AgentHandoffPacket {
+            packet_id: "pkt_task_b".to_string(),
+            parent_packet_id: None,
             context: AgentSessionContext {
                 session_id: "s1".to_string(),
                 event_count: 1,
@@ -1438,6 +1518,8 @@ mod tests {
     #[test]
     fn merge_strategy_prefer_terminal_uses_terminal_context() {
         let left = AgentHandoffPacket {
+            packet_id: "pkt_terminal_left".to_string(),
+            parent_packet_id: None,
             context: AgentSessionContext {
                 session_id: "s1".to_string(),
                 event_count: 5,
@@ -1455,6 +1537,8 @@ mod tests {
             merge_strategy: MergeStrategy::PreferLatest,
         };
         let right = AgentHandoffPacket {
+            packet_id: "pkt_terminal_right".to_string(),
+            parent_packet_id: None,
             context: AgentSessionContext {
                 session_id: "s1".to_string(),
                 event_count: 4,
@@ -1483,6 +1567,8 @@ mod tests {
     #[test]
     fn merge_strategy_prefer_blocked_uses_blocked_context() {
         let left = AgentHandoffPacket {
+            packet_id: "pkt_blocked_left".to_string(),
+            parent_packet_id: None,
             context: AgentSessionContext {
                 session_id: "s1".to_string(),
                 event_count: 3,
@@ -1500,6 +1586,8 @@ mod tests {
             merge_strategy: MergeStrategy::PreferLatest,
         };
         let right = AgentHandoffPacket {
+            packet_id: "pkt_blocked_right".to_string(),
+            parent_packet_id: None,
             context: AgentSessionContext {
                 session_id: "s1".to_string(),
                 event_count: 6,
