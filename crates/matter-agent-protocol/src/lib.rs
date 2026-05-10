@@ -63,6 +63,18 @@ pub struct AgentResponse {
     pub next_action: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AgentEvent {
+    Frame(AgentFrame),
+    Response(AgentResponse),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentSession {
+    pub session_id: String,
+    pub events: Vec<AgentEvent>,
+}
+
 impl AgentId {
     pub fn new(name: impl Into<String>, role: AgentRole) -> Self {
         Self {
@@ -232,6 +244,58 @@ impl AgentResponse {
             format!("missing_context: {}", static_list_or_none(&self.missing_context)),
             format!("blockers: {}", list_or_none(&self.blockers)),
             format!("next_action: {}", empty_word(&self.next_action)),
+        ]
+        .join("\n")
+    }
+}
+
+impl AgentSession {
+    pub fn new(session_id: impl Into<String>) -> Self {
+        Self {
+            session_id: session_id.into(),
+            events: Vec::new(),
+        }
+    }
+
+    pub fn add_frame(mut self, frame: AgentFrame) -> Self {
+        self.events.push(AgentEvent::Frame(frame));
+        self
+    }
+
+    pub fn add_response(mut self, response: AgentResponse) -> Self {
+        self.events.push(AgentEvent::Response(response));
+        self
+    }
+
+    pub fn event_count(&self) -> usize {
+        self.events.len()
+    }
+
+    pub fn last_response(&self) -> Option<&AgentResponse> {
+        self.events.iter().rev().find_map(|event| match event {
+            AgentEvent::Response(response) => Some(response),
+            AgentEvent::Frame(_) => None,
+        })
+    }
+
+    pub fn is_terminal(&self) -> bool {
+        self.last_response()
+            .map(|response| response.is_terminal())
+            .unwrap_or(false)
+    }
+
+    pub fn next_action(&self) -> &str {
+        self.last_response()
+            .map(|response| response.next_action.as_str())
+            .unwrap_or("start")
+    }
+
+    pub fn summary_text(&self) -> String {
+        [
+            format!("session: {}", self.session_id),
+            format!("events: {}", self.event_count()),
+            format!("terminal: {}", self.is_terminal()),
+            format!("next_action: {}", self.next_action()),
         ]
         .join("\n")
     }
@@ -446,5 +510,57 @@ mod tests {
         assert_eq!(response.kind, ResponseKind::Completed);
         assert_eq!(response.next_action, "none");
         assert!(response.summary_text().contains("kind: completed"));
+    }
+
+    #[test]
+    fn session_tracks_frame_response_cycle() {
+        let frame = AgentFrame::new(
+            AgentId::new("planner", AgentRole::Planner),
+            AgentId::new("worker", AgentRole::Worker),
+            "handoff-cycle",
+        )
+        .with_goal("Create an agent session transcript")
+        .with_summary("Frames and responses need a durable conversation container")
+        .with_next_action("append response to session");
+        let response = frame.response_from_receiver();
+
+        let session = AgentSession::new("session-1")
+            .add_frame(frame)
+            .add_response(response);
+
+        assert_eq!(session.event_count(), 2);
+        assert!(!session.is_terminal());
+        assert_eq!(session.next_action(), "execute");
+        assert_eq!(
+            session.last_response().map(|response| response.kind),
+            Some(ResponseKind::Accepted)
+        );
+        assert!(session.summary_text().contains("events: 2"));
+    }
+
+    #[test]
+    fn session_detects_terminal_completion() {
+        let response = AgentResponse::completed(
+            AgentId::new("worker", AgentRole::Worker),
+            AgentId::new("planner", AgentRole::Planner),
+            "handoff-cycle",
+            "Session protocol completed",
+        );
+
+        let session = AgentSession::new("session-2").add_response(response);
+
+        assert!(session.is_terminal());
+        assert_eq!(session.next_action(), "none");
+        assert!(session.summary_text().contains("terminal: true"));
+    }
+
+    #[test]
+    fn empty_session_starts_without_response() {
+        let session = AgentSession::new("empty-session");
+
+        assert_eq!(session.event_count(), 0);
+        assert!(session.last_response().is_none());
+        assert!(!session.is_terminal());
+        assert_eq!(session.next_action(), "start");
     }
 }
