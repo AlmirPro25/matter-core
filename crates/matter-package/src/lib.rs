@@ -279,6 +279,16 @@ pub struct InstallReport {
     pub installed: Vec<PathBuf>,
 }
 
+impl InstallReport {
+    pub fn summary(&self) -> String {
+        [
+            format!("lockfile: {}", self.lockfile.entries.len()),
+            format!("installed: {}", self.installed.len()),
+        ]
+        .join("\n")
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyncReport {
     pub lockfile: Lockfile,
@@ -1078,6 +1088,7 @@ math-utils = "^1.0.0"
 
         let installed_root = root.join(".matter").join("packages").join("utils");
         assert_eq!(report.installed, vec![installed_root.clone()]);
+        assert_eq!(report.summary(), "lockfile: 1\ninstalled: 1");
         assert!(root.join("matter.lock").exists());
         assert!(installed_root.join("matter.toml").exists());
         assert!(installed_root.join("src").join("lib.matter").exists());
