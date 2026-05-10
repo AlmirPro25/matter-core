@@ -1,7 +1,7 @@
 /// Matter Package Manager
 /// Sistema de pacotes, dependências e versionamento
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -624,6 +624,40 @@ impl PackageManager {
         Ok(installed)
     }
 
+    pub fn prune_installed_packages(&self, package: &Package) -> Result<Vec<PathBuf>, String> {
+        let lockfile = Lockfile::load(&package.root.join("matter.lock"))?;
+        self.verify_lockfile(package, &lockfile)?;
+
+        let expected = lockfile
+            .entries
+            .iter()
+            .map(|entry| entry.name.clone())
+            .collect::<HashSet<_>>();
+        let install_root = package.root.join(".matter").join("packages");
+        if !install_root.exists() {
+            return Ok(Vec::new());
+        }
+
+        let mut removed = Vec::new();
+        for entry in fs::read_dir(&install_root).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
+                continue;
+            };
+            if !expected.contains(name) {
+                fs::remove_dir_all(&path).map_err(|e| e.to_string())?;
+                removed.push(path);
+            }
+        }
+        removed.sort();
+
+        Ok(removed)
+    }
+
     pub fn verify_lockfile(&self, package: &Package, lockfile: &Lockfile) -> Result<(), String> {
         let expected = self.lock_dependencies(package)?;
         if &expected == lockfile {
@@ -1120,6 +1154,45 @@ math-utils = "^1.0.0"
 
         let error = manager.verify_installation(&app).unwrap_err();
         assert!(error.contains("missing from .matter/packages"));
+
+        let _ = fs::remove_dir_all(root);
+        let _ = fs::remove_dir_all(registry_root);
+    }
+
+    #[test]
+    fn test_prune_installed_packages_removes_unlocked_directories() {
+        let root = std::env::temp_dir().join("matter_package_prune_test");
+        let registry_root = std::env::temp_dir().join("matter_package_prune_registry");
+        let _ = fs::remove_dir_all(&root);
+        let _ = fs::remove_dir_all(&registry_root);
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::create_dir_all(registry_root.join("utils").join("src")).unwrap();
+
+        let mut app_manifest = Manifest::new("app".to_string(), Version::new(0, 1, 0));
+        app_manifest.dependencies.insert(
+            "utils".to_string(),
+            Dependency::Registry(VersionReq::Caret(Version::new(1, 0, 0))),
+        );
+        let app = Package::new(app_manifest, root.clone());
+        app.manifest.save(&root.join("matter.toml")).unwrap();
+
+        let utils_manifest = Manifest::new("utils".to_string(), Version::new(1, 2, 0));
+        let utils_root = registry_root.join("utils");
+        utils_manifest.save(&utils_root.join("matter.toml")).unwrap();
+        fs::write(utils_root.join("src").join("main.matter"), "print 1\n").unwrap();
+
+        let mut manager = PackageManager::new();
+        manager.register_package(Package::new(utils_manifest, utils_root));
+        manager.install_dependencies(&app).unwrap();
+
+        let extra = root.join(".matter").join("packages").join("old");
+        fs::create_dir_all(&extra).unwrap();
+        fs::write(extra.join("matter.toml"), "[package]\nname = \"old\"\nversion = \"0.1.0\"\n").unwrap();
+
+        let removed = manager.prune_installed_packages(&app).unwrap();
+        assert_eq!(removed, vec![extra.clone()]);
+        assert!(!extra.exists());
+        assert!(root.join(".matter").join("packages").join("utils").exists());
 
         let _ = fs::remove_dir_all(root);
         let _ = fs::remove_dir_all(registry_root);
