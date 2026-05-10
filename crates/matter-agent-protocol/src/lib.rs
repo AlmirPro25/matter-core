@@ -419,6 +419,10 @@ impl AgentSession {
 
 impl AgentHandoffPacket {
     pub fn to_wire(&self) -> String {
+        self.to_wire_with_strategy(MergeStrategy::PreferLatest)
+    }
+
+    pub fn to_wire_with_strategy(&self, strategy: MergeStrategy) -> String {
         let last_kind = self
             .context
             .last_response_kind
@@ -439,6 +443,7 @@ impl AgentHandoffPacket {
             format!("blockers={}", encode_list(&self.context.blockers)),
             format!("requests={}", encode_list(&self.context.requests)),
             format!("last_response_kind={}", last_kind),
+            format!("merge_strategy={}", merge_strategy_word(strategy)),
             format!("next_action={}", encode_field(&self.context.next_action)),
             format!("terminal={}", self.context.terminal),
             format!("recent_events={}", encode_list(&self.recent_events)),
@@ -449,6 +454,11 @@ impl AgentHandoffPacket {
     }
 
     pub fn from_wire(wire: &str) -> Result<Self, String> {
+        let (packet, _) = Self::from_wire_with_strategy(wire)?;
+        Ok(packet)
+    }
+
+    pub fn from_wire_with_strategy(wire: &str) -> Result<(Self, MergeStrategy), String> {
         let (payload, provided_checksum) = split_payload_and_checksum(wire)?;
         let expected_checksum = wire_checksum(payload);
         let mut pairs = std::collections::HashMap::new();
@@ -483,6 +493,11 @@ impl AgentHandoffPacket {
                     .ok_or_else(|| format!("invalid last_response_kind: {}", value))?,
             ),
         };
+        let strategy = match pairs.get("merge_strategy") {
+            None => MergeStrategy::PreferLatest,
+            Some(value) => merge_strategy_from_word(value)
+                .ok_or_else(|| format!("invalid merge_strategy: {}", value))?,
+        };
 
         let packet = Self {
             context: AgentSessionContext {
@@ -508,7 +523,7 @@ impl AgentHandoffPacket {
             ));
         }
 
-        Ok(packet)
+        Ok((packet, strategy))
     }
 
     pub fn is_consistent(&self) -> bool {
@@ -758,6 +773,23 @@ fn response_kind_from_word(word: &str) -> Option<ResponseKind> {
         "needs_context" => Some(ResponseKind::NeedsContext),
         "blocked" => Some(ResponseKind::Blocked),
         "completed" => Some(ResponseKind::Completed),
+        _ => None,
+    }
+}
+
+fn merge_strategy_word(strategy: MergeStrategy) -> &'static str {
+    match strategy {
+        MergeStrategy::PreferLatest => "prefer_latest",
+        MergeStrategy::PreferTerminal => "prefer_terminal",
+        MergeStrategy::PreferBlocked => "prefer_blocked",
+    }
+}
+
+fn merge_strategy_from_word(word: &str) -> Option<MergeStrategy> {
+    match word {
+        "prefer_latest" => Some(MergeStrategy::PreferLatest),
+        "prefer_terminal" => Some(MergeStrategy::PreferTerminal),
+        "prefer_blocked" => Some(MergeStrategy::PreferBlocked),
         _ => None,
     }
 }
@@ -1161,6 +1193,34 @@ mod tests {
     }
 
     #[test]
+    fn handoff_packet_round_trip_with_explicit_strategy() {
+        let session = AgentSession::new("wire-strategy")
+            .add_frame(
+                AgentFrame::new(
+                    AgentId::new("planner", AgentRole::Planner),
+                    AgentId::new("worker", AgentRole::Worker),
+                    "wire-task",
+                )
+                .with_goal("goal")
+                .with_summary("summary")
+                .with_next_action("execute"),
+            )
+            .add_response(AgentResponse::completed(
+                AgentId::new("worker", AgentRole::Worker),
+                AgentId::new("planner", AgentRole::Planner),
+                "wire-task",
+                "done",
+            ));
+        let packet = session.handoff_packet(2);
+
+        let wire = packet.to_wire_with_strategy(MergeStrategy::PreferBlocked);
+        let (decoded, strategy) = AgentHandoffPacket::from_wire_with_strategy(&wire).unwrap();
+
+        assert_eq!(decoded, packet);
+        assert_eq!(strategy, MergeStrategy::PreferBlocked);
+    }
+
+    #[test]
     fn handoff_packet_rejects_unknown_version() {
         let payload = "version=2\nsession_id=s\nevent_count=0\nlatest_task_id=\nlatest_goal=\nlatest_summary=\nfacts=\nblockers=\nrequests=\nlast_response_kind=none\nnext_action=start\nterminal=false\nrecent_events=";
         let wire = format!("{}\nchecksum={}", payload, wire_checksum(payload));
@@ -1182,6 +1242,16 @@ mod tests {
         let wire = format!("{}\nchecksum=deadbeef", payload);
         let error = AgentHandoffPacket::from_wire(&wire).unwrap_err();
         assert!(error.contains("wire checksum mismatch"));
+    }
+
+    #[test]
+    fn handoff_packet_parses_legacy_wire_without_strategy() {
+        let payload = "version=1\nsession_id=s\nevent_count=0\nlatest_task_id=\nlatest_goal=\nlatest_summary=\nfacts=\nblockers=\nrequests=\nlast_response_kind=none\nnext_action=start\nterminal=false\nrecent_events=";
+        let wire = format!("{}\nchecksum={}", payload, wire_checksum(payload));
+        let (decoded, strategy) = AgentHandoffPacket::from_wire_with_strategy(&wire).unwrap();
+        assert_eq!(strategy, MergeStrategy::PreferLatest);
+        assert_eq!(decoded.context.session_id, "s");
+        assert_eq!(decoded.context.event_count, 0);
     }
 
     #[test]
