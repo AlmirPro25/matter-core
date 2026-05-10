@@ -418,7 +418,7 @@ impl AgentHandoffPacket {
             .map(response_kind_word)
             .unwrap_or("none");
 
-        [
+        let lines = [
             "version=1".to_string(),
             format!("session_id={}", encode_field(&self.context.session_id)),
             format!("event_count={}", self.context.event_count),
@@ -435,17 +435,27 @@ impl AgentHandoffPacket {
             format!("next_action={}", encode_field(&self.context.next_action)),
             format!("terminal={}", self.context.terminal),
             format!("recent_events={}", encode_list(&self.recent_events)),
-        ]
-        .join("\n")
+        ];
+        let payload = lines.join("\n");
+        let checksum = wire_checksum(&payload);
+        format!("{}\nchecksum={}", payload, checksum)
     }
 
     pub fn from_wire(wire: &str) -> Result<Self, String> {
+        let (payload, provided_checksum) = split_payload_and_checksum(wire)?;
+        let expected_checksum = wire_checksum(payload);
         let mut pairs = std::collections::HashMap::new();
-        for line in wire.lines().filter(|line| !line.trim().is_empty()) {
+        for line in payload.lines().filter(|line| !line.trim().is_empty()) {
             let (key, value) = line
                 .split_once('=')
                 .ok_or_else(|| format!("invalid wire line: {}", line))?;
             pairs.insert(key.trim().to_string(), value.to_string());
+        }
+        if provided_checksum != expected_checksum {
+            return Err(format!(
+                "wire checksum mismatch: expected {}, got {}",
+                expected_checksum, provided_checksum
+            ));
         }
 
         let version = require_pair(&pairs, "version")?;
@@ -619,6 +629,27 @@ fn response_kind_from_word(word: &str) -> Option<ResponseKind> {
         "completed" => Some(ResponseKind::Completed),
         _ => None,
     }
+}
+
+fn split_payload_and_checksum(wire: &str) -> Result<(&str, &str), String> {
+    let idx = wire
+        .rfind("\nchecksum=")
+        .ok_or_else(|| "missing wire checksum".to_string())?;
+    let payload = &wire[..idx];
+    let checksum = &wire[idx + "\nchecksum=".len()..];
+    if checksum.trim().is_empty() {
+        return Err("missing wire checksum value".to_string());
+    }
+    Ok((payload, checksum.trim()))
+}
+
+fn wire_checksum(payload: &str) -> String {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for byte in payload.as_bytes() {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("{:016x}", hash)
 }
 
 #[cfg(test)]
@@ -938,15 +969,25 @@ mod tests {
 
     #[test]
     fn handoff_packet_rejects_unknown_version() {
-        let wire = "version=2\nsession_id=s\nevent_count=0\nlatest_task_id=\nlatest_goal=\nlatest_summary=\nfacts=\nblockers=\nrequests=\nlast_response_kind=none\nnext_action=start\nterminal=false\nrecent_events=\n";
-        let error = AgentHandoffPacket::from_wire(wire).unwrap_err();
+        let payload = "version=2\nsession_id=s\nevent_count=0\nlatest_task_id=\nlatest_goal=\nlatest_summary=\nfacts=\nblockers=\nrequests=\nlast_response_kind=none\nnext_action=start\nterminal=false\nrecent_events=";
+        let wire = format!("{}\nchecksum={}", payload, wire_checksum(payload));
+        let error = AgentHandoffPacket::from_wire(&wire).unwrap_err();
         assert!(error.contains("unsupported wire version"));
     }
 
     #[test]
     fn handoff_packet_rejects_missing_fields() {
-        let wire = "version=1\nsession_id=s\n";
-        let error = AgentHandoffPacket::from_wire(wire).unwrap_err();
+        let payload = "version=1\nsession_id=s";
+        let wire = format!("{}\nchecksum={}", payload, wire_checksum(payload));
+        let error = AgentHandoffPacket::from_wire(&wire).unwrap_err();
         assert!(error.contains("missing wire field"));
+    }
+
+    #[test]
+    fn handoff_packet_rejects_checksum_mismatch() {
+        let payload = "version=1\nsession_id=s\nevent_count=0\nlatest_task_id=\nlatest_goal=\nlatest_summary=\nfacts=\nblockers=\nrequests=\nlast_response_kind=none\nnext_action=start\nterminal=false\nrecent_events=";
+        let wire = format!("{}\nchecksum=deadbeef", payload);
+        let error = AgentHandoffPacket::from_wire(&wire).unwrap_err();
+        assert!(error.contains("wire checksum mismatch"));
     }
 }
