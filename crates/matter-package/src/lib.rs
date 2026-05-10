@@ -280,6 +280,10 @@ pub struct InstallReport {
 }
 
 impl InstallReport {
+    pub fn is_complete(&self) -> bool {
+        self.installed.len() == self.lockfile.entries.len()
+    }
+
     pub fn summary(&self) -> String {
         [
             format!("lockfile: {}", self.lockfile.entries.len()),
@@ -298,6 +302,11 @@ pub struct SyncReport {
 }
 
 impl SyncReport {
+    pub fn is_complete(&self) -> bool {
+        self.installed.len() == self.lockfile.entries.len()
+            && self.verified.len() == self.lockfile.entries.len()
+    }
+
     pub fn summary(&self) -> String {
         [
             format!("lockfile: {}", self.lockfile.entries.len()),
@@ -1088,6 +1097,7 @@ math-utils = "^1.0.0"
 
         let installed_root = root.join(".matter").join("packages").join("utils");
         assert_eq!(report.installed, vec![installed_root.clone()]);
+        assert!(report.is_complete());
         assert_eq!(report.summary(), "lockfile: 1\ninstalled: 1");
         assert!(root.join("matter.lock").exists());
         assert!(installed_root.join("matter.toml").exists());
@@ -1359,6 +1369,7 @@ math-utils = "^1.0.0"
         assert_eq!(report.installed, vec![installed.clone()]);
         assert_eq!(report.verified, vec![installed.clone()]);
         assert_eq!(report.removed, vec![extra.clone()]);
+        assert!(report.is_complete());
         assert_eq!(
             report.summary(),
             "lockfile: 1\ninstalled: 1\nremoved: 1\nverified: 1"
