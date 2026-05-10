@@ -287,6 +287,18 @@ pub struct SyncReport {
     pub verified: Vec<PathBuf>,
 }
 
+impl SyncReport {
+    pub fn summary(&self) -> String {
+        [
+            format!("lockfile: {}", self.lockfile.entries.len()),
+            format!("installed: {}", self.installed.len()),
+            format!("removed: {}", self.removed.len()),
+            format!("verified: {}", self.verified.len()),
+        ]
+        .join("\n")
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PackageStatus {
     pub lockfile_ok: bool,
@@ -1336,6 +1348,10 @@ math-utils = "^1.0.0"
         assert_eq!(report.installed, vec![installed.clone()]);
         assert_eq!(report.verified, vec![installed.clone()]);
         assert_eq!(report.removed, vec![extra.clone()]);
+        assert_eq!(
+            report.summary(),
+            "lockfile: 1\ninstalled: 1\nremoved: 1\nverified: 1"
+        );
         assert!(!extra.exists());
         assert!(installed.join("src").join("lib.matter").exists());
 
