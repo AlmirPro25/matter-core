@@ -23,6 +23,14 @@ pub enum FrameReadiness {
     Blocked,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResponseKind {
+    Accepted,
+    NeedsContext,
+    Blocked,
+    Completed,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentId {
     pub name: String,
@@ -40,6 +48,18 @@ pub struct AgentFrame {
     pub facts: Vec<String>,
     pub blockers: Vec<String>,
     pub requests: Vec<String>,
+    pub next_action: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentResponse {
+    pub from: AgentId,
+    pub to: AgentId,
+    pub task_id: String,
+    pub kind: ResponseKind,
+    pub summary: String,
+    pub missing_context: Vec<&'static str>,
+    pub blockers: Vec<String>,
     pub next_action: String,
 }
 
@@ -153,6 +173,68 @@ impl AgentFrame {
         ]
         .join("\n")
     }
+
+    pub fn response_from_receiver(&self) -> AgentResponse {
+        AgentResponse::from_frame(self)
+    }
+}
+
+impl AgentResponse {
+    pub fn from_frame(frame: &AgentFrame) -> Self {
+        let readiness = frame.readiness();
+        let kind = match readiness {
+            FrameReadiness::Ready => ResponseKind::Accepted,
+            FrameReadiness::Incomplete => ResponseKind::NeedsContext,
+            FrameReadiness::Blocked => ResponseKind::Blocked,
+        };
+
+        Self {
+            from: frame.to.clone(),
+            to: frame.from.clone(),
+            task_id: frame.task_id.clone(),
+            kind,
+            summary: response_summary(kind),
+            missing_context: frame.missing_context(),
+            blockers: frame.blockers.clone(),
+            next_action: response_next_action(kind),
+        }
+    }
+
+    pub fn completed(
+        from: AgentId,
+        to: AgentId,
+        task_id: impl Into<String>,
+        summary: impl Into<String>,
+    ) -> Self {
+        Self {
+            from,
+            to,
+            task_id: task_id.into(),
+            kind: ResponseKind::Completed,
+            summary: summary.into(),
+            missing_context: Vec::new(),
+            blockers: Vec::new(),
+            next_action: "none".to_string(),
+        }
+    }
+
+    pub fn is_terminal(&self) -> bool {
+        self.kind == ResponseKind::Completed
+    }
+
+    pub fn summary_text(&self) -> String {
+        [
+            format!("task: {}", self.task_id),
+            format!("kind: {}", response_kind_word(self.kind)),
+            format!("from: {}", self.from.name),
+            format!("to: {}", self.to.name),
+            format!("summary: {}", empty_word(&self.summary)),
+            format!("missing_context: {}", static_list_or_none(&self.missing_context)),
+            format!("blockers: {}", list_or_none(&self.blockers)),
+            format!("next_action: {}", empty_word(&self.next_action)),
+        ]
+        .join("\n")
+    }
 }
 
 fn list_or_none(values: &[String]) -> String {
@@ -178,6 +260,41 @@ fn task_state_word(state: TaskState) -> &'static str {
         TaskState::Blocked => "blocked",
         TaskState::ReadyForReview => "ready_for_review",
         TaskState::Completed => "completed",
+    }
+}
+
+fn response_kind_word(kind: ResponseKind) -> &'static str {
+    match kind {
+        ResponseKind::Accepted => "accepted",
+        ResponseKind::NeedsContext => "needs_context",
+        ResponseKind::Blocked => "blocked",
+        ResponseKind::Completed => "completed",
+    }
+}
+
+fn response_summary(kind: ResponseKind) -> String {
+    match kind {
+        ResponseKind::Accepted => "Frame accepted for execution".to_string(),
+        ResponseKind::NeedsContext => "Frame needs more context before execution".to_string(),
+        ResponseKind::Blocked => "Frame is blocked before execution".to_string(),
+        ResponseKind::Completed => "Frame completed".to_string(),
+    }
+}
+
+fn response_next_action(kind: ResponseKind) -> String {
+    match kind {
+        ResponseKind::Accepted => "execute".to_string(),
+        ResponseKind::NeedsContext => "request-context".to_string(),
+        ResponseKind::Blocked => "resolve-blockers".to_string(),
+        ResponseKind::Completed => "none".to_string(),
+    }
+}
+
+fn static_list_or_none(values: &[&'static str]) -> String {
+    if values.is_empty() {
+        "none".to_string()
+    } else {
+        values.join("; ")
     }
 }
 
@@ -253,5 +370,81 @@ mod tests {
         assert!(!frame.is_actionable());
         assert_eq!(frame.readiness(), FrameReadiness::Blocked);
         assert!(frame.missing_context().is_empty());
+    }
+
+    #[test]
+    fn ready_frame_receives_acceptance_response() {
+        let frame = AgentFrame::new(
+            AgentId::new("planner", AgentRole::Planner),
+            AgentId::new("worker", AgentRole::Worker),
+            "agent-protocol",
+        )
+        .with_state(TaskState::InProgress)
+        .with_goal("Add agent response frames")
+        .with_summary("The receiver needs a formal response channel")
+        .with_next_action("implement AgentResponse");
+
+        let response = frame.response_from_receiver();
+
+        assert_eq!(response.kind, ResponseKind::Accepted);
+        assert_eq!(response.from.name, "worker");
+        assert_eq!(response.to.name, "planner");
+        assert_eq!(response.next_action, "execute");
+        assert!(response.missing_context.is_empty());
+        assert!(response.summary_text().contains("kind: accepted"));
+    }
+
+    #[test]
+    fn incomplete_frame_requests_context() {
+        let frame = AgentFrame::new(
+            AgentId::new("planner", AgentRole::Planner),
+            AgentId::new("worker", AgentRole::Worker),
+            "missing-context",
+        )
+        .with_summary("The goal and next action are missing");
+
+        let response = frame.response_from_receiver();
+
+        assert_eq!(response.kind, ResponseKind::NeedsContext);
+        assert_eq!(response.missing_context, vec!["goal", "next_action"]);
+        assert_eq!(response.next_action, "request-context");
+        assert!(response
+            .summary_text()
+            .contains("missing_context: goal; next_action"));
+    }
+
+    #[test]
+    fn blocked_frame_returns_blocked_response() {
+        let frame = AgentFrame::new(
+            AgentId::new("planner", AgentRole::Planner),
+            AgentId::new("worker", AgentRole::Worker),
+            "blocked-agent-task",
+        )
+        .with_goal("Wire protocol into cloud runtime")
+        .with_summary("Runtime integration point is unavailable")
+        .add_blocker("cloud runtime crate is not ready")
+        .with_next_action("resolve runtime integration point");
+
+        let response = frame.response_from_receiver();
+
+        assert_eq!(response.kind, ResponseKind::Blocked);
+        assert_eq!(response.next_action, "resolve-blockers");
+        assert_eq!(response.blockers, vec!["cloud runtime crate is not ready"]);
+        assert!(response.summary_text().contains("kind: blocked"));
+    }
+
+    #[test]
+    fn completed_response_is_terminal() {
+        let response = AgentResponse::completed(
+            AgentId::new("worker", AgentRole::Worker),
+            AgentId::new("planner", AgentRole::Planner),
+            "done",
+            "Agent protocol response was implemented",
+        );
+
+        assert!(response.is_terminal());
+        assert_eq!(response.kind, ResponseKind::Completed);
+        assert_eq!(response.next_action, "none");
+        assert!(response.summary_text().contains("kind: completed"));
     }
 }
