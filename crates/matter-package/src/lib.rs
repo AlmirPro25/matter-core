@@ -287,6 +287,14 @@ pub struct SyncReport {
     pub verified: Vec<PathBuf>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PackageStatus {
+    pub lockfile_ok: bool,
+    pub installation_ok: bool,
+    pub imports_ok: bool,
+    pub errors: Vec<String>,
+}
+
 impl Lockfile {
     pub fn new(package: &Package, mut entries: Vec<LockEntry>) -> Self {
         entries.sort_by(|left, right| left.name.cmp(&right.name));
@@ -559,6 +567,47 @@ impl PackageManager {
             removed,
             verified,
         })
+    }
+
+    pub fn package_status(&self, package: &Package) -> PackageStatus {
+        let mut errors = Vec::new();
+
+        let lockfile_ok = match Lockfile::load(&package.root.join("matter.lock")) {
+            Ok(lockfile) => match self.verify_lockfile(package, &lockfile) {
+                Ok(()) => true,
+                Err(error) => {
+                    errors.push(error);
+                    false
+                }
+            },
+            Err(error) => {
+                errors.push(format!("matter.lock unavailable: {}", error));
+                false
+            }
+        };
+
+        let installation_ok = match self.verify_installation(package) {
+            Ok(_) => true,
+            Err(error) => {
+                errors.push(error);
+                false
+            }
+        };
+
+        let imports_ok = match self.resolve_all_imports(package) {
+            Ok(_) => true,
+            Err(error) => {
+                errors.push(error);
+                false
+            }
+        };
+
+        PackageStatus {
+            lockfile_ok,
+            installation_ok,
+            imports_ok,
+            errors,
+        }
     }
 
     pub fn resolve_import(&self, package: &Package, name: &str) -> Result<PathBuf, String> {
@@ -1262,6 +1311,75 @@ math-utils = "^1.0.0"
 
         let _ = fs::remove_dir_all(root);
         let _ = fs::remove_dir_all(registry_root);
+    }
+
+    #[test]
+    fn test_package_status_reports_ready_project() {
+        let root = std::env::temp_dir().join("matter_package_status_ready_test");
+        let registry_root = std::env::temp_dir().join("matter_package_status_ready_registry");
+        let _ = fs::remove_dir_all(&root);
+        let _ = fs::remove_dir_all(&registry_root);
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::create_dir_all(registry_root.join("utils").join("src")).unwrap();
+
+        let mut app_manifest = Manifest::new("app".to_string(), Version::new(0, 1, 0));
+        app_manifest.dependencies.insert(
+            "utils".to_string(),
+            Dependency::Registry(VersionReq::Caret(Version::new(1, 0, 0))),
+        );
+        let app = Package::new(app_manifest, root.clone());
+        app.manifest.save(&root.join("matter.toml")).unwrap();
+
+        let mut utils_manifest = Manifest::new("utils".to_string(), Version::new(1, 2, 0));
+        utils_manifest.entry = "src/lib.matter".to_string();
+        let utils_root = registry_root.join("utils");
+        utils_manifest.save(&utils_root.join("matter.toml")).unwrap();
+        fs::write(utils_root.join("src").join("lib.matter"), "fn util() { return 1 }\n").unwrap();
+
+        let mut manager = PackageManager::new();
+        manager.register_package(Package::new(utils_manifest, utils_root));
+        manager.sync_dependencies(&app).unwrap();
+        let status = manager.package_status(&app);
+
+        assert!(status.lockfile_ok);
+        assert!(status.installation_ok);
+        assert!(status.imports_ok);
+        assert!(status.errors.is_empty());
+
+        let _ = fs::remove_dir_all(root);
+        let _ = fs::remove_dir_all(registry_root);
+    }
+
+    #[test]
+    fn test_package_status_reports_missing_lock_and_installation() {
+        let root = std::env::temp_dir().join("matter_package_status_missing_test");
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("src")).unwrap();
+
+        let mut app_manifest = Manifest::new("app".to_string(), Version::new(0, 1, 0));
+        app_manifest.dependencies.insert(
+            "utils".to_string(),
+            Dependency::Registry(VersionReq::Caret(Version::new(1, 0, 0))),
+        );
+        let app = Package::new(app_manifest, root.clone());
+        app.manifest.save(&root.join("matter.toml")).unwrap();
+
+        let manager = PackageManager::new();
+        let status = manager.package_status(&app);
+
+        assert!(!status.lockfile_ok);
+        assert!(!status.installation_ok);
+        assert!(!status.imports_ok);
+        assert!(status
+            .errors
+            .iter()
+            .any(|error| error.contains("matter.lock unavailable")));
+        assert!(status
+            .errors
+            .iter()
+            .any(|error| error.contains("not installed")));
+
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
