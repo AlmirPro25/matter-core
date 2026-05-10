@@ -90,6 +90,12 @@ pub struct AgentSessionContext {
     pub terminal: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentHandoffPacket {
+    pub context: AgentSessionContext,
+    pub recent_events: Vec<String>,
+}
+
 impl AgentId {
     pub fn new(name: impl Into<String>, role: AgentRole) -> Self {
         Self {
@@ -363,6 +369,43 @@ impl AgentSession {
             last_response_kind: last_response.map(|response| response.kind),
             next_action: self.next_action().to_string(),
             terminal: self.is_terminal(),
+        }
+    }
+
+    pub fn recent_event_summaries(&self, limit: usize) -> Vec<String> {
+        if limit == 0 {
+            return Vec::new();
+        }
+
+        let mut summaries: Vec<String> = self
+            .events
+            .iter()
+            .rev()
+            .take(limit)
+            .map(|event| match event {
+                AgentEvent::Frame(frame) => format!(
+                    "frame {} -> {} ({})",
+                    frame.from.name,
+                    frame.to.name,
+                    frame.task_id
+                ),
+                AgentEvent::Response(response) => format!(
+                    "response {} -> {} ({}) [{}]",
+                    response.from.name,
+                    response.to.name,
+                    response.task_id,
+                    response_kind_word(response.kind)
+                ),
+            })
+            .collect();
+        summaries.reverse();
+        summaries
+    }
+
+    pub fn handoff_packet(&self, limit: usize) -> AgentHandoffPacket {
+        AgentHandoffPacket {
+            context: self.context(),
+            recent_events: self.recent_event_summaries(limit),
         }
     }
 }
@@ -654,5 +697,63 @@ mod tests {
         assert!(context.latest_task_id.is_empty());
         assert_eq!(context.next_action, "start");
         assert!(!context.terminal);
+    }
+
+    #[test]
+    fn session_recent_events_respect_limit_and_order() {
+        let frame_one = AgentFrame::new(
+            AgentId::new("planner", AgentRole::Planner),
+            AgentId::new("worker", AgentRole::Worker),
+            "task-1",
+        )
+        .with_goal("first")
+        .with_summary("first summary")
+        .with_next_action("first action");
+        let response_one = frame_one.response_from_receiver();
+
+        let frame_two = AgentFrame::new(
+            AgentId::new("planner", AgentRole::Planner),
+            AgentId::new("worker", AgentRole::Worker),
+            "task-2",
+        )
+        .with_goal("second")
+        .with_summary("second summary")
+        .with_next_action("second action");
+
+        let session = AgentSession::new("session-limit")
+            .add_frame(frame_one)
+            .add_response(response_one)
+            .add_frame(frame_two);
+
+        let recent = session.recent_event_summaries(2);
+        assert_eq!(recent.len(), 2);
+        assert!(recent[0].contains("response worker -> planner (task-1) [accepted]"));
+        assert!(recent[1].contains("frame planner -> worker (task-2)"));
+        assert!(session.recent_event_summaries(0).is_empty());
+    }
+
+    #[test]
+    fn handoff_packet_combines_context_and_recent_events() {
+        let frame = AgentFrame::new(
+            AgentId::new("planner", AgentRole::Planner),
+            AgentId::new("worker", AgentRole::Worker),
+            "handoff-packet",
+        )
+        .with_goal("Create portable handoff packet")
+        .with_summary("Another agent should continue without replaying all history")
+        .add_fact("session context exists")
+        .with_next_action("generate packet");
+        let response = frame.response_from_receiver();
+
+        let session = AgentSession::new("session-packet")
+            .add_frame(frame)
+            .add_response(response);
+        let packet = session.handoff_packet(1);
+
+        assert_eq!(packet.context.session_id, "session-packet");
+        assert_eq!(packet.context.latest_task_id, "handoff-packet");
+        assert_eq!(packet.context.next_action, "execute");
+        assert_eq!(packet.recent_events.len(), 1);
+        assert!(packet.recent_events[0].contains("response worker -> planner"));
     }
 }
