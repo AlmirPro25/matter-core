@@ -31,6 +31,13 @@ pub enum ResponseKind {
     Completed,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MergeStrategy {
+    PreferLatest,
+    PreferTerminal,
+    PreferBlocked,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentId {
     pub name: String,
@@ -546,10 +553,18 @@ impl AgentHandoffPacket {
     }
 
     pub fn merge_with(&self, other: &Self) -> Result<Self, String> {
-        self.try_merge_with(other)
+        self.try_merge_with(other, MergeStrategy::PreferLatest)
     }
 
-    fn try_merge_with(&self, other: &Self) -> Result<Self, String> {
+    pub fn merge_with_strategy(
+        &self,
+        other: &Self,
+        strategy: MergeStrategy,
+    ) -> Result<Self, String> {
+        self.try_merge_with(other, strategy)
+    }
+
+    fn try_merge_with(&self, other: &Self, strategy: MergeStrategy) -> Result<Self, String> {
         if self.context.session_id != other.context.session_id {
             return Err("cannot merge handoff packets from different sessions".to_string());
         }
@@ -560,11 +575,7 @@ impl AgentHandoffPacket {
             return Err("cannot merge handoff packets with different latest_task_id".to_string());
         }
 
-        let preferred = if other.context.event_count > self.context.event_count {
-            other
-        } else {
-            self
-        };
+        let preferred = preferred_packet(self, other, strategy);
 
         let merged_context = AgentSessionContext {
             session_id: self.context.session_id.clone(),
@@ -770,6 +781,47 @@ fn merge_dedup_strings(left: &[String], right: &[String]) -> Vec<String> {
         }
     }
     out
+}
+
+fn preferred_packet<'a>(
+    left: &'a AgentHandoffPacket,
+    right: &'a AgentHandoffPacket,
+    strategy: MergeStrategy,
+) -> &'a AgentHandoffPacket {
+    match strategy {
+        MergeStrategy::PreferLatest => {
+            if right.context.event_count > left.context.event_count {
+                right
+            } else {
+                left
+            }
+        }
+        MergeStrategy::PreferTerminal => match (left.context.terminal, right.context.terminal) {
+            (false, true) => right,
+            (true, false) => left,
+            _ => {
+                if right.context.event_count > left.context.event_count {
+                    right
+                } else {
+                    left
+                }
+            }
+        },
+        MergeStrategy::PreferBlocked => match (
+            left.context.last_response_kind == Some(ResponseKind::Blocked),
+            right.context.last_response_kind == Some(ResponseKind::Blocked),
+        ) {
+            (false, true) => right,
+            (true, false) => left,
+            _ => {
+                if right.context.event_count > left.context.event_count {
+                    right
+                } else {
+                    left
+                }
+            }
+        },
+    }
 }
 
 fn split_payload_and_checksum(wire: &str) -> Result<(&str, &str), String> {
@@ -1300,5 +1352,91 @@ mod tests {
 
         let error = left.merge_with(&right).unwrap_err();
         assert!(error.contains("different latest_task_id"));
+    }
+
+    #[test]
+    fn merge_strategy_prefer_terminal_uses_terminal_context() {
+        let left = AgentHandoffPacket {
+            context: AgentSessionContext {
+                session_id: "s1".to_string(),
+                event_count: 5,
+                latest_task_id: "task".to_string(),
+                latest_goal: "left-goal".to_string(),
+                latest_summary: "left-summary".to_string(),
+                facts: vec![],
+                blockers: vec![],
+                requests: vec![],
+                last_response_kind: Some(ResponseKind::Accepted),
+                next_action: "execute".to_string(),
+                terminal: false,
+            },
+            recent_events: vec![],
+        };
+        let right = AgentHandoffPacket {
+            context: AgentSessionContext {
+                session_id: "s1".to_string(),
+                event_count: 4,
+                latest_task_id: "task".to_string(),
+                latest_goal: "right-goal".to_string(),
+                latest_summary: "right-summary".to_string(),
+                facts: vec![],
+                blockers: vec![],
+                requests: vec![],
+                last_response_kind: Some(ResponseKind::Completed),
+                next_action: "none".to_string(),
+                terminal: true,
+            },
+            recent_events: vec![],
+        };
+
+        let merged = left
+            .merge_with_strategy(&right, MergeStrategy::PreferTerminal)
+            .unwrap();
+        assert_eq!(merged.context.latest_summary, "right-summary");
+        assert!(merged.context.terminal);
+        assert_eq!(merged.context.next_action, "none");
+    }
+
+    #[test]
+    fn merge_strategy_prefer_blocked_uses_blocked_context() {
+        let left = AgentHandoffPacket {
+            context: AgentSessionContext {
+                session_id: "s1".to_string(),
+                event_count: 3,
+                latest_task_id: "task".to_string(),
+                latest_goal: "left-goal".to_string(),
+                latest_summary: "left-summary".to_string(),
+                facts: vec![],
+                blockers: vec!["left blocker".to_string()],
+                requests: vec![],
+                last_response_kind: Some(ResponseKind::Blocked),
+                next_action: "resolve-blockers".to_string(),
+                terminal: false,
+            },
+            recent_events: vec![],
+        };
+        let right = AgentHandoffPacket {
+            context: AgentSessionContext {
+                session_id: "s1".to_string(),
+                event_count: 6,
+                latest_task_id: "task".to_string(),
+                latest_goal: "right-goal".to_string(),
+                latest_summary: "right-summary".to_string(),
+                facts: vec![],
+                blockers: vec![],
+                requests: vec![],
+                last_response_kind: Some(ResponseKind::Accepted),
+                next_action: "execute".to_string(),
+                terminal: false,
+            },
+            recent_events: vec![],
+        };
+
+        let merged = right
+            .merge_with_strategy(&left, MergeStrategy::PreferBlocked)
+            .unwrap();
+        assert_eq!(merged.context.latest_summary, "left-summary");
+        assert_eq!(merged.context.next_action, "resolve-blockers");
+        assert!(merged.context.blockers.contains(&"left blocker".to_string()));
     }
 }
