@@ -359,6 +359,14 @@ impl PackageStatus {
         self.lockfile_ok && self.installation_ok && self.imports_ok && self.errors.is_empty()
     }
 
+    pub fn state(&self) -> &'static str {
+        if self.is_ready() {
+            "ready"
+        } else {
+            "error"
+        }
+    }
+
     pub fn failed_checks(&self) -> Vec<&'static str> {
         let mut checks = Vec::new();
         if !self.lockfile_ok {
@@ -1477,6 +1485,7 @@ math-utils = "^1.0.0"
         assert!(status.imports_ok);
         assert!(status.errors.is_empty());
         assert!(status.is_ready());
+        assert_eq!(status.state(), "ready");
         assert!(status.failed_checks().is_empty());
         assert_eq!(
             status.summary(),
@@ -1508,6 +1517,7 @@ math-utils = "^1.0.0"
         assert!(!status.installation_ok);
         assert!(!status.imports_ok);
         assert!(!status.is_ready());
+        assert_eq!(status.state(), "error");
         assert_eq!(
             status.failed_checks(),
             vec!["lockfile", "installation", "imports"]
