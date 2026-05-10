@@ -101,6 +101,7 @@ pub struct AgentSessionContext {
 pub struct AgentHandoffPacket {
     pub context: AgentSessionContext,
     pub recent_events: Vec<String>,
+    pub merge_strategy: MergeStrategy,
 }
 
 impl AgentId {
@@ -413,13 +414,14 @@ impl AgentSession {
         AgentHandoffPacket {
             context: self.context(),
             recent_events: self.recent_event_summaries(limit),
+            merge_strategy: MergeStrategy::PreferLatest,
         }
     }
 }
 
 impl AgentHandoffPacket {
     pub fn to_wire(&self) -> String {
-        self.to_wire_with_strategy(MergeStrategy::PreferLatest)
+        self.to_wire_with_strategy(self.merge_strategy)
     }
 
     pub fn to_wire_with_strategy(&self, strategy: MergeStrategy) -> String {
@@ -454,11 +456,10 @@ impl AgentHandoffPacket {
     }
 
     pub fn from_wire(wire: &str) -> Result<Self, String> {
-        let (packet, _) = Self::from_wire_with_strategy(wire)?;
-        Ok(packet)
+        Self::from_wire_with_strategy(wire)
     }
 
-    pub fn from_wire_with_strategy(wire: &str) -> Result<(Self, MergeStrategy), String> {
+    pub fn from_wire_with_strategy(wire: &str) -> Result<Self, String> {
         let (payload, provided_checksum) = split_payload_and_checksum(wire)?;
         let expected_checksum = wire_checksum(payload);
         let mut pairs = std::collections::HashMap::new();
@@ -514,6 +515,7 @@ impl AgentHandoffPacket {
                 terminal,
             },
             recent_events: decode_list(require_pair(&pairs, "recent_events")?)?,
+            merge_strategy: strategy,
         };
 
         if !packet.is_consistent() {
@@ -523,7 +525,7 @@ impl AgentHandoffPacket {
             ));
         }
 
-        Ok((packet, strategy))
+        Ok(packet)
     }
 
     pub fn is_consistent(&self) -> bool {
@@ -568,7 +570,7 @@ impl AgentHandoffPacket {
     }
 
     pub fn merge_with(&self, other: &Self) -> Result<Self, String> {
-        self.try_merge_with(other, MergeStrategy::PreferLatest)
+        self.try_merge_with(other, self.merge_strategy)
     }
 
     pub fn merge_with_strategy(
@@ -629,6 +631,7 @@ impl AgentHandoffPacket {
         let merged = Self {
             context: merged_context,
             recent_events: merge_dedup_strings(&self.recent_events, &other.recent_events),
+            merge_strategy: strategy,
         };
 
         if merged.is_consistent() {
@@ -1211,13 +1214,14 @@ mod tests {
                 "wire-task",
                 "done",
             ));
-        let packet = session.handoff_packet(2);
+        let mut packet = session.handoff_packet(2);
+        packet.merge_strategy = MergeStrategy::PreferBlocked;
 
         let wire = packet.to_wire_with_strategy(MergeStrategy::PreferBlocked);
-        let (decoded, strategy) = AgentHandoffPacket::from_wire_with_strategy(&wire).unwrap();
+        let decoded = AgentHandoffPacket::from_wire_with_strategy(&wire).unwrap();
 
         assert_eq!(decoded, packet);
-        assert_eq!(strategy, MergeStrategy::PreferBlocked);
+        assert_eq!(decoded.merge_strategy, MergeStrategy::PreferBlocked);
     }
 
     #[test]
@@ -1248,8 +1252,8 @@ mod tests {
     fn handoff_packet_parses_legacy_wire_without_strategy() {
         let payload = "version=1\nsession_id=s\nevent_count=0\nlatest_task_id=\nlatest_goal=\nlatest_summary=\nfacts=\nblockers=\nrequests=\nlast_response_kind=none\nnext_action=start\nterminal=false\nrecent_events=";
         let wire = format!("{}\nchecksum={}", payload, wire_checksum(payload));
-        let (decoded, strategy) = AgentHandoffPacket::from_wire_with_strategy(&wire).unwrap();
-        assert_eq!(strategy, MergeStrategy::PreferLatest);
+        let decoded = AgentHandoffPacket::from_wire_with_strategy(&wire).unwrap();
+        assert_eq!(decoded.merge_strategy, MergeStrategy::PreferLatest);
         assert_eq!(decoded.context.session_id, "s");
         assert_eq!(decoded.context.event_count, 0);
     }
@@ -1271,6 +1275,7 @@ mod tests {
                 terminal: false,
             },
             recent_events: vec!["response worker -> planner (task) [completed]".to_string()],
+            merge_strategy: MergeStrategy::PreferLatest,
         };
 
         assert!(!packet.is_consistent());
@@ -1305,6 +1310,7 @@ mod tests {
                 terminal: false,
             },
             recent_events: vec!["frame planner -> worker (task)".to_string()],
+            merge_strategy: MergeStrategy::PreferLatest,
         };
         let right = AgentHandoffPacket {
             context: AgentSessionContext {
@@ -1324,6 +1330,7 @@ mod tests {
                 "frame planner -> worker (task)".to_string(),
                 "response worker -> planner (task) [blocked]".to_string(),
             ],
+            merge_strategy: MergeStrategy::PreferLatest,
         };
 
         let merged = left.merge_with(&right).unwrap();
@@ -1363,6 +1370,7 @@ mod tests {
                 terminal: false,
             },
             recent_events: vec![],
+            merge_strategy: MergeStrategy::PreferLatest,
         };
         let right = AgentHandoffPacket {
             context: AgentSessionContext {
@@ -1379,6 +1387,7 @@ mod tests {
                 terminal: false,
             },
             recent_events: vec![],
+            merge_strategy: MergeStrategy::PreferLatest,
         };
 
         let error = left.merge_with(&right).unwrap_err();
@@ -1402,6 +1411,7 @@ mod tests {
                 terminal: false,
             },
             recent_events: vec!["frame planner -> worker (task-a)".to_string()],
+            merge_strategy: MergeStrategy::PreferLatest,
         };
         let right = AgentHandoffPacket {
             context: AgentSessionContext {
@@ -1418,6 +1428,7 @@ mod tests {
                 terminal: false,
             },
             recent_events: vec!["frame planner -> worker (task-b)".to_string()],
+            merge_strategy: MergeStrategy::PreferLatest,
         };
 
         let error = left.merge_with(&right).unwrap_err();
@@ -1441,6 +1452,7 @@ mod tests {
                 terminal: false,
             },
             recent_events: vec![],
+            merge_strategy: MergeStrategy::PreferLatest,
         };
         let right = AgentHandoffPacket {
             context: AgentSessionContext {
@@ -1457,6 +1469,7 @@ mod tests {
                 terminal: true,
             },
             recent_events: vec![],
+            merge_strategy: MergeStrategy::PreferLatest,
         };
 
         let merged = left
@@ -1484,6 +1497,7 @@ mod tests {
                 terminal: false,
             },
             recent_events: vec![],
+            merge_strategy: MergeStrategy::PreferLatest,
         };
         let right = AgentHandoffPacket {
             context: AgentSessionContext {
@@ -1500,6 +1514,7 @@ mod tests {
                 terminal: false,
             },
             recent_events: vec![],
+            merge_strategy: MergeStrategy::PreferLatest,
         };
 
         let merged = right
