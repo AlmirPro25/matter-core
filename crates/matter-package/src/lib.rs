@@ -295,6 +295,39 @@ pub struct PackageStatus {
     pub errors: Vec<String>,
 }
 
+impl PackageStatus {
+    pub fn is_ready(&self) -> bool {
+        self.lockfile_ok && self.installation_ok && self.imports_ok && self.errors.is_empty()
+    }
+
+    pub fn summary(&self) -> String {
+        let mut lines = vec![
+            format!("lockfile: {}", status_word(self.lockfile_ok)),
+            format!("installation: {}", status_word(self.installation_ok)),
+            format!("imports: {}", status_word(self.imports_ok)),
+        ];
+
+        if self.errors.is_empty() {
+            lines.push("errors: none".to_string());
+        } else {
+            lines.push("errors:".to_string());
+            for error in &self.errors {
+                lines.push(format!("- {}", error));
+            }
+        }
+
+        lines.join("\n")
+    }
+}
+
+fn status_word(ok: bool) -> &'static str {
+    if ok {
+        "ok"
+    } else {
+        "error"
+    }
+}
+
 impl Lockfile {
     pub fn new(package: &Package, mut entries: Vec<LockEntry>) -> Self {
         entries.sort_by(|left, right| left.name.cmp(&right.name));
@@ -1345,6 +1378,11 @@ math-utils = "^1.0.0"
         assert!(status.installation_ok);
         assert!(status.imports_ok);
         assert!(status.errors.is_empty());
+        assert!(status.is_ready());
+        assert_eq!(
+            status.summary(),
+            "lockfile: ok\ninstallation: ok\nimports: ok\nerrors: none"
+        );
 
         let _ = fs::remove_dir_all(root);
         let _ = fs::remove_dir_all(registry_root);
@@ -1370,6 +1408,11 @@ math-utils = "^1.0.0"
         assert!(!status.lockfile_ok);
         assert!(!status.installation_ok);
         assert!(!status.imports_ok);
+        assert!(!status.is_ready());
+        assert!(status.summary().contains("lockfile: error"));
+        assert!(status.summary().contains("installation: error"));
+        assert!(status.summary().contains("imports: error"));
+        assert!(status.summary().contains("errors:\n- "));
         assert!(status
             .errors
             .iter()
