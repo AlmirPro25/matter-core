@@ -279,15 +279,33 @@ pub struct InstallReport {
     pub installed: Vec<PathBuf>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PackageReportCounts {
+    pub lockfile: usize,
+    pub installed: usize,
+    pub removed: usize,
+    pub verified: usize,
+}
+
 impl InstallReport {
     pub fn is_complete(&self) -> bool {
-        self.installed.len() == self.lockfile.entries.len()
+        let counts = self.counts();
+        counts.installed == counts.lockfile
+    }
+
+    pub fn counts(&self) -> PackageReportCounts {
+        PackageReportCounts {
+            lockfile: self.lockfile.entries.len(),
+            installed: self.installed.len(),
+            ..PackageReportCounts::default()
+        }
     }
 
     pub fn summary(&self) -> String {
+        let counts = self.counts();
         [
-            format!("lockfile: {}", self.lockfile.entries.len()),
-            format!("installed: {}", self.installed.len()),
+            format!("lockfile: {}", counts.lockfile),
+            format!("installed: {}", counts.installed),
         ]
         .join("\n")
     }
@@ -303,16 +321,26 @@ pub struct SyncReport {
 
 impl SyncReport {
     pub fn is_complete(&self) -> bool {
-        self.installed.len() == self.lockfile.entries.len()
-            && self.verified.len() == self.lockfile.entries.len()
+        let counts = self.counts();
+        counts.installed == counts.lockfile && counts.verified == counts.lockfile
+    }
+
+    pub fn counts(&self) -> PackageReportCounts {
+        PackageReportCounts {
+            lockfile: self.lockfile.entries.len(),
+            installed: self.installed.len(),
+            removed: self.removed.len(),
+            verified: self.verified.len(),
+        }
     }
 
     pub fn summary(&self) -> String {
+        let counts = self.counts();
         [
-            format!("lockfile: {}", self.lockfile.entries.len()),
-            format!("installed: {}", self.installed.len()),
-            format!("removed: {}", self.removed.len()),
-            format!("verified: {}", self.verified.len()),
+            format!("lockfile: {}", counts.lockfile),
+            format!("installed: {}", counts.installed),
+            format!("removed: {}", counts.removed),
+            format!("verified: {}", counts.verified),
         ]
         .join("\n")
     }
@@ -1098,6 +1126,15 @@ math-utils = "^1.0.0"
         let installed_root = root.join(".matter").join("packages").join("utils");
         assert_eq!(report.installed, vec![installed_root.clone()]);
         assert!(report.is_complete());
+        assert_eq!(
+            report.counts(),
+            PackageReportCounts {
+                lockfile: 1,
+                installed: 1,
+                removed: 0,
+                verified: 0
+            }
+        );
         assert_eq!(report.summary(), "lockfile: 1\ninstalled: 1");
         assert!(root.join("matter.lock").exists());
         assert!(installed_root.join("matter.toml").exists());
@@ -1370,6 +1407,15 @@ math-utils = "^1.0.0"
         assert_eq!(report.verified, vec![installed.clone()]);
         assert_eq!(report.removed, vec![extra.clone()]);
         assert!(report.is_complete());
+        assert_eq!(
+            report.counts(),
+            PackageReportCounts {
+                lockfile: 1,
+                installed: 1,
+                removed: 1,
+                verified: 1
+            }
+        );
         assert_eq!(
             report.summary(),
             "lockfile: 1\ninstalled: 1\nremoved: 1\nverified: 1"
