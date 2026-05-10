@@ -102,6 +102,7 @@ pub struct AgentHandoffPacket {
     pub packet_id: String,
     pub parent_packet_id: Option<String>,
     pub lineage_depth: usize,
+    pub lineage_path: Vec<String>,
     pub context: AgentSessionContext,
     pub recent_events: Vec<String>,
     pub merge_strategy: MergeStrategy,
@@ -425,6 +426,7 @@ impl AgentSession {
             packet_id,
             parent_packet_id: None,
             lineage_depth: 0,
+            lineage_path: vec![],
             merge_strategy: MergeStrategy::PreferLatest,
         }
     }
@@ -450,6 +452,7 @@ impl AgentHandoffPacket {
                 encode_field(self.parent_packet_id.as_deref().unwrap_or(""))
             ),
             format!("lineage_depth={}", self.lineage_depth),
+            format!("lineage_path={}", encode_list(&self.lineage_path)),
             format!("session_id={}", encode_field(&self.context.session_id)),
             format!("event_count={}", self.context.event_count),
             format!("latest_task_id={}", encode_field(&self.context.latest_task_id)),
@@ -547,11 +550,16 @@ impl AgentHandoffPacket {
             }
             None => None,
         };
+        let lineage_path = match pairs.get("lineage_path") {
+            Some(value) => decode_list(value)?,
+            None => Vec::new(),
+        };
 
         let packet = Self {
             packet_id,
             parent_packet_id,
             lineage_depth,
+            lineage_path,
             context: AgentSessionContext {
                 session_id: decode_field(require_pair(&pairs, "session_id")?)?,
                 event_count,
@@ -594,6 +602,19 @@ impl AgentHandoffPacket {
         }
         if self.lineage_depth > 1024 {
             errors.push("lineage_depth exceeds hard safety limit".to_string());
+        }
+        if self.lineage_path.len() > 64 {
+            errors.push("lineage_path exceeds max length 64".to_string());
+        }
+        for node in &self.lineage_path {
+            if node.trim().is_empty() {
+                errors.push("lineage_path cannot contain empty ids".to_string());
+                break;
+            }
+            if node == &self.packet_id {
+                errors.push("lineage_path cannot contain packet_id itself".to_string());
+                break;
+            }
         }
         if self.context.event_count < self.recent_events.len() {
             errors.push("event_count is smaller than recent_events length".to_string());
@@ -723,6 +744,7 @@ impl AgentHandoffPacket {
             ),
             parent_packet_id: Some(preferred.packet_id.clone()),
             lineage_depth: merged_depth,
+            lineage_path: merge_lineage_path(self, other, 64),
             context: merged_context,
             recent_events: merge_dedup_strings(&self.recent_events, &other.recent_events),
             merge_strategy: strategy,
@@ -916,6 +938,29 @@ fn merge_dedup_strings(left: &[String], right: &[String]) -> Vec<String> {
         }
     }
     out
+}
+
+fn merge_lineage_path(
+    left: &AgentHandoffPacket,
+    right: &AgentHandoffPacket,
+    max_nodes: usize,
+) -> Vec<String> {
+    if max_nodes == 0 {
+        return Vec::new();
+    }
+
+    let mut nodes = Vec::new();
+    nodes.extend(left.lineage_path.iter().cloned());
+    nodes.push(left.packet_id.clone());
+    nodes.extend(right.lineage_path.iter().cloned());
+    nodes.push(right.packet_id.clone());
+
+    let dedup = merge_dedup_strings(&nodes, &[]);
+    if dedup.len() > max_nodes {
+        dedup[dedup.len() - max_nodes..].to_vec()
+    } else {
+        dedup
+    }
 }
 
 fn preferred_packet<'a>(
@@ -1264,6 +1309,7 @@ mod tests {
         assert_eq!(packet.context.next_action, "execute");
         assert_eq!(packet.recent_events.len(), 1);
         assert!(packet.recent_events[0].contains("response worker -> planner"));
+        assert!(packet.lineage_path.is_empty());
     }
 
     #[test]
@@ -1319,6 +1365,7 @@ mod tests {
         packet.merge_strategy = MergeStrategy::PreferBlocked;
         packet.parent_packet_id = Some("pkt_parent".to_string());
         packet.lineage_depth = 7;
+        packet.lineage_path = vec!["pkt_a".to_string(), "pkt_b".to_string()];
 
         let wire = packet.to_wire_with_strategy(MergeStrategy::PreferBlocked);
         let decoded = AgentHandoffPacket::from_wire_with_strategy(&wire).unwrap();
@@ -1327,6 +1374,7 @@ mod tests {
         assert_eq!(decoded.merge_strategy, MergeStrategy::PreferBlocked);
         assert_eq!(decoded.parent_packet_id, Some("pkt_parent".to_string()));
         assert_eq!(decoded.lineage_depth, 7);
+        assert_eq!(decoded.lineage_path, vec!["pkt_a", "pkt_b"]);
     }
 
     #[test]
@@ -1361,6 +1409,7 @@ mod tests {
         assert_eq!(decoded.merge_strategy, MergeStrategy::PreferLatest);
         assert_eq!(decoded.context.session_id, "s");
         assert_eq!(decoded.context.event_count, 0);
+        assert!(decoded.lineage_path.is_empty());
     }
 
     #[test]
@@ -1369,6 +1418,7 @@ mod tests {
             packet_id: "pkt_test_completed".to_string(),
             parent_packet_id: None,
             lineage_depth: 0,
+            lineage_path: vec![],
             context: AgentSessionContext {
                 session_id: "s".to_string(),
                 event_count: 1,
@@ -1410,11 +1460,27 @@ mod tests {
     }
 
     #[test]
+    fn handoff_packet_rejects_excessive_lineage_path() {
+        let long_path = (0..70)
+            .map(|idx| format!("p{}", idx))
+            .collect::<Vec<_>>()
+            .join("|");
+        let payload = format!(
+            "version=1\npacket_id=pkt_x\nparent_packet_id=\nlineage_depth=3\nlineage_path={}\nsession_id=s\nevent_count=0\nlatest_task_id=\nlatest_goal=\nlatest_summary=\nfacts=\nblockers=\nrequests=\nlast_response_kind=none\nmerge_strategy=prefer_latest\nnext_action=start\nterminal=false\nrecent_events=",
+            long_path
+        );
+        let wire = format!("{}\nchecksum={}", payload, wire_checksum(&payload));
+        let error = AgentHandoffPacket::from_wire(&wire).unwrap_err();
+        assert!(error.contains("lineage_path exceeds max length 64"));
+    }
+
+    #[test]
     fn handoff_packets_merge_incrementally() {
         let left = AgentHandoffPacket {
             packet_id: "pkt_left_merge".to_string(),
             parent_packet_id: None,
             lineage_depth: 1,
+            lineage_path: vec!["pkt_root".to_string()],
             context: AgentSessionContext {
                 session_id: "s1".to_string(),
                 event_count: 2,
@@ -1435,6 +1501,7 @@ mod tests {
             packet_id: "pkt_right_merge".to_string(),
             parent_packet_id: None,
             lineage_depth: 2,
+            lineage_path: vec!["pkt_root".to_string(), "pkt_mid".to_string()],
             context: AgentSessionContext {
                 session_id: "s1".to_string(),
                 event_count: 3,
@@ -1475,6 +1542,8 @@ mod tests {
         assert!(merged.packet_id.starts_with("merge_"));
         assert_eq!(merged.parent_packet_id, Some("pkt_right_merge".to_string()));
         assert_eq!(merged.lineage_depth, 3);
+        assert!(merged.lineage_path.contains(&"pkt_left_merge".to_string()));
+        assert!(merged.lineage_path.contains(&"pkt_right_merge".to_string()));
         assert!(merged.is_consistent());
     }
 
@@ -1484,6 +1553,7 @@ mod tests {
             packet_id: "pkt_s1".to_string(),
             parent_packet_id: None,
             lineage_depth: 0,
+            lineage_path: vec![],
             context: AgentSessionContext {
                 session_id: "s1".to_string(),
                 event_count: 0,
@@ -1504,6 +1574,7 @@ mod tests {
             packet_id: "pkt_s2".to_string(),
             parent_packet_id: None,
             lineage_depth: 0,
+            lineage_path: vec![],
             context: AgentSessionContext {
                 session_id: "s2".to_string(),
                 event_count: 0,
@@ -1531,6 +1602,7 @@ mod tests {
             packet_id: "pkt_task_a".to_string(),
             parent_packet_id: None,
             lineage_depth: 0,
+            lineage_path: vec![],
             context: AgentSessionContext {
                 session_id: "s1".to_string(),
                 event_count: 1,
@@ -1551,6 +1623,7 @@ mod tests {
             packet_id: "pkt_task_b".to_string(),
             parent_packet_id: None,
             lineage_depth: 0,
+            lineage_path: vec![],
             context: AgentSessionContext {
                 session_id: "s1".to_string(),
                 event_count: 1,
@@ -1578,6 +1651,7 @@ mod tests {
             packet_id: "pkt_terminal_left".to_string(),
             parent_packet_id: None,
             lineage_depth: 2,
+            lineage_path: vec!["pkt_a".to_string()],
             context: AgentSessionContext {
                 session_id: "s1".to_string(),
                 event_count: 5,
@@ -1598,6 +1672,7 @@ mod tests {
             packet_id: "pkt_terminal_right".to_string(),
             parent_packet_id: None,
             lineage_depth: 1,
+            lineage_path: vec!["pkt_b".to_string()],
             context: AgentSessionContext {
                 session_id: "s1".to_string(),
                 event_count: 4,
@@ -1629,6 +1704,7 @@ mod tests {
             packet_id: "pkt_blocked_left".to_string(),
             parent_packet_id: None,
             lineage_depth: 4,
+            lineage_path: vec!["pkt_a".to_string()],
             context: AgentSessionContext {
                 session_id: "s1".to_string(),
                 event_count: 3,
@@ -1649,6 +1725,7 @@ mod tests {
             packet_id: "pkt_blocked_right".to_string(),
             parent_packet_id: None,
             lineage_depth: 1,
+            lineage_path: vec!["pkt_b".to_string()],
             context: AgentSessionContext {
                 session_id: "s1".to_string(),
                 event_count: 6,
@@ -1680,6 +1757,7 @@ mod tests {
             packet_id: "pkt_limit_left".to_string(),
             parent_packet_id: None,
             lineage_depth: 5,
+            lineage_path: vec!["pkt_a".to_string()],
             context: AgentSessionContext {
                 session_id: "s1".to_string(),
                 event_count: 1,
@@ -1700,6 +1778,7 @@ mod tests {
             packet_id: "pkt_limit_right".to_string(),
             parent_packet_id: None,
             lineage_depth: 5,
+            lineage_path: vec!["pkt_b".to_string()],
             context: AgentSessionContext {
                 session_id: "s1".to_string(),
                 event_count: 2,
