@@ -16,6 +16,13 @@ pub enum TaskState {
     Completed,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FrameReadiness {
+    Ready,
+    Incomplete,
+    Blocked,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentId {
     pub name: String,
@@ -97,11 +104,17 @@ impl AgentFrame {
     }
 
     pub fn is_actionable(&self) -> bool {
-        !self.goal.trim().is_empty()
-            && !self.summary.trim().is_empty()
-            && !self.next_action.trim().is_empty()
-            && self.state != TaskState::Blocked
-            && self.blockers.is_empty()
+        self.readiness() == FrameReadiness::Ready
+    }
+
+    pub fn readiness(&self) -> FrameReadiness {
+        if self.state == TaskState::Blocked || !self.blockers.is_empty() {
+            FrameReadiness::Blocked
+        } else if self.missing_context().is_empty() {
+            FrameReadiness::Ready
+        } else {
+            FrameReadiness::Incomplete
+        }
     }
 
     pub fn missing_context(&self) -> Vec<&'static str> {
@@ -186,6 +199,7 @@ mod tests {
         .with_next_action("run package sync");
 
         assert!(frame.is_actionable());
+        assert_eq!(frame.readiness(), FrameReadiness::Ready);
         assert!(frame.missing_context().is_empty());
         assert!(frame.handoff_summary().contains("next_action: run package sync"));
     }
@@ -203,6 +217,7 @@ mod tests {
         .with_next_action("inspect runtime event bridge");
 
         assert!(!frame.is_actionable());
+        assert_eq!(frame.readiness(), FrameReadiness::Blocked);
         assert_eq!(frame.missing_context(), vec!["blockers"]);
         assert!(frame.handoff_summary().contains("blockers: none"));
     }
@@ -215,10 +230,28 @@ mod tests {
             "empty",
         );
 
+        assert_eq!(frame.readiness(), FrameReadiness::Incomplete);
         assert_eq!(
             frame.missing_context(),
             vec!["goal", "summary", "next_action"]
         );
         assert!(frame.handoff_summary().contains("goal: none"));
+    }
+
+    #[test]
+    fn frame_with_declared_blocker_is_blocked() {
+        let frame = AgentFrame::new(
+            AgentId::new("planner", AgentRole::Planner),
+            AgentId::new("worker", AgentRole::Worker),
+            "api-runtime",
+        )
+        .with_goal("Expose agent frames through the API")
+        .with_summary("The protocol exists but the API route is not wired")
+        .add_blocker("API crate is currently dirty")
+        .with_next_action("wait for clean API integration point");
+
+        assert!(!frame.is_actionable());
+        assert_eq!(frame.readiness(), FrameReadiness::Blocked);
+        assert!(frame.missing_context().is_empty());
     }
 }
