@@ -354,6 +354,13 @@ pub struct PackageStatus {
     pub errors: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PackageStatusDiagnostics {
+    pub state: &'static str,
+    pub failed_checks: Vec<&'static str>,
+    pub errors: Vec<String>,
+}
+
 impl PackageStatus {
     pub fn is_ready(&self) -> bool {
         self.lockfile_ok && self.installation_ok && self.imports_ok && self.errors.is_empty()
@@ -379,6 +386,14 @@ impl PackageStatus {
             checks.push("imports");
         }
         checks
+    }
+
+    pub fn diagnostics(&self) -> PackageStatusDiagnostics {
+        PackageStatusDiagnostics {
+            state: self.state(),
+            failed_checks: self.failed_checks(),
+            errors: self.errors.clone(),
+        }
     }
 
     pub fn summary(&self) -> String {
@@ -1488,6 +1503,14 @@ math-utils = "^1.0.0"
         assert_eq!(status.state(), "ready");
         assert!(status.failed_checks().is_empty());
         assert_eq!(
+            status.diagnostics(),
+            PackageStatusDiagnostics {
+                state: "ready",
+                failed_checks: vec![],
+                errors: vec![]
+            }
+        );
+        assert_eq!(
             status.summary(),
             "lockfile: ok\ninstallation: ok\nimports: ok\nerrors: none"
         );
@@ -1522,6 +1545,13 @@ math-utils = "^1.0.0"
             status.failed_checks(),
             vec!["lockfile", "installation", "imports"]
         );
+        let diagnostics = status.diagnostics();
+        assert_eq!(diagnostics.state, "error");
+        assert_eq!(
+            diagnostics.failed_checks,
+            vec!["lockfile", "installation", "imports"]
+        );
+        assert_eq!(diagnostics.errors, status.errors);
         assert!(status.summary().contains("lockfile: error"));
         assert!(status.summary().contains("installation: error"));
         assert!(status.summary().contains("imports: error"));
