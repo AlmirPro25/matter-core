@@ -415,6 +415,7 @@ impl PackageStatus {
             format!("lockfile: {}", status_word(self.lockfile_ok)),
             format!("installation: {}", status_word(self.installation_ok)),
             format!("imports: {}", status_word(self.imports_ok)),
+            format!("next_action: {}", self.next_action()),
         ];
 
         if self.errors.is_empty() {
@@ -1528,7 +1529,7 @@ math-utils = "^1.0.0"
         );
         assert_eq!(
             status.summary(),
-            "lockfile: ok\ninstallation: ok\nimports: ok\nerrors: none"
+            "lockfile: ok\ninstallation: ok\nimports: ok\nnext_action: none\nerrors: none"
         );
 
         let _ = fs::remove_dir_all(root);
@@ -1573,6 +1574,7 @@ math-utils = "^1.0.0"
         assert!(status.summary().contains("lockfile: error"));
         assert!(status.summary().contains("installation: error"));
         assert!(status.summary().contains("imports: error"));
+        assert!(status.summary().contains("next_action: sync"));
         assert!(status.summary().contains("errors:\n- "));
         assert!(status
             .errors
