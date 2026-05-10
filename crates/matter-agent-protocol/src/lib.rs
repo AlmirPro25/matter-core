@@ -75,6 +75,21 @@ pub struct AgentSession {
     pub events: Vec<AgentEvent>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentSessionContext {
+    pub session_id: String,
+    pub event_count: usize,
+    pub latest_task_id: String,
+    pub latest_goal: String,
+    pub latest_summary: String,
+    pub facts: Vec<String>,
+    pub blockers: Vec<String>,
+    pub requests: Vec<String>,
+    pub last_response_kind: Option<ResponseKind>,
+    pub next_action: String,
+    pub terminal: bool,
+}
+
 impl AgentId {
     pub fn new(name: impl Into<String>, role: AgentRole) -> Self {
         Self {
@@ -278,6 +293,13 @@ impl AgentSession {
         })
     }
 
+    pub fn last_frame(&self) -> Option<&AgentFrame> {
+        self.events.iter().rev().find_map(|event| match event {
+            AgentEvent::Frame(frame) => Some(frame),
+            AgentEvent::Response(_) => None,
+        })
+    }
+
     pub fn is_terminal(&self) -> bool {
         self.last_response()
             .map(|response| response.is_terminal())
@@ -298,6 +320,50 @@ impl AgentSession {
             format!("next_action: {}", self.next_action()),
         ]
         .join("\n")
+    }
+
+    pub fn context(&self) -> AgentSessionContext {
+        let mut facts = Vec::new();
+        let mut blockers = Vec::new();
+        let mut requests = Vec::new();
+
+        for event in &self.events {
+            match event {
+                AgentEvent::Frame(frame) => {
+                    facts.extend(frame.facts.clone());
+                    blockers.extend(frame.blockers.clone());
+                    requests.extend(frame.requests.clone());
+                }
+                AgentEvent::Response(response) => {
+                    blockers.extend(response.blockers.clone());
+                }
+            }
+        }
+
+        let latest_frame = self.last_frame();
+        let last_response = self.last_response();
+
+        AgentSessionContext {
+            session_id: self.session_id.clone(),
+            event_count: self.event_count(),
+            latest_task_id: latest_frame
+                .map(|frame| frame.task_id.clone())
+                .or_else(|| last_response.map(|response| response.task_id.clone()))
+                .unwrap_or_default(),
+            latest_goal: latest_frame
+                .map(|frame| frame.goal.clone())
+                .unwrap_or_default(),
+            latest_summary: last_response
+                .map(|response| response.summary.clone())
+                .or_else(|| latest_frame.map(|frame| frame.summary.clone()))
+                .unwrap_or_default(),
+            facts,
+            blockers,
+            requests,
+            last_response_kind: last_response.map(|response| response.kind),
+            next_action: self.next_action().to_string(),
+            terminal: self.is_terminal(),
+        }
     }
 }
 
@@ -521,6 +587,8 @@ mod tests {
         )
         .with_goal("Create an agent session transcript")
         .with_summary("Frames and responses need a durable conversation container")
+        .add_fact("AgentSession stores ordered events")
+        .add_request("Return the next executable action")
         .with_next_action("append response to session");
         let response = frame.response_from_receiver();
 
@@ -535,6 +603,20 @@ mod tests {
             session.last_response().map(|response| response.kind),
             Some(ResponseKind::Accepted)
         );
+        let context = session.context();
+        assert_eq!(context.session_id, "session-1");
+        assert_eq!(context.event_count, 2);
+        assert_eq!(context.latest_task_id, "handoff-cycle");
+        assert_eq!(
+            context.latest_goal,
+            "Create an agent session transcript"
+        );
+        assert_eq!(context.last_response_kind, Some(ResponseKind::Accepted));
+        assert_eq!(context.next_action, "execute");
+        assert_eq!(context.facts, vec!["AgentSession stores ordered events"]);
+        assert_eq!(context.requests, vec!["Return the next executable action"]);
+        assert!(context.blockers.is_empty());
+        assert!(!context.terminal);
         assert!(session.summary_text().contains("events: 2"));
     }
 
@@ -551,6 +633,11 @@ mod tests {
 
         assert!(session.is_terminal());
         assert_eq!(session.next_action(), "none");
+        let context = session.context();
+        assert_eq!(context.latest_task_id, "handoff-cycle");
+        assert_eq!(context.latest_summary, "Session protocol completed");
+        assert_eq!(context.last_response_kind, Some(ResponseKind::Completed));
+        assert!(context.terminal);
         assert!(session.summary_text().contains("terminal: true"));
     }
 
@@ -562,5 +649,10 @@ mod tests {
         assert!(session.last_response().is_none());
         assert!(!session.is_terminal());
         assert_eq!(session.next_action(), "start");
+        let context = session.context();
+        assert_eq!(context.event_count, 0);
+        assert!(context.latest_task_id.is_empty());
+        assert_eq!(context.next_action, "start");
+        assert!(!context.terminal);
     }
 }
