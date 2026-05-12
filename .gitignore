@@ -35,3 +35,4 @@ Thumbs.db
 .env
 *.local.env
 apps/matter-studio/.env
+apps/matter-studio/.matter-studio-events.json

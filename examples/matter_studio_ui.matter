@@ -1,0 +1,48 @@
+# Matter UI declaration rendered by Matter Studio.
+# This program does not draw with JavaScript directly.
+# It declares a visual surface through the Matter visual backend.
+
+visual.surface("matter_studio", 1280, 720)
+
+visual.region("sidebar", 0, 0, 240, 720)
+visual.set("sidebar", "text", "Matter Studio")
+visual.set("sidebar", "material", "panel")
+visual.set("sidebar", "state", "active")
+
+visual.region("topbar", 240, 0, 1040, 54)
+visual.set("topbar", "text", "Analisar e construir Matter")
+visual.set("topbar", "material", "bar")
+
+visual.region("chat", 270, 86, 620, 410)
+visual.set("chat", "text", "Chat com a linguagem")
+visual.set("chat", "semantic", "conversation")
+visual.set("chat", "material", "canvas")
+
+visual.region("composer", 305, 575, 560, 82)
+visual.set("composer", "text", "Mensagem para a IA")
+visual.set("composer", "semantic", "input")
+visual.set("composer", "event", "send_prompt")
+visual.set("composer", "state", "active")
+
+visual.region("workbench", 920, 54, 360, 666)
+visual.set("workbench", "text", "Workbench Matter")
+visual.set("workbench", "semantic", "source_editor")
+visual.set("workbench", "material", "code")
+
+visual.region("button_run", 940, 520, 76, 34)
+visual.set("button_run", "text", "Run")
+visual.set("button_run", "semantic", "primary_action")
+visual.set("button_run", "event", "run_source")
+visual.set("button_run", "state", "active")
+
+visual.region("button_reflect", 1028, 520, 92, 34)
+visual.set("button_reflect", "text", "Reflect")
+visual.set("button_reflect", "event", "reflect_source")
+
+visual.region("button_guard", 1132, 520, 84, 34)
+visual.set("button_guard", "text", "Guard")
+visual.set("button_guard", "event", "guard_source")
+
+visual.pulse("button_run")
+
+print "Matter UI declared by Matter"

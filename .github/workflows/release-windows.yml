@@ -39,6 +39,7 @@ jobs:
           Copy-Item examples\first_run.matter dist\matter-core-windows-x64\examples\first_run.matter
           Copy-Item examples\language_tour.matter dist\matter-core-windows-x64\examples\language_tour.matter
           Copy-Item examples\reflexive_self.matter dist\matter-core-windows-x64\examples\reflexive_self.matter
+          Copy-Item examples\matter_studio_ui.matter dist\matter-core-windows-x64\examples\matter_studio_ui.matter
           Copy-Item docs\USER_ONBOARDING.md dist\matter-core-windows-x64\USER_ONBOARDING.md
           Copy-Item docs\LANGUAGE_TOUR.md dist\matter-core-windows-x64\LANGUAGE_TOUR.md
           Copy-Item apps\matter-studio dist\matter-core-windows-x64\apps\matter-studio -Recurse

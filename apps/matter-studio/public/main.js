@@ -9,6 +9,7 @@ const state = {
   ],
   source: "",
   output: "Output do Matter aparece aqui.",
+  visual: null,
   activeExample: "",
   status: null,
 };
@@ -142,6 +143,7 @@ function workbench() {
           <button data-matter="check-json">Check</button>
           <button data-matter="reflect-json">Reflect</button>
           <button data-matter="reflexive-guard-json">Guard</button>
+          <button data-action="render-ui">Visual</button>
         </div>
       </div>
 
@@ -151,9 +153,42 @@ function workbench() {
           <div class="card"><b>Reflect</b><span class="muted">code as data</span></div>
           <div class="card"><b>Guard</b><span class="muted">policy gate</span></div>
         </div>
+        ${visualPreview()}
         <pre>${escapeHtml(state.output)}</pre>
       </section>
     </aside>
+  `;
+}
+
+function visualPreview() {
+  if (!state.visual) return "";
+  const surface = state.visual.surfaces?.[0] || { width: 1280, height: 720, name: "surface" };
+  const width = Number(surface.width) || 1280;
+  const height = Number(surface.height) || 720;
+  const regions = state.visual.regions || [];
+  return `
+    <div class="visual-preview">
+      <div class="visual-meta">${escapeHtml(surface.name)} ${width}x${height}</div>
+      <div class="visual-canvas" style="aspect-ratio:${width}/${height}">
+        ${regions.map((region) => visualRegion(region, width, height)).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function visualRegion(region, width, height) {
+  const props = region.properties || {};
+  const x = percent(region.x, width);
+  const y = percent(region.y, height);
+  const w = percent(region.w, width);
+  const h = percent(region.h, height);
+  const label = props.text || region.name;
+  const stateClass = props.state === "active" ? " active" : "";
+  return `
+    <div class="visual-region${stateClass}" style="left:${x}%;top:${y}%;width:${w}%;height:${h}%">
+      <b>${escapeHtml(label)}</b>
+      <span>${escapeHtml(props.semantic || props.event || region.name)}</span>
+    </div>
   `;
 }
 
@@ -188,6 +223,8 @@ function wireEvents() {
   document.querySelectorAll("[data-matter]").forEach((button) => {
     button.addEventListener("click", () => runMatter(button.dataset.matter));
   });
+
+  document.querySelector("[data-action='render-ui']")?.addEventListener("click", renderMatterUi);
 
   document.querySelectorAll("[data-example]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -245,10 +282,30 @@ async function sendPrompt() {
 async function runMatter(action) {
   state.source = document.querySelector("#source")?.value || state.source;
   state.output = `Executando ${action}...`;
+  state.visual = null;
   render();
   const result = await api("/api/matter", { action, source: state.source });
   const payload = result.stdout || result.stderr || JSON.stringify(result, null, 2);
   state.output = result.ok ? payload : `Erro (${result.code}):\n${payload}`;
+  render();
+}
+
+async function renderMatterUi() {
+  state.source = document.querySelector("#source")?.value || state.source;
+  state.output = "Renderizando UI Matter...";
+  state.visual = null;
+  render();
+  const result = await api("/api/ui-render", { source: state.source });
+  if (result.ok) {
+    state.visual = result.snapshot;
+    state.output = [
+      "UI renderizada a partir de codigo Matter.",
+      ...(result.output || []),
+      `regions=${result.snapshot?.regions?.length || 0}`,
+    ].join("\n");
+  } else {
+    state.output = `Erro visual:\n${result.stderr || result.error || JSON.stringify(result, null, 2)}`;
+  }
   render();
 }
 
@@ -273,4 +330,10 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function percent(value, total) {
+  const number = Number(value) || 0;
+  const base = Number(total) || 1;
+  return Math.max(0, Math.min(100, (number / base) * 100)).toFixed(3);
 }

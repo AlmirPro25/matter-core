@@ -9,6 +9,7 @@ It gives you:
 - Gemini chat through `GEMINI_API_KEY`
 - local Matter execution through `matter-cli`
 - quick actions for `run`, `check-json`, `reflect-json`, and `reflexive-guard-json`
+- a `Visual` action that renders Matter `visual.*` declarations into a live UI preview
 
 ## Run
 
@@ -48,4 +49,3 @@ You can override:
 ```text
 MATTER_CLI=F:\path\to\matter-cli.exe
 ```
-

@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
 import { spawn } from "node:child_process";
@@ -52,10 +52,17 @@ const server = createServer(async (req, res) => {
       return sendJson(res, result);
     }
 
+    if (req.method === "POST" && url.pathname === "/api/ui-render") {
+      const body = await readJson(req);
+      const result = await renderMatterUi(body);
+      return sendJson(res, result);
+    }
+
     if (req.method === "GET" && url.pathname === "/api/examples") {
       return sendJson(res, {
         ok: true,
         examples: [
+          await readRepoFile("examples/matter_studio_ui.matter"),
           await readRepoFile("examples/first_run.matter"),
           await readRepoFile("examples/language_tour.matter"),
           await readRepoFile("examples/reflexive_self.matter"),
@@ -233,6 +240,54 @@ async function runMatter(body) {
     stdout: result.stdout,
     stderr: result.stderr,
   };
+}
+
+async function renderMatterUi(body) {
+  const source = normalizeSource(body.source);
+  if (!source.trim()) return { ok: false, error: "Matter source is empty." };
+
+  const eventsPath = join(appDir, ".matter-studio-events.json");
+  await writeFile(eventsPath, '{"format":"PXL_EVENT_QUEUE","version":1,"events":[]}', "utf8");
+
+  const cli = resolveMatterCli();
+  const args =
+    cli.kind === "exe"
+      ? ["visual-run-json", "-", eventsPath, "1", "16"]
+      : ["run", "-q", "-p", "matter-cli", "--", "visual-run-json", "-", eventsPath, "1", "16"];
+  const command = cli.kind === "exe" ? cli.command : "cargo";
+  const result = await runProcess(command, args, source);
+  if (result.code !== 0) {
+    return {
+      ok: false,
+      action: "visual-run-json",
+      command: cli.kind === "exe" ? cli.command : "cargo run -q -p matter-cli --",
+      code: result.code,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    };
+  }
+
+  try {
+    const payload = JSON.parse(result.stdout);
+    const snapshotRaw = payload?.result?.app?.snapshot || "";
+    const snapshot = snapshotRaw ? JSON.parse(snapshotRaw) : null;
+    return {
+      ok: true,
+      action: "visual-run-json",
+      command: cli.kind === "exe" ? cli.command : "cargo run -q -p matter-cli --",
+      code: result.code,
+      output: payload.output || [],
+      snapshot,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      action: "visual-run-json",
+      code: 1,
+      stdout: result.stdout,
+      stderr: `Could not parse visual output: ${error.message}`,
+    };
+  }
 }
 
 function normalizeSource(value) {

@@ -61,6 +61,7 @@ cargo build -p matter-cli --release
 - evaluate guarded reflexive workflows with `reflexive-guard-json`
 - benchmark programs and gate performance budgets
 - run a local visual AI workbench through Matter Studio
+- declare UI layouts in Matter with `visual.*` and preview them in Matter Studio
 
 ## Example
 
@@ -116,7 +117,7 @@ Machine-readable capabilities:
 
 ## Matter Studio
 
-Matter Studio is a local visual interface for the language. It provides a dark chat/workbench UI, calls Matter CLI locally, and can connect to OpenAI-compatible or Gemini APIs through server-side environment variables.
+Matter Studio is a local visual interface for the language. It provides a dark chat/workbench UI, calls Matter CLI locally, renders Matter `visual.*` UI declarations, and can connect to OpenAI-compatible or Gemini APIs through server-side environment variables.
 
 ```powershell
 cd apps\matter-studio
