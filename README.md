@@ -39,6 +39,7 @@ Launch the native Rust terminal studio:
 .\matter-cli.exe studio-native examples\matter_studio_ui.matter --interactive
 .\matter-cli.exe studio-native-json examples\matter_studio_ui.matter
 .\matter-cli.exe sentinel-pvmbc examples\matter_studio_ui.matter -o target\matter-studio.pvmbc --name matter-studio
+.\matter-cli.exe sentinel-pvmbc-inspect-json target\matter-studio.pvmbc
 ```
 
 ## Build From Source
@@ -73,6 +74,7 @@ cargo build -p matter-cli --release
 - declare UI layouts in Matter with `visual.*` and preview them in Matter Studio
 - render a native Rust terminal studio with `studio-native`
 - export Matter visual layouts to Sentinel OS PVM2 bytecode with `sentinel-pvmbc`
+- inspect Sentinel PVM bytecode artifacts with `sentinel-pvmbc-inspect-json`
 
 ## Example
 
@@ -161,6 +163,7 @@ Matter can export a `visual.*` interface as Sentinel-compatible `PVM2` bytecode.
 
 ```powershell
 .\matter-cli.exe sentinel-pvmbc examples\matter_studio_ui.matter -o target\matter-studio.pvmbc --name matter-studio
+.\matter-cli.exe sentinel-pvmbc-inspect-json target\matter-studio.pvmbc
 ```
 
 The generated file can be copied into a Sentinel disk image and loaded from the Sentinel PVM shell with its `installpvmbc` / `loadpvmbc` flow.

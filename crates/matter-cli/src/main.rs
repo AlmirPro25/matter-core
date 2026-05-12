@@ -1166,6 +1166,14 @@ fn main() {
             sentinel_pvmbc(input, output, name);
         }
 
+        "sentinel-pvmbc-inspect-json" => {
+            if args.len() < 3 {
+                eprintln!("Usage: matter-cli sentinel-pvmbc-inspect-json <file.pvmbc>");
+                process::exit(1);
+            }
+            sentinel_pvmbc_inspect_json(&args[2]);
+        }
+
         "check" => {
             if args.len() < 3 {
                 eprintln!("Usage: matter-cli check <file.matter|->");
@@ -1587,6 +1595,7 @@ fn print_usage() {
     );
     println!("  matter-cli studio-native-json [file.matter] Render native studio model as JSON");
     println!("  matter-cli sentinel-pvmbc [file.matter] [-o out.pvmbc] [--name app] Export visual model to Sentinel PVM2 bytecode");
+    println!("  matter-cli sentinel-pvmbc-inspect-json <file.pvmbc> Inspect Sentinel PVM bytecode as JSON");
     println!("  matter-cli check <file.matter|->            Parse and compile without running");
     println!("  matter-cli tokens-json <file.matter|->      Tokenize source and print JSON");
     println!("  matter-cli imports-json <file.matter|->     Inspect local imports as JSON");
@@ -1690,6 +1699,7 @@ fn print_capabilities_json() {
             "\"visual-run-json\",",
             "\"studio-native-json\",",
             "\"sentinel-pvmbc\",",
+            "\"sentinel-pvmbc-inspect-json\",",
             "\"compile-json\",",
             "\"inspect-json\",",
             "\"run-bytecode-json\",",
@@ -8764,6 +8774,46 @@ fn sentinel_pvmbc(path: &str, output: &str, name: &str) {
     );
 }
 
+fn sentinel_pvmbc_inspect_json(path: &str) {
+    let bytes = match fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            println!(
+                "{}",
+                json!({
+                    "ok": false,
+                    "input": path,
+                    "error": { "message": error.to_string() }
+                })
+            );
+            process::exit(1);
+        }
+    };
+    match inspect_sentinel_pvmbc(&bytes) {
+        Ok(report) => println!(
+            "{}",
+            json!({
+                "ok": true,
+                "input": path,
+                "bytes": bytes.len(),
+                "package": sentinel_pvmbc_report_json(&report)
+            })
+        ),
+        Err(error) => {
+            println!(
+                "{}",
+                json!({
+                    "ok": false,
+                    "input": path,
+                    "bytes": bytes.len(),
+                    "error": { "message": error }
+                })
+            );
+            process::exit(1);
+        }
+    }
+}
+
 fn option_value<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     args.windows(2)
         .find(|window| window[0] == name)
@@ -8945,6 +8995,185 @@ fn push_u32(bytes: &mut Vec<u8>, value: u32) {
 
 fn push_u64(bytes: &mut Vec<u8>, value: u64) {
     bytes.extend_from_slice(&value.to_le_bytes());
+}
+
+#[derive(Debug, Clone)]
+struct SentinelPvmbcReport {
+    format: String,
+    format_version: u16,
+    name: String,
+    package_version: u32,
+    permissions: u64,
+    entrypoint: u32,
+    width: u32,
+    height: u32,
+    declared_opcodes: u32,
+    decoded_opcodes: u32,
+    opcode_counts: BTreeMap<String, u32>,
+    frame_count: u32,
+}
+
+fn inspect_sentinel_pvmbc(bytes: &[u8]) -> Result<SentinelPvmbcReport, String> {
+    if bytes.len() < 4 {
+        return Err("file is too small for Sentinel PVM bytecode".to_string());
+    }
+    match &bytes[0..4] {
+        b"PVM2" => inspect_sentinel_pvm2(bytes),
+        b"PVM1" => inspect_sentinel_pvm1(bytes),
+        _ => Err("unknown Sentinel PVM magic; expected PVM1 or PVM2".to_string()),
+    }
+}
+
+fn sentinel_pvmbc_report_json(report: &SentinelPvmbcReport) -> JsonValue {
+    json!({
+        "format": &report.format,
+        "format_version": report.format_version,
+        "name": &report.name,
+        "package_version": report.package_version,
+        "permissions": report.permissions,
+        "entrypoint": report.entrypoint,
+        "width": report.width,
+        "height": report.height,
+        "declared_opcodes": report.declared_opcodes,
+        "decoded_opcodes": report.decoded_opcodes,
+        "opcode_counts": &report.opcode_counts,
+        "frame_count": report.frame_count
+    })
+}
+
+fn inspect_sentinel_pvm2(bytes: &[u8]) -> Result<SentinelPvmbcReport, String> {
+    if bytes.len() < 36 {
+        return Err("PVM2 header is incomplete".to_string());
+    }
+    let format_version = read_u16_le(bytes, 4)?;
+    if format_version != 2 {
+        return Err(format!(
+            "unsupported PVM2 format version {}",
+            format_version
+        ));
+    }
+    let name_len = read_u16_le(bytes, 6)? as usize;
+    if name_len > 64 {
+        return Err(format!("PVM2 name too long: {}", name_len));
+    }
+    let package_version = read_u32_le(bytes, 8)?;
+    let permissions = read_u64_le(bytes, 12)?;
+    let entrypoint = read_u32_le(bytes, 20)?;
+    let width = read_u32_le(bytes, 24)?;
+    let height = read_u32_le(bytes, 28)?;
+    let declared_opcodes = read_u32_le(bytes, 32)?;
+    let name_start = 36;
+    let opcode_start = name_start + name_len;
+    if bytes.len() < opcode_start {
+        return Err("PVM2 name extends past end of file".to_string());
+    }
+    let name = std::str::from_utf8(&bytes[name_start..opcode_start])
+        .map_err(|error| error.to_string())?
+        .to_string();
+    let (decoded_opcodes, opcode_counts, frame_count) =
+        inspect_sentinel_opcode_stream(&bytes[opcode_start..], declared_opcodes)?;
+    Ok(SentinelPvmbcReport {
+        format: "PVM2".to_string(),
+        format_version,
+        name,
+        package_version,
+        permissions,
+        entrypoint,
+        width,
+        height,
+        declared_opcodes,
+        decoded_opcodes,
+        opcode_counts,
+        frame_count,
+    })
+}
+
+fn inspect_sentinel_pvm1(bytes: &[u8]) -> Result<SentinelPvmbcReport, String> {
+    if bytes.len() < 16 {
+        return Err("PVM1 header is incomplete".to_string());
+    }
+    let width = read_u32_le(bytes, 4)?;
+    let height = read_u32_le(bytes, 8)?;
+    let declared_opcodes = read_u32_le(bytes, 12)?;
+    let (decoded_opcodes, opcode_counts, frame_count) =
+        inspect_sentinel_opcode_stream(&bytes[16..], declared_opcodes)?;
+    Ok(SentinelPvmbcReport {
+        format: "PVM1".to_string(),
+        format_version: 1,
+        name: "".to_string(),
+        package_version: 0,
+        permissions: 0,
+        entrypoint: 0,
+        width,
+        height,
+        declared_opcodes,
+        decoded_opcodes,
+        opcode_counts,
+        frame_count,
+    })
+}
+
+fn inspect_sentinel_opcode_stream(
+    bytes: &[u8],
+    declared_opcodes: u32,
+) -> Result<(u32, BTreeMap<String, u32>, u32), String> {
+    let mut index = 0;
+    let mut decoded = 0;
+    let mut counts = BTreeMap::new();
+    let mut frames = 0;
+    while index < bytes.len() {
+        if decoded >= declared_opcodes {
+            return Err("PVM opcode stream has trailing bytes after declared opcodes".to_string());
+        }
+        let tag = bytes[index];
+        let (name, size) = match tag {
+            0 => ("clear", 1 + 4),
+            1 => ("fill_rect", 1 + 16 + 4),
+            2 => ("pulse", 1 + 16 + 1),
+            3 => ("set_behavior", 1 + 16 + 2),
+            4 => ("frame", 1),
+            other => return Err(format!("unknown PVM opcode tag {}", other)),
+        };
+        if index + size > bytes.len() {
+            return Err(format!("PVM opcode {} is truncated", name));
+        }
+        *counts.entry(name.to_string()).or_insert(0) += 1;
+        if tag == 4 {
+            frames += 1;
+        }
+        decoded += 1;
+        index += size;
+    }
+    if decoded != declared_opcodes {
+        return Err(format!(
+            "PVM opcode count mismatch: declared {}, decoded {}",
+            declared_opcodes, decoded
+        ));
+    }
+    Ok((decoded, counts, frames))
+}
+
+fn read_u16_le(bytes: &[u8], offset: usize) -> Result<u16, String> {
+    let slice = bytes
+        .get(offset..offset + 2)
+        .ok_or_else(|| format!("expected u16 at byte {}", offset))?;
+    Ok(u16::from_le_bytes([slice[0], slice[1]]))
+}
+
+fn read_u32_le(bytes: &[u8], offset: usize) -> Result<u32, String> {
+    let slice = bytes
+        .get(offset..offset + 4)
+        .ok_or_else(|| format!("expected u32 at byte {}", offset))?;
+    Ok(u32::from_le_bytes([slice[0], slice[1], slice[2], slice[3]]))
+}
+
+fn read_u64_le(bytes: &[u8], offset: usize) -> Result<u64, String> {
+    let slice = bytes
+        .get(offset..offset + 8)
+        .ok_or_else(|| format!("expected u64 at byte {}", offset))?;
+    Ok(u64::from_le_bytes([
+        slice[0], slice[1], slice[2], slice[3], slice[4], slice[5], slice[6], slice[7],
+    ]))
 }
 
 fn run_native_studio_loop(source: &str, input: &str, clear: bool, model: &mut NativeStudioModel) {
@@ -14115,6 +14344,47 @@ print "declared"
         assert!(bytes.contains(&3));
         assert!(bytes.contains(&2));
         assert_eq!(*bytes.last().unwrap(), 4);
+    }
+
+    #[test]
+    fn sentinel_pvmbc_inspector_reports_generated_pvm2_package() {
+        let model = NativeStudioModel {
+            input: "demo.matter".to_string(),
+            output: vec![],
+            status: vec![],
+            surface_name: "matter_studio".to_string(),
+            surface_width: 640,
+            surface_height: 480,
+            regions: vec![NativeStudioRegion {
+                name: "button_guard".to_string(),
+                x: 10,
+                y: 20,
+                w: 30,
+                h: 40,
+                text: "Guard".to_string(),
+                semantic: "".to_string(),
+                event: "guard_source".to_string(),
+                state: "".to_string(),
+            }],
+            instruction_cost: 0.0,
+            backend_cost: 0.0,
+        };
+        let bytes = encode_sentinel_pvmbc(&model, "guard-app");
+
+        let report = inspect_sentinel_pvmbc(&bytes).unwrap();
+
+        assert_eq!(report.format, "PVM2");
+        assert_eq!(report.format_version, 2);
+        assert_eq!(report.name, "guard-app");
+        assert_eq!(report.width, 640);
+        assert_eq!(report.height, 480);
+        assert_eq!(report.declared_opcodes, report.decoded_opcodes);
+        assert_eq!(report.frame_count, 1);
+        assert_eq!(report.opcode_counts.get("clear"), Some(&1));
+        assert_eq!(report.opcode_counts.get("fill_rect"), Some(&1));
+        assert_eq!(report.opcode_counts.get("set_behavior"), Some(&1));
+        assert_eq!(report.opcode_counts.get("pulse"), Some(&1));
+        assert_eq!(report.opcode_counts.get("frame"), Some(&1));
     }
 
     #[test]
