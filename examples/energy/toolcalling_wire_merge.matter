@@ -1,0 +1,31 @@
+# Merge + validate tool handoff wires with strategy
+let frame_a = {
+  "from_name": "planner",
+  "from_role": "planner",
+  "to_name": "worker",
+  "to_role": "worker",
+  "task_id": "merge-demo",
+  "state": "proposed",
+  "goal": "build response",
+  "summary": "first frame",
+  "next_action": "execute"
+}
+
+let frame_b = {
+  "from_name": "planner",
+  "from_role": "planner",
+  "to_name": "worker",
+  "to_role": "worker",
+  "task_id": "merge-demo",
+  "state": "blocked",
+  "goal": "build response",
+  "summary": "second frame blocked",
+  "next_action": "resolve-blockers",
+  "blockers": ["missing_api_key"]
+}
+
+let a = tool.invoke_frame(frame_a)
+let b = tool.invoke_frame(frame_b)
+let merged = tool.merge_wire(a.wire, b.wire, "prefer_blocked")
+print merged
+print tool.validate_wire(merged.wire)

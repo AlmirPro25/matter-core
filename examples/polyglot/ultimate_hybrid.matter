@@ -1,0 +1,220 @@
+# Exemplo: Sistema Híbrido Completo - TODAS as 5 Linguagens!
+# Python + Node.js + Rust + Go + Java em um único arquivo
+
+# Python: Machine Learning e Data Science
+import "sklearn.linear_model" from python
+import "pandas" from python as pd
+import "numpy" from python as np
+
+# Node.js: Web Server e API
+import "express" from nodejs
+import "axios" from nodejs
+
+# Rust: Performance e Processamento Paralelo
+import "rayon" from rust
+
+# Go: Concorrência e Microservices
+import "github.com/gin-gonic/gin" from go
+
+# Java: Enterprise e Business Logic
+import "java.util.HashMap" from java
+import "java.util.ArrayList" from java
+
+fn main() {
+    print "=== ULTIMATE HYBRID SYSTEM ==="
+    print "Using Python + Node.js + Rust + Go + Java!"
+    print ""
+    
+    # ========================================
+    # PARTE 1: DATA SCIENCE (Python)
+    # ========================================
+    print "1. Data Science with Python..."
+    
+    # Carrega dados
+    let data = {
+        "product": ["Laptop", "Mouse", "Keyboard", "Monitor", "Headset"],
+        "sales": [120, 450, 230, 180, 310],
+        "price": [1200, 25, 75, 400, 150]
+    }
+    
+    let df = pd.DataFrame(data)
+    df["revenue"] = df["sales"] * df["price"]
+    
+    print "Total Revenue: $" + df["revenue"].sum()
+    print "Average Sales: " + df["sales"].mean()
+    print "Top Product: " + df.loc[df["revenue"].idxmax(), "product"]
+    
+    # Treina modelo de predição
+    let X = df[["sales", "price"]].values
+    let y = df["revenue"].values
+    
+    let model = sklearn.linear_model.LinearRegression()
+    model.fit(X, y)
+    
+    print "ML Model trained! R² Score: " + model.score(X, y)
+    
+    # ========================================
+    # PARTE 2: PROCESSAMENTO PARALELO (Rust)
+    # ========================================
+    print "\n2. Parallel Processing with Rust..."
+    
+    # Processa dados em paralelo
+    let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    
+    let processed = rayon.par_iter(numbers)
+        .map(|x| x * x * x)  # Cubo de cada número
+        .collect()
+    
+    print "Processed (parallel): " + processed
+    print "Sum of cubes: " + processed.iter().sum()
+    
+    # ========================================
+    # PARTE 3: BUSINESS LOGIC (Java)
+    # ========================================
+    print "\n3. Business Logic with Java..."
+    
+    # Cria catálogo de produtos
+    let catalog = ArrayList.new()
+    
+    for i in range(df.shape[0]) {
+        let product = HashMap.new()
+        product.put("id", i + 1)
+        product.put("name", df.loc[i, "product"])
+        product.put("price", df.loc[i, "price"])
+        product.put("stock", df.loc[i, "sales"])
+        catalog.add(product)
+    }
+    
+    print "Catalog size: " + catalog.size()
+    print "First product: " + catalog.get(0).get("name")
+    
+    # Calcula total de estoque
+    let totalStock = catalog.stream()
+        .mapToInt(p -> p.get("stock"))
+        .sum()
+    
+    print "Total stock: " + totalStock + " units"
+    
+    # ========================================
+    # PARTE 4: MICROSERVICE (Go)
+    # ========================================
+    print "\n4. Microservice with Go..."
+    
+    # Cria serviço de analytics
+    let analytics = gin.Default()
+    
+    analytics.GET("/stats", fn(c) {
+        c.JSON(200, {
+            "total_revenue": df["revenue"].sum(),
+            "avg_sales": df["sales"].mean(),
+            "total_stock": totalStock,
+            "products_count": catalog.size()
+        })
+    })
+    
+    analytics.GET("/predict", fn(c) {
+        let sales = c.Query("sales")
+        let price = c.Query("price")
+        
+        let prediction = model.predict([[sales, price]])
+        
+        c.JSON(200, {
+            "sales": sales,
+            "price": price,
+            "predicted_revenue": prediction[0]
+        })
+    })
+    
+    print "Analytics microservice ready on :8081"
+    
+    # Inicia em goroutine
+    go fn() {
+        analytics.Run(":8081")
+    }()
+    
+    # ========================================
+    # PARTE 5: MAIN API (Node.js)
+    # ========================================
+    print "\n5. Main API with Node.js..."
+    
+    let app = express()
+    app.use(express.json())
+    
+    # Dashboard principal
+    app.get("/", fn(req, res) {
+        res.json({
+            "system": "Ultimate Hybrid System",
+            "languages": ["Python", "Node.js", "Rust", "Go", "Java"],
+            "features": [
+                "Machine Learning (Python)",
+                "Parallel Processing (Rust)",
+                "Business Logic (Java)",
+                "Microservices (Go)",
+                "Main API (Node.js)"
+            ],
+            "status": "running"
+        })
+    })
+    
+    # Produtos
+    app.get("/api/products", fn(req, res) {
+        res.json(catalog.toArray())
+    })
+    
+    # Analytics (proxy para Go microservice)
+    app.get("/api/analytics", async fn(req, res) {
+        let response = await axios.get("http://localhost:8081/stats")
+        res.json(response.data)
+    })
+    
+    # Predição (proxy para Go microservice)
+    app.get("/api/predict", async fn(req, res) {
+        let sales = req.query.sales || 100
+        let price = req.query.price || 50
+        
+        let response = await axios.get(
+            "http://localhost:8081/predict?sales=" + sales + "&price=" + price
+        )
+        res.json(response.data)
+    })
+    
+    # Processamento pesado (usa Rust)
+    app.post("/api/process", fn(req, res) {
+        let data = req.body.numbers || [1, 2, 3, 4, 5]
+        
+        let result = rayon.par_iter(data)
+            .map(|x| x * x)
+            .collect()
+        
+        res.json({
+            "input": data,
+            "output": result,
+            "processor": "Rust (parallel)"
+        })
+    })
+    
+    # Inicia servidor principal
+    let port = 3000
+    app.listen(port, fn() {
+        print "\n🚀 ULTIMATE HYBRID SYSTEM RUNNING!"
+        print "=================================="
+        print "Main API (Node.js): http://localhost:" + port
+        print "Analytics (Go): http://localhost:8081"
+        print ""
+        print "Try these endpoints:"
+        print "  curl http://localhost:3000/"
+        print "  curl http://localhost:3000/api/products"
+        print "  curl http://localhost:3000/api/analytics"
+        print "  curl http://localhost:3000/api/predict?sales=200&price=100"
+        print "  curl -X POST http://localhost:3000/api/process -H 'Content-Type: application/json' -d '{\"numbers\":[1,2,3,4,5]}'"
+        print ""
+        print "✅ System uses:"
+        print "   - Python for ML and data science"
+        print "   - Rust for parallel processing"
+        print "   - Java for business logic"
+        print "   - Go for microservices"
+        print "   - Node.js for main API"
+        print ""
+        print "This is the power of Matter Polyglot! 🌍🚀"
+    })
+}

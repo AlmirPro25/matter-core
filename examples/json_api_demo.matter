@@ -1,0 +1,136 @@
+# Demonstração de JSON e integração com APIs
+# Mostra como trabalhar com dados estruturados
+
+print "=== JSON DEMO ==="
+
+# Criar dados estruturados
+let user = {
+    id: 1,
+    name: "Alice",
+    email: "alice@example.com",
+    active: true
+}
+
+print "User object:"
+print user
+
+# Serializar para JSON
+let json_string = json.stringify(user)
+print ""
+print "JSON string:"
+print json_string
+
+# Parse de volta
+let parsed_user = json.parse(json_string)
+print ""
+print "Parsed back:"
+print parsed_user
+
+print ""
+print "=== WORKING WITH LISTS ==="
+
+# Lista de usuários
+let users = [
+    { id: 1, name: "Alice", score: 95 },
+    { id: 2, name: "Bob", score: 87 },
+    { id: 3, name: "Charlie", score: 92 }
+]
+
+print "Users list:"
+print users
+
+# Serializar lista
+let users_json = json.stringify(users)
+print ""
+print "Users as JSON:"
+print users_json
+
+print ""
+print "=== DATA PROCESSING ==="
+
+# Extrair scores
+let scores = [95, 87, 92]
+
+print "Scores:"
+print scores
+
+print "Total score:"
+print list.sum(scores)
+
+print "Average score:"
+let avg = list.sum(scores) / list.len(scores)
+print avg
+
+print "Highest score:"
+print list.max(scores)
+
+print "Lowest score:"
+print list.min(scores)
+
+print ""
+print "=== STRING MANIPULATION ==="
+
+# Processar nomes
+let names = ["alice", "bob", "charlie"]
+
+print "Original names:"
+print names
+
+# Capitalizar (simulado com upper no primeiro char)
+let i = 0
+while i < list.len(names) {
+    let name = list.get(names, i)
+    let capitalized = string.upper(name)
+    print capitalized
+    set i = i + 1
+}
+
+print ""
+print "=== TIMESTAMP AND LOGGING ==="
+
+let timestamp = time.now()
+let log_entry = {
+    timestamp: timestamp,
+    level: "INFO",
+    message: "Application started"
+}
+
+print "Log entry:"
+print log_entry
+
+let log_json = json.stringify(log_entry)
+print ""
+print "Log as JSON:"
+print log_json
+
+# Salvar no store
+store.set("last_log", log_json)
+print ""
+print "Log saved to store"
+
+# Recuperar do store
+let saved_log = store.get("last_log")
+print "Retrieved from store:"
+print saved_log
+
+print ""
+print "=== RANDOM DATA GENERATION ==="
+
+# Gerar dados aleatórios
+let random_user = {
+    id: random.int(1000, 9999),
+    name: random.choice(["Alice", "Bob", "Charlie", "Diana"]),
+    score: random.int(50, 100),
+    active: random.bool()
+}
+
+print "Random user:"
+print random_user
+
+let random_json = json.stringify(random_user)
+print ""
+print "Random user as JSON:"
+print random_json
+
+print ""
+print "=== DONE ==="

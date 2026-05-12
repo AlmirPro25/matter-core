@@ -1,0 +1,16 @@
+# Exemplo de carregamento de bytecode visual (PVMBC)
+# Demonstra integração futura com PVM/PXL compilado
+
+on boot {
+    # Carregar aplicação visual pré-compilada
+    visual.load("apps/pizzaria.pvmbc")
+    
+    # Executar aplicação
+    visual.run("pizzaria")
+    
+    print "Aplicação visual carregada"
+}
+
+on tap {
+    visual.pulse("main_button")
+}

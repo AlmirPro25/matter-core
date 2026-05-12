@@ -1,0 +1,22 @@
+# Nested Loops Benchmark
+# Testa performance de loops aninhados
+
+print "=== Nested Loops Benchmark ==="
+print "Running 100x100 nested loops..."
+
+let total = 0
+let x = 0
+
+while x < 100 {
+    let y = 0
+    while y < 100 {
+        set total = total + 1
+        set y = y + 1
+    }
+    set x = x + 1
+}
+
+print "Total iterations:"
+print total
+
+print "Benchmark complete!"

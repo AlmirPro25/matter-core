@@ -1,0 +1,43 @@
+# Parallel Map Example
+
+## Função para processar item (CPU-intensive)
+fn process_item(n) {
+    ## Simula processamento pesado
+    let result = 0
+    let i = 0
+    while i < 1000 {
+        set result = result + n
+        set i = i + 1
+    }
+    return result
+}
+
+## Lista de números
+let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+print "Processing sequentially..."
+let start = time.now()
+
+let results_seq = []
+for num in numbers {
+    let result = process_item(num)
+    list.push(results_seq, result)
+}
+
+let seq_time = time.now() - start
+print "Sequential time: " + string.concat("", seq_time) + "ms"
+print results_seq
+
+print "\nProcessing in parallel..."
+let start_par = time.now()
+
+## Parallel map (futuro - por enquanto sequencial)
+let results_par = parallel_map(numbers, process_item)
+
+let par_time = time.now() - start_par
+print "Parallel time: " + string.concat("", par_time) + "ms"
+print results_par
+
+## Speedup
+let speedup = seq_time / par_time
+print "\nSpeedup: " + string.concat("", speedup) + "x"

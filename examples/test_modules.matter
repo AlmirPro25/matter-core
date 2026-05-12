@@ -1,0 +1,40 @@
+# Test Modules
+# Demonstra uso de módulos locais
+
+# Nota: Import ainda não está totalmente implementado no bytecode
+# Este é um exemplo de como será a sintaxe
+
+# import "modules/math_utils.matter"
+# import "modules/string_utils.matter"
+
+# Por enquanto, vamos definir as funções inline
+fn abs(n) {
+    if n < 0 { return 0 - n }
+    return n
+}
+
+fn max(a, b) {
+    if a > b { return a }
+    return b
+}
+
+fn greet(name) {
+    return "Hello, " + name + "!"
+}
+
+# Usar as funções
+print abs(0 - 10)
+print max(5, 10)
+print greet("Matter")
+
+# Teste com listas
+let numbers = [1, 2, 3, 4, 5]
+print "Numbers:"
+for num in numbers {
+    print num
+}
+
+# Teste com maps
+let user = {"name": "Alice", "age": 30}
+print "User name:"
+print user["name"]

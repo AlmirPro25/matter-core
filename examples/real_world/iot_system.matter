@@ -1,0 +1,478 @@
+// ============================================
+// MATTER IN ACTION: IoT SYSTEM
+// Real-world IoT with Matter
+// ============================================
+
+// ============================================
+// 1. SMART HOME SYSTEM
+// ============================================
+
+struct Device {
+    id: string,
+    type: string,
+    status: string,
+    value: float,
+    last_update: int
+}
+
+let devices = [];
+
+// Register device
+fn register_device(id: string, type: string) -> unit {
+    let device = Device {
+        id: id,
+        type: type,
+        status: "online",
+        value: 0.0,
+        last_update: time.now()
+    };
+    
+    devices.push(device);
+    
+    // Save to database
+    db.query("INSERT INTO devices VALUES (?, ?, ?, ?, ?)",
+        device.id, device.type, device.status, device.value, device.last_update);
+    
+    print "Device registered: " + id + " (" + type + ")";
+    // Efeitos inferidos: io, db, time
+}
+
+// Update device status
+fn update_device(id: string, value: float) -> unit {
+    for device in devices {
+        if device.id == id {
+            device.value = value;
+            device.last_update = time.now();
+            
+            // Update database
+            db.query("UPDATE devices SET value = ?, last_update = ? WHERE id = ?",
+                value, device.last_update, id);
+            
+            // Trigger automation
+            check_automation(device);
+            
+            print "Device updated: " + id + " = " + value;
+            break;
+        }
+    }
+    // Efeitos inferidos: io, db, time
+}
+
+// ============================================
+// 2. AUTOMATION RULES
+// ============================================
+
+// Temperature control
+fn check_automation(device: Device) -> unit {
+    if device.type == "temperature" {
+        if device.value > 25.0 {
+            // Turn on AC
+            send_command("ac_001", "on");
+            print "AC turned on (temp: " + device.value + "°C)";
+        } else if device.value < 18.0 {
+            // Turn on heater
+            send_command("heater_001", "on");
+            print "Heater turned on (temp: " + device.value + "°C)";
+        }
+    }
+    
+    if device.type == "motion" and device.value == 1.0 {
+        // Motion detected - turn on lights
+        send_command("light_001", "on");
+        print "Motion detected - lights on";
+    }
+    
+    if device.type == "door" and device.value == 1.0 {
+        // Door opened - send notification
+        send_notification("Door opened at " + time.now());
+        print "Door opened - notification sent";
+    }
+    // Efeitos inferidos: io, network, time
+}
+
+// Send command to device
+fn send_command(device_id: string, command: string) -> unit {
+    // Send via MQTT
+    mqtt.publish("devices/" + device_id + "/command", command);
+    
+    print "Command sent: " + device_id + " -> " + command;
+    // Efeitos inferidos: io, network
+}
+
+// ============================================
+// 3. MQTT INTEGRATION
+// ============================================
+
+fn start_mqtt_listener() -> unit {
+    print "Starting MQTT listener...";
+    
+    with logging, retry {
+        mqtt.connect("mqtt://broker.example.com", fn() {
+            print "MQTT connected!";
+            
+            // Subscribe to device updates
+            mqtt.subscribe("devices/+/status", fn(topic, message) {
+                let device_id = topic.split("/")[1];
+                let value = parse_float(message);
+                
+                update_device(device_id, value);
+            });
+            
+            // Subscribe to commands
+            mqtt.subscribe("devices/+/command", fn(topic, message) {
+                let device_id = topic.split("/")[1];
+                print "Command received: " + device_id + " -> " + message;
+            });
+        });
+    }
+    // Efeitos inferidos: io, network
+}
+
+// ============================================
+// 4. SENSOR DATA COLLECTION
+// ============================================
+
+fn collect_sensor_data() -> unit {
+    loop {
+        for device in devices {
+            if device.type == "temperature" or device.type == "humidity" {
+                // Read sensor (simulated)
+                let value = random.float(15.0, 30.0);
+                
+                // Update device
+                update_device(device.id, value);
+                
+                // Send to cloud
+                net.post("https://iot.cloud.com/data", {
+                    device_id: device.id,
+                    value: value,
+                    timestamp: time.now()
+                });
+            }
+        }
+        
+        // Collect every 10 seconds
+        time.sleep(10000);
+    }
+    // Efeitos inferidos: io, random, db, time, network
+}
+
+// ============================================
+// 5. EDGE COMPUTING
+// ============================================
+
+fn edge_processing(data: [float]) -> map {
+    // Process data locally (edge device)
+    let sum = 0.0;
+    let count = 0;
+    
+    for value in data {
+        sum = sum + value;
+        count = count + 1;
+    }
+    
+    let avg = sum / count;
+    
+    // Detect anomalies
+    let anomalies = [];
+    for value in data {
+        if value > avg * 1.5 or value < avg * 0.5 {
+            anomalies.push(value);
+        }
+    }
+    
+    return {
+        average: avg,
+        anomalies: anomalies,
+        count: count
+    };
+}
+
+// ============================================
+// 6. DEVICE MONITORING
+// ============================================
+
+fn monitor_devices() -> unit {
+    loop {
+        let now = time.now();
+        
+        for device in devices {
+            // Check if device is offline (no update in 5 minutes)
+            if now - device.last_update > 300000 {
+                device.status = "offline";
+                
+                // Update database
+                db.query("UPDATE devices SET status = 'offline' WHERE id = ?", device.id);
+                
+                // Send alert
+                send_notification("Device offline: " + device.id);
+                
+                print "Device offline: " + device.id;
+            }
+        }
+        
+        // Check every minute
+        time.sleep(60000);
+    }
+    // Efeitos inferidos: io, time, db, network
+}
+
+// ============================================
+// 7. ENERGY MANAGEMENT
+// ============================================
+
+struct EnergyReading {
+    device_id: string,
+    power: float,
+    timestamp: int
+}
+
+let energy_readings = [];
+
+fn track_energy(device_id: string, power: float) -> unit {
+    let reading = EnergyReading {
+        device_id: device_id,
+        power: power,
+        timestamp: time.now()
+    };
+    
+    energy_readings.push(reading);
+    
+    // Save to database
+    db.query("INSERT INTO energy_readings VALUES (?, ?, ?)",
+        reading.device_id, reading.power, reading.timestamp);
+    
+    // Check if over limit
+    if power > 1000.0 {
+        send_notification("High power usage: " + device_id + " (" + power + "W)");
+    }
+    // Efeitos inferidos: io, time, db, network
+}
+
+fn generate_energy_report() -> map {
+    let total_power = 0.0;
+    let device_usage = {};
+    
+    for reading in energy_readings {
+        total_power = total_power + reading.power;
+        
+        if !device_usage.has(reading.device_id) {
+            device_usage[reading.device_id] = 0.0;
+        }
+        
+        device_usage[reading.device_id] = device_usage[reading.device_id] + reading.power;
+    }
+    
+    return {
+        total: total_power,
+        by_device: device_usage,
+        timestamp: time.now()
+    };
+    // Efeitos inferidos: time
+}
+
+// ============================================
+// 8. PREDICTIVE MAINTENANCE
+// ============================================
+
+fn predict_maintenance(device_id: string) -> unit {
+    // Get historical data
+    let readings = db.query("SELECT * FROM device_readings WHERE device_id = ? ORDER BY timestamp DESC LIMIT 100", device_id);
+    
+    // Simple anomaly detection
+    let values = [];
+    for reading in readings {
+        values.push(reading.value);
+    }
+    
+    let result = edge_processing(values);
+    
+    if result.anomalies.length() > 10 {
+        // Too many anomalies - maintenance needed
+        send_notification("Maintenance needed for device: " + device_id);
+        
+        // Create maintenance ticket
+        net.post("https://maintenance.com/tickets", {
+            device_id: device_id,
+            reason: "Anomaly detection",
+            anomalies: result.anomalies.length(),
+            timestamp: time.now()
+        });
+        
+        print "Maintenance scheduled for: " + device_id;
+    }
+    // Efeitos inferidos: io, db, network, time
+}
+
+// ============================================
+// 9. SECURITY SYSTEM
+// ============================================
+
+fn security_monitor() -> unit {
+    with logging, tracing {
+        loop {
+            // Check door sensors
+            for device in devices {
+                if device.type == "door" and device.value == 1.0 {
+                    // Door opened
+                    let now = time.now();
+                    let hour = (now / 3600000) % 24;
+                    
+                    // Alert if opened at night (10pm - 6am)
+                    if hour >= 22 or hour < 6 {
+                        send_notification("ALERT: Door opened at night!");
+                        
+                        // Turn on all lights
+                        for d in devices {
+                            if d.type == "light" {
+                                send_command(d.id, "on");
+                            }
+                        }
+                        
+                        // Record event
+                        db.query("INSERT INTO security_events VALUES (?, ?, ?)",
+                            device.id, "door_opened_night", now);
+                    }
+                }
+                
+                // Check motion sensors
+                if device.type == "motion" and device.value == 1.0 {
+                    // Motion detected - record
+                    db.query("INSERT INTO motion_events VALUES (?, ?)",
+                        device.id, time.now());
+                }
+            }
+            
+            time.sleep(1000);
+        }
+    }
+    // Efeitos inferidos: io, time, network, db
+}
+
+// ============================================
+// 10. CLOUD SYNC
+// ============================================
+
+fn sync_to_cloud() -> unit {
+    loop {
+        print "Syncing to cloud...";
+        
+        // Get unsync data
+        let unsync = db.query("SELECT * FROM device_readings WHERE synced = 0 LIMIT 100");
+        
+        if unsync.length() > 0 {
+            // Send to cloud
+            let response = net.post("https://iot.cloud.com/sync", {
+                readings: unsync,
+                timestamp: time.now()
+            });
+            
+            if response.status == 200 {
+                // Mark as synced
+                for reading in unsync {
+                    db.query("UPDATE device_readings SET synced = 1 WHERE id = ?", reading.id);
+                }
+                
+                print "Synced " + unsync.length() + " readings";
+            } else {
+                print "Sync failed, will retry";
+            }
+        }
+        
+        // Sync every 5 minutes
+        time.sleep(300000);
+    }
+    // Efeitos inferidos: io, db, network, time
+}
+
+// ============================================
+// 11. NOTIFICATIONS
+// ============================================
+
+fn send_notification(message: string) -> unit {
+    print "Sending notification: " + message;
+    
+    // Send push notification
+    net.post("https://push.example.com/send", {
+        message: message,
+        timestamp: time.now()
+    });
+    
+    // Send email
+    net.post("https://email.example.com/send", {
+        to: "admin@example.com",
+        subject: "IoT Alert",
+        body: message
+    });
+    
+    // Save to database
+    db.query("INSERT INTO notifications VALUES (?, ?)", message, time.now());
+    // Efeitos inferidos: io, network, time, db
+}
+
+// ============================================
+// 12. MAIN
+// ============================================
+
+fn main() -> unit {
+    print "=== MATTER IoT SYSTEM ===";
+    print "";
+    
+    // Register devices
+    register_device("temp_001", "temperature");
+    register_device("humid_001", "humidity");
+    register_device("motion_001", "motion");
+    register_device("door_001", "door");
+    register_device("light_001", "light");
+    register_device("ac_001", "ac");
+    
+    // Start MQTT listener
+    spawn "mqtt_listener" {
+        start_mqtt_listener();
+    }
+    
+    // Start sensor data collection
+    spawn "sensor_collector" {
+        with retry, error_handler {
+            collect_sensor_data();
+        }
+    }
+    
+    // Start device monitoring
+    spawn "device_monitor" {
+        monitor_devices();
+    }
+    
+    // Start security monitoring
+    spawn "security_monitor" {
+        security_monitor();
+    }
+    
+    // Start cloud sync
+    spawn "cloud_sync" {
+        with retry {
+            sync_to_cloud();
+        }
+    }
+    
+    // Generate energy report every hour
+    on schedule("0 * * * *") {
+        let report = generate_energy_report();
+        print "Energy Report: " + report.total + "W total";
+    }
+    
+    // Predictive maintenance check daily
+    on schedule("0 0 * * *") {
+        for device in devices {
+            predict_maintenance(device.id);
+        }
+    }
+    
+    print "IoT system started!";
+    print "Devices: " + devices.length();
+    
+    // Keep running
+    loop {
+        time.sleep(1000);
+    }
+}

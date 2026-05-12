@@ -1,0 +1,17 @@
+fn surge_multiplier(demand, supply) {
+    if supply == 0 {
+        return 3
+    }
+
+    if demand > supply {
+        return 2
+    }
+
+    return 1
+}
+
+fn estimate_fare(distance_km, surge) {
+    let base = 7
+    let per_km = 4
+    return (base + (distance_km * per_km)) * surge
+}

@@ -1,5 +1,5 @@
-/// Lexer for Matter language
-/// Converte código fonte em tokens
+//! Lexer for Matter language
+//! Converte código fonte em tokens
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
@@ -21,20 +21,22 @@ pub enum Token {
     Struct,
     Import,
     Spawn,
-    
+
     // Literals
     Int(i64),
+    Float(f64),
     String(String),
     Bool(bool),
-    
+
     // Identifiers
     Ident(String),
-    
+
     // Operators
     Plus,
     Minus,
     Star,
     Slash,
+    Percent, // %
     Eq,
     EqEq,
     NotEq,
@@ -42,7 +44,11 @@ pub enum Token {
     Gt,
     LtEq,
     GtEq,
-    
+    And,   // &&
+    Or,    // ||
+    Not,   // !
+    Arrow, // ->
+
     // Delimiters
     LParen,
     RParen,
@@ -53,7 +59,8 @@ pub enum Token {
     Comma,
     Dot,
     Colon,
-    
+    Semicolon,
+
     // Special
     Newline,
     Eof,
@@ -82,7 +89,7 @@ pub struct Lexer {
 impl Lexer {
     pub fn new(input: &str) -> Self {
         let chars: Vec<char> = input.chars().collect();
-        let current = chars.get(0).copied();
+        let current = chars.first().copied();
         Self {
             input: chars,
             position: 0,
@@ -91,7 +98,7 @@ impl Lexer {
             column: 1,
         }
     }
-    
+
     fn advance(&mut self) {
         if self.current == Some('\n') {
             self.line += 1;
@@ -103,13 +110,17 @@ impl Lexer {
         self.current = self.input.get(self.position).copied();
     }
 
+    fn peek(&self) -> Option<char> {
+        self.input.get(self.position + 1).copied()
+    }
+
     fn current_span(&self) -> Span {
         Span {
             line: self.line,
             column: self.column,
         }
     }
-    
+
     fn skip_whitespace(&mut self) {
         while let Some(ch) = self.current {
             if ch == ' ' || ch == '\t' || ch == '\r' {
@@ -119,16 +130,28 @@ impl Lexer {
             }
         }
     }
-    
+
     fn skip_comment(&mut self) {
+        // Suporte para comentários # e //
         if self.current == Some('#') {
             while self.current.is_some() && self.current != Some('\n') {
                 self.advance();
             }
+        } else if self.current == Some('/') {
+            // Peek ahead para ver se é //
+            if self.position + 1 < self.input.len() && self.input[self.position + 1] == '/' {
+                // Skip //
+                self.advance();
+                self.advance();
+                // Skip até o fim da linha
+                while self.current.is_some() && self.current != Some('\n') {
+                    self.advance();
+                }
+            }
         }
     }
-    
-    fn read_number(&mut self) -> i64 {
+
+    fn read_number(&mut self) -> Token {
         let mut num = String::new();
         while let Some(ch) = self.current {
             if ch.is_ascii_digit() {
@@ -138,24 +161,63 @@ impl Lexer {
                 break;
             }
         }
-        num.parse().unwrap_or(0)
+
+        // Check for decimal point (float)
+        if self.current == Some('.') {
+            // Peek ahead to make sure it's a digit after the dot (not a method call)
+            if let Some(next) = self.peek() {
+                if next.is_ascii_digit() {
+                    num.push('.');
+                    self.advance(); // skip '.'
+                    while let Some(ch) = self.current {
+                        if ch.is_ascii_digit() {
+                            num.push(ch);
+                            self.advance();
+                        } else {
+                            break;
+                        }
+                    }
+                    return Token::Float(num.parse().unwrap_or(0.0));
+                }
+            }
+        }
+
+        Token::Int(num.parse().unwrap_or(0))
     }
-    
+
     fn read_string(&mut self) -> String {
         let mut s = String::new();
         self.advance(); // skip opening quote
-        
+
         while let Some(ch) = self.current {
-            if ch == '"' {
+            if ch == '\\' {
+                // Escape sequences
+                self.advance();
+                match self.current {
+                    Some('n') => s.push('\n'),
+                    Some('t') => s.push('\t'),
+                    Some('r') => s.push('\r'),
+                    Some('\\') => s.push('\\'),
+                    Some('"') => s.push('"'),
+                    Some('0') => s.push('\0'),
+                    Some(other) => {
+                        s.push('\\');
+                        s.push(other);
+                    }
+                    None => break,
+                }
+                self.advance();
+            } else if ch == '"' {
                 self.advance(); // skip closing quote
                 break;
+            } else {
+                s.push(ch);
+                self.advance();
             }
-            s.push(ch);
-            self.advance();
         }
         s
     }
-    
+
     fn read_identifier(&mut self) -> String {
         let mut ident = String::new();
         while let Some(ch) = self.current {
@@ -168,14 +230,25 @@ impl Lexer {
         }
         ident
     }
-    
+
     pub fn next_token(&mut self) -> Token {
         self.next_token_spanned().token
     }
 
     pub fn next_token_spanned(&mut self) -> SpannedToken {
-        self.skip_whitespace();
-        self.skip_comment();
+        loop {
+            self.skip_whitespace();
+
+            // Check for comments before processing tokens
+            let before_pos = self.position;
+            self.skip_comment();
+
+            // If we skipped a comment, loop again to skip any whitespace after it
+            if self.position != before_pos {
+                continue;
+            }
+            break;
+        }
 
         let span = self.current_span();
         let token = match self.current {
@@ -190,7 +263,12 @@ impl Lexer {
             }
             Some('-') => {
                 self.advance();
-                Token::Minus
+                if self.current == Some('>') {
+                    self.advance();
+                    Token::Arrow
+                } else {
+                    Token::Minus
+                }
             }
             Some('*') => {
                 self.advance();
@@ -199,6 +277,10 @@ impl Lexer {
             Some('/') => {
                 self.advance();
                 Token::Slash
+            }
+            Some('%') => {
+                self.advance();
+                Token::Percent
             }
             Some('=') => {
                 self.advance();
@@ -215,7 +297,27 @@ impl Lexer {
                     self.advance();
                     Token::NotEq
                 } else {
-                    Token::Ident("!".to_string())
+                    Token::Not
+                }
+            }
+            Some('&') => {
+                self.advance();
+                if self.current == Some('&') {
+                    self.advance();
+                    Token::And
+                } else {
+                    // Single & not used, treat as identifier-like
+                    Token::Ident("&".to_string())
+                }
+            }
+            Some('|') => {
+                self.advance();
+                if self.current == Some('|') {
+                    self.advance();
+                    Token::Or
+                } else {
+                    // Single | for union types
+                    Token::Ident("|".to_string())
                 }
             }
             Some('<') => {
@@ -272,14 +374,15 @@ impl Lexer {
                 self.advance();
                 Token::Colon
             }
+            Some(';') => {
+                self.advance();
+                Token::Semicolon
+            }
             Some('"') => {
                 let s = self.read_string();
                 Token::String(s)
             }
-            Some(ch) if ch.is_ascii_digit() => {
-                let num = self.read_number();
-                Token::Int(num)
-            }
+            Some(ch) if ch.is_ascii_digit() => self.read_number(),
             Some(ch) if ch.is_alphabetic() || ch == '_' => {
                 let ident = self.read_identifier();
                 match ident.as_str() {
@@ -313,7 +416,7 @@ impl Lexer {
 
         SpannedToken { token, span }
     }
-    
+
     pub fn tokenize(&mut self) -> Vec<Token> {
         let mut tokens = Vec::new();
         loop {
@@ -348,7 +451,7 @@ impl Lexer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_basic_tokens() {
         let mut lexer = Lexer::new("let x = 10");
@@ -357,13 +460,13 @@ mod tests {
         assert_eq!(lexer.next_token(), Token::Eq);
         assert_eq!(lexer.next_token(), Token::Int(10));
     }
-    
+
     #[test]
     fn test_string() {
         let mut lexer = Lexer::new(r#""hello world""#);
         assert_eq!(lexer.next_token(), Token::String("hello world".to_string()));
     }
-    
+
     #[test]
     fn test_operators() {
         let mut lexer = Lexer::new("+ - * / == != < > <= >=");
@@ -384,5 +487,68 @@ mod tests {
         let mut lexer = Lexer::new(r#"import "math.matter""#);
         assert_eq!(lexer.next_token(), Token::Import);
         assert_eq!(lexer.next_token(), Token::String("math.matter".to_string()));
+    }
+
+    #[test]
+    fn test_float_literal() {
+        let mut lexer = Lexer::new("3.14");
+        assert_eq!(lexer.next_token(), Token::Float(3.14));
+    }
+
+    #[test]
+    fn test_float_integer_distinction() {
+        let mut lexer = Lexer::new("42 3.14 100");
+        assert_eq!(lexer.next_token(), Token::Int(42));
+        assert_eq!(lexer.next_token(), Token::Float(3.14));
+        assert_eq!(lexer.next_token(), Token::Int(100));
+    }
+
+    #[test]
+    fn test_logical_operators() {
+        let mut lexer = Lexer::new("&& || !");
+        assert_eq!(lexer.next_token(), Token::And);
+        assert_eq!(lexer.next_token(), Token::Or);
+        assert_eq!(lexer.next_token(), Token::Not);
+    }
+
+    #[test]
+    fn test_modulus() {
+        let mut lexer = Lexer::new("10 % 3");
+        assert_eq!(lexer.next_token(), Token::Int(10));
+        assert_eq!(lexer.next_token(), Token::Percent);
+        assert_eq!(lexer.next_token(), Token::Int(3));
+    }
+
+    #[test]
+    fn test_arrow() {
+        let mut lexer = Lexer::new("fn add(a, b) -> int");
+        assert_eq!(lexer.next_token(), Token::Fn);
+        assert_eq!(lexer.next_token(), Token::Ident("add".to_string()));
+        assert_eq!(lexer.next_token(), Token::LParen);
+        assert_eq!(lexer.next_token(), Token::Ident("a".to_string()));
+        assert_eq!(lexer.next_token(), Token::Comma);
+        assert_eq!(lexer.next_token(), Token::Ident("b".to_string()));
+        assert_eq!(lexer.next_token(), Token::RParen);
+        assert_eq!(lexer.next_token(), Token::Arrow);
+        assert_eq!(lexer.next_token(), Token::Ident("int".to_string()));
+    }
+
+    #[test]
+    fn test_string_escape_sequences() {
+        let mut lexer = Lexer::new(r#""hello\nworld""#);
+        assert_eq!(
+            lexer.next_token(),
+            Token::String("hello\nworld".to_string())
+        );
+    }
+
+    #[test]
+    fn test_semicolon() {
+        let mut lexer = Lexer::new("let x = 10;");
+        assert_eq!(lexer.next_token(), Token::Let);
+        assert_eq!(lexer.next_token(), Token::Ident("x".to_string()));
+        assert_eq!(lexer.next_token(), Token::Eq);
+        assert_eq!(lexer.next_token(), Token::Int(10));
+        assert_eq!(lexer.next_token(), Token::Semicolon);
     }
 }

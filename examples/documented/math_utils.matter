@@ -1,0 +1,98 @@
+## Math Utilities
+##
+## Biblioteca de funções matemáticas úteis
+
+## Soma dois números
+##
+## Parâmetros:
+##   a - Primeiro número
+##   b - Segundo número
+##
+## Retorna:
+##   Soma de a e b
+##
+## Exemplo:
+##   let result = soma(10, 20)
+##   print result  # 30
+fn soma(a, b) {
+    return a + b
+}
+
+## Multiplica dois números
+##
+## Parâmetros:
+##   a - Primeiro número
+##   b - Segundo número
+##
+## Retorna:
+##   Produto de a e b
+##
+## Exemplo:
+##   let result = multiplica(5, 6)
+##   print result  # 30
+fn multiplica(a, b) {
+    return a * b
+}
+
+## Calcula o fatorial de um número
+##
+## Usa recursão para calcular o fatorial.
+##
+## Parâmetros:
+##   n - Número inteiro positivo
+##
+## Retorna:
+##   Fatorial de n
+##
+## Exemplo:
+##   let result = fatorial(5)
+##   print result  # 120
+fn fatorial(n) {
+    if n <= 1 {
+        return 1
+    }
+    return n * fatorial(n - 1)
+}
+
+## Calcula a potência de um número
+##
+## Parâmetros:
+##   base - Número base
+##   exp - Expoente
+##
+## Retorna:
+##   base elevado a exp
+##
+## Exemplo:
+##   let result = potencia(2, 10)
+##   print result  # 1024
+fn potencia(base, exp) {
+    if exp == 0 {
+        return 1
+    }
+    
+    let result = 1
+    let i = 0
+    
+    while i < exp {
+        set result = result * base
+        set i = i + 1
+    }
+    
+    return result
+}
+
+## Verifica se um número é par
+##
+## Parâmetros:
+##   n - Número a verificar
+##
+## Retorna:
+##   true se n é par, false caso contrário
+##
+## Exemplo:
+##   let result = eh_par(10)
+##   print result  # true
+fn eh_par(n) {
+    return math.mod(n, 2) == 0
+}

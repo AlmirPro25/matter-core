@@ -1,0 +1,29 @@
+# String Utils Module
+# Funções para manipulação de strings
+
+fn greet(name) {
+    return "Hello, " + name + "!"
+}
+
+fn farewell(name) {
+    return "Goodbye, " + name + "!"
+}
+
+fn repeat_string(text, times) {
+    let result = ""
+    let i = 0
+    while i < times {
+        set result = result + text
+        set i = i + 1
+    }
+    return result
+}
+
+fn make_title(text) {
+    return "=== " + text + " ==="
+}
+
+fn make_box(text) {
+    let border = repeat_string("=", 40)
+    return border + "\n" + text + "\n" + border
+}

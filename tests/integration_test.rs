@@ -1,7 +1,6 @@
-/// Integration tests for Matter Core
-/// Testes end-to-end do pipeline completo
+//! Integration tests for Matter Core
+//! Testes end-to-end do pipeline completo
 
-use matter_ast::Program;
 use matter_bytecode::{Bytecode, BytecodeBuilder};
 use matter_parser::Parser;
 use matter_runtime::Runtime;
@@ -14,9 +13,7 @@ fn run_matter_code(source: &str) -> Result<Vec<String>, String> {
     let program = parser.parse().map_err(|e| e.to_string())?;
 
     let builder = BytecodeBuilder::new();
-    let bytecode = builder
-        .build_checked(&program)
-        .map_err(|e| e.to_string())?;
+    let bytecode = builder.build_checked(&program).map_err(|e| e.to_string())?;
 
     let mut runtime = Runtime::new_silent(bytecode);
     runtime.set_stdout_enabled(false);
@@ -31,15 +28,11 @@ fn compile_and_run(source: &str) -> Result<Vec<String>, String> {
     let program = parser.parse().map_err(|e| e.to_string())?;
 
     let builder = BytecodeBuilder::new();
-    let bytecode = builder
-        .build_checked(&program)
-        .map_err(|e| e.to_string())?;
+    let bytecode = builder.build_checked(&program).map_err(|e| e.to_string())?;
 
     // Serialize and deserialize to test round-trip
     let mut buffer = Vec::new();
-    bytecode
-        .serialize(&mut buffer)
-        .map_err(|e| e.to_string())?;
+    bytecode.serialize(&mut buffer).map_err(|e| e.to_string())?;
 
     let bytecode = Bytecode::deserialize(&mut buffer.as_slice()).map_err(|e| e.to_string())?;
 
@@ -225,12 +218,7 @@ fn test_maps() {
     let output = run_matter_code(source).expect("Failed to run");
     assert_eq!(
         output,
-        vec![
-            "{age: 30, name: Alice}",
-            "Alice",
-            "true",
-            "false"
-        ]
+        vec!["{age: 30, name: Alice}", "Alice", "true", "false"]
     );
 }
 
@@ -401,8 +389,8 @@ fn test_all_examples() {
             continue;
         }
 
-        let source = fs::read_to_string(&path)
-            .unwrap_or_else(|_| panic!("Failed to read {}", file));
+        let source =
+            fs::read_to_string(&path).unwrap_or_else(|_| panic!("Failed to read {}", file));
 
         let result = run_matter_code(&source);
         assert!(
@@ -412,4 +400,41 @@ fn test_all_examples() {
             result.err()
         );
     }
+}
+
+#[test]
+fn test_ride_app_example() {
+    let source = include_str!("../examples/apps/ride_app.matter");
+    let output = run_matter_code(source).expect("Failed to run ride app example");
+
+    assert!(output
+        .iter()
+        .any(|line| line.contains("Motoristas registrados")));
+    assert!(output.iter().any(|line| line.contains("Corrida criada")));
+    assert!(output.iter().any(|line| line.contains("Ride Dashboard")));
+    assert!(output.iter().any(|line| line.contains("Receita total")));
+}
+
+#[test]
+fn test_uber_real_prod_simulator_example() {
+    let source = include_str!("../examples/apps/uber_real_prod/simulator.matter");
+    let output = run_matter_code(source).expect("Failed to run uber real prod simulator");
+
+    assert!(output
+        .iter()
+        .any(|line| line.contains("UBER REAL PROD SIM")));
+    assert!(output.iter().any(|line| line.contains("REQUESTS")));
+    assert!(output.iter().any(|line| line.contains("COMPLETED")));
+    assert!(output.iter().any(|line| line.contains("REVENUE")));
+}
+
+#[test]
+fn test_uber_real_prod_orchestrator_sim_example() {
+    let source = include_str!("../examples/apps/uber_real_prod/orchestrator_sim.matter");
+    let output = run_matter_code(source).expect("Failed to run uber real prod orchestrator sim");
+
+    assert!(output.iter().any(|line| line.contains("ORCHESTRATOR SIM")));
+    assert!(output.iter().any(|line| line.contains("COMPLETED")));
+    assert!(output.iter().any(|line| line.contains("SLA_BREACH")));
+    assert!(output.iter().any(|line| line.contains("REVENUE")));
 }

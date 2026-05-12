@@ -1,0 +1,12 @@
+# Tool-calling structured invoke with energy-aware decision
+energy.set_mode("adaptive")
+
+let cls = tool.classify("visual.render")
+print cls
+
+if energy.defer("tool") {
+    print "defer expensive tool operation"
+} else {
+    let result = tool.invoke_json("visual.render", "{\"scene\":\"hero\",\"theme\":\"light\"}")
+    print result
+}

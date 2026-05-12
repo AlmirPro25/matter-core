@@ -1,0 +1,9 @@
+energy profile {
+    mode: "adaptive"
+    battery_aware: true
+    prefer_cache: true
+    allow_defer: true
+}
+
+print(energy.mode())
+print(energy.score("visual"))

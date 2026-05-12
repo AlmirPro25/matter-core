@@ -1,0 +1,356 @@
+// ============================================
+// MATTER IN ACTION: WEB API
+// Real-world REST API with Matter
+// ============================================
+
+// ============================================
+// 1. SIMPLE WEB SERVER
+// ============================================
+
+struct User {
+    id: int,
+    name: string,
+    email: string,
+    created_at: int
+}
+
+struct Response {
+    status: int,
+    body: string,
+    headers: map
+}
+
+// GET /users - List all users
+fn get_users() -> Response {
+    let users = db.query("SELECT * FROM users");
+    
+    return Response {
+        status: 200,
+        body: json.stringify(users),
+        headers: { "Content-Type": "application/json" }
+    };
+    // Efeitos inferidos: io, db
+}
+
+// GET /users/:id - Get user by ID
+fn get_user(id: int) -> Response {
+    let user = db.query("SELECT * FROM users WHERE id = " + id);
+    
+    if user == null {
+        return Response {
+            status: 404,
+            body: json.stringify({ error: "User not found" }),
+            headers: { "Content-Type": "application/json" }
+        };
+    }
+    
+    return Response {
+        status: 200,
+        body: json.stringify(user),
+        headers: { "Content-Type": "application/json" }
+    };
+    // Efeitos inferidos: io, db
+}
+
+// POST /users - Create new user
+fn create_user(name: string, email: string) -> Response {
+    // Validate
+    if name == "" or email == "" {
+        return Response {
+            status: 400,
+            body: json.stringify({ error: "Name and email required" }),
+            headers: { "Content-Type": "application/json" }
+        };
+    }
+    
+    // Create
+    let id = db.query("INSERT INTO users (name, email) VALUES (?, ?) RETURNING id", name, email);
+    
+    // Log
+    print "User created: " + name;
+    
+    return Response {
+        status: 201,
+        body: json.stringify({ id: id, name: name, email: email }),
+        headers: { "Content-Type": "application/json" }
+    };
+    // Efeitos inferidos: io, db
+}
+
+// ============================================
+// 2. WITH HANDLERS (Production-Ready)
+// ============================================
+
+fn api_with_handlers() -> unit {
+    // Start server with handlers
+    with logging, tracing, retry, auth, rate_limit {
+        // All requests are:
+        // - Logged to file
+        // - Traced for debugging
+        // - Retried on failure
+        // - Authenticated
+        // - Rate limited
+        
+        http.listen(8080, fn(req) {
+            if req.path == "/users" and req.method == "GET" {
+                return get_users();
+            }
+            
+            if req.path.starts_with("/users/") and req.method == "GET" {
+                let id = parse_int(req.path.split("/")[2]);
+                return get_user(id);
+            }
+            
+            if req.path == "/users" and req.method == "POST" {
+                let body = json.parse(req.body);
+                return create_user(body.name, body.email);
+            }
+            
+            return Response {
+                status: 404,
+                body: json.stringify({ error: "Not found" }),
+                headers: { "Content-Type": "application/json" }
+            };
+        });
+    }
+}
+
+// ============================================
+// 3. MICROSERVICE EXAMPLE
+// ============================================
+
+fn process_order(order_id: int) -> result {
+    print "Processing order: " + order_id;
+    
+    // Get order from database
+    let order = db.query("SELECT * FROM orders WHERE id = " + order_id);
+    
+    if order == null {
+        return error("Order not found");
+    }
+    
+    // Call payment service
+    let payment = net.post("https://payment.com/charge", {
+        amount: order.total,
+        customer: order.customer_id
+    });
+    
+    if payment.status != 200 {
+        return error("Payment failed");
+    }
+    
+    // Update order status
+    db.query("UPDATE orders SET status = 'paid' WHERE id = " + order_id);
+    
+    // Send notification
+    net.post("https://notification.com/send", {
+        user_id: order.customer_id,
+        message: "Order " + order_id + " confirmed!"
+    });
+    
+    print "Order processed successfully!";
+    
+    return ok;
+    // Efeitos inferidos: io, db, network
+}
+
+// ============================================
+// 4. REAL-TIME CHAT SERVER
+// ============================================
+
+let connections = [];
+
+fn handle_chat_message(user_id: int, message: string) -> unit {
+    print "Message from user " + user_id + ": " + message;
+    
+    // Save to database
+    db.query("INSERT INTO messages (user_id, message) VALUES (?, ?)", user_id, message);
+    
+    // Broadcast to all connections
+    for conn in connections {
+        conn.send(json.stringify({
+            user_id: user_id,
+            message: message,
+            timestamp: time.now()
+        }));
+    }
+    // Efeitos inferidos: io, db, network, time
+}
+
+fn start_chat_server() -> unit {
+    with logging, tracing {
+        websocket.listen(8080, fn(conn) {
+            connections.push(conn);
+            
+            conn.on_message(fn(msg) {
+                let data = json.parse(msg);
+                handle_chat_message(data.user_id, data.message);
+            });
+            
+            conn.on_close(fn() {
+                connections.remove(conn);
+            });
+        });
+    }
+}
+
+// ============================================
+// 5. BACKGROUND JOB PROCESSOR
+// ============================================
+
+fn process_jobs() -> unit {
+    loop {
+        // Get pending jobs
+        let jobs = db.query("SELECT * FROM jobs WHERE status = 'pending' LIMIT 10");
+        
+        if jobs.length() == 0 {
+            print "No pending jobs, sleeping...";
+            time.sleep(5000);  // 5 seconds
+            continue;
+        }
+        
+        for job in jobs {
+            print "Processing job: " + job.id;
+            
+            // Update status
+            db.query("UPDATE jobs SET status = 'processing' WHERE id = " + job.id);
+            
+            // Process job
+            let result = process_job(job);
+            
+            if result.is_ok() {
+                db.query("UPDATE jobs SET status = 'completed' WHERE id = " + job.id);
+                print "Job " + job.id + " completed!";
+            } else {
+                db.query("UPDATE jobs SET status = 'failed' WHERE id = " + job.id);
+                print "Job " + job.id + " failed: " + result.error();
+            }
+        }
+    }
+    // Efeitos inferidos: io, db, time
+}
+
+fn process_job(job: Job) -> result {
+    // Simulate job processing
+    if job.type == "email" {
+        return send_email(job.data);
+    }
+    
+    if job.type == "report" {
+        return generate_report(job.data);
+    }
+    
+    return error("Unknown job type");
+}
+
+// ============================================
+// 6. DATA PIPELINE
+// ============================================
+
+fn etl_pipeline() -> unit {
+    print "Starting ETL pipeline...";
+    
+    // Extract
+    print "Extracting data...";
+    let raw_data = net.get("https://api.example.com/data");
+    
+    // Transform
+    print "Transforming data...";
+    let transformed = [];
+    for item in raw_data {
+        transformed.push({
+            id: item.id,
+            name: item.name.upper(),
+            value: item.value * 2,
+            processed_at: time.now()
+        });
+    }
+    
+    // Load
+    print "Loading data...";
+    for item in transformed {
+        db.query("INSERT INTO processed_data VALUES (?, ?, ?, ?)",
+            item.id, item.name, item.value, item.processed_at);
+    }
+    
+    print "ETL pipeline completed!";
+    // Efeitos inferidos: io, network, db, time
+}
+
+// ============================================
+// 7. CRON JOB
+// ============================================
+
+fn daily_report() -> unit {
+    print "Generating daily report...";
+    
+    // Get data
+    let users = db.query("SELECT COUNT(*) as count FROM users");
+    let orders = db.query("SELECT COUNT(*) as count FROM orders WHERE created_at > " + (time.now() - 86400000));
+    let revenue = db.query("SELECT SUM(total) as sum FROM orders WHERE created_at > " + (time.now() - 86400000));
+    
+    // Generate report
+    let report = "Daily Report\n" +
+                 "============\n" +
+                 "Total Users: " + users.count + "\n" +
+                 "Orders Today: " + orders.count + "\n" +
+                 "Revenue Today: $" + revenue.sum + "\n";
+    
+    // Send email
+    net.post("https://email.com/send", {
+        to: "admin@example.com",
+        subject: "Daily Report",
+        body: report
+    });
+    
+    print "Daily report sent!";
+    // Efeitos inferidos: io, db, network, time
+}
+
+// Schedule to run every day at midnight
+on schedule("0 0 * * *") {
+    daily_report();
+}
+
+// ============================================
+// 8. MAIN - Start Everything
+// ============================================
+
+fn main() -> unit {
+    print "=== MATTER WEB API ===";
+    print "";
+    
+    // Start API server
+    spawn "api_server" {
+        api_with_handlers();
+    }
+    
+    // Start chat server
+    spawn "chat_server" {
+        start_chat_server();
+    }
+    
+    // Start job processor
+    spawn "job_processor" {
+        with retry, error_handler {
+            process_jobs();
+        }
+    }
+    
+    // Run ETL pipeline every hour
+    spawn "etl_pipeline" {
+        loop {
+            etl_pipeline();
+            time.sleep(3600000);  // 1 hour
+        }
+    }
+    
+    print "All services started!";
+    print "API: http://localhost:8080";
+    print "Chat: ws://localhost:8080";
+    
+    // Keep running
+    loop {
+        time.sleep(1000);
+    }
+}

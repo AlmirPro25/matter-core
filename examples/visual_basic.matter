@@ -1,0 +1,7 @@
+# Exemplo básico de uso do backend visual
+# Demonstra a API visual.* integrada ao Matter Core
+
+visual.surface("main", 1080, 1920)
+visual.region("checkout", 100, 200, 300, 80)
+visual.pulse("checkout")
+visual.run("pizzaria")

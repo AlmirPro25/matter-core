@@ -5,3 +5,5 @@ edition.workspace = true
 
 [dependencies]
 serde_json = "1"
+matter-memory = { path = "../matter-memory" }
+matter-agent-protocol = { path = "../matter-agent-protocol" }

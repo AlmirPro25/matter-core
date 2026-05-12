@@ -274,7 +274,10 @@ impl AgentResponse {
             format!("from: {}", self.from.name),
             format!("to: {}", self.to.name),
             format!("summary: {}", empty_word(&self.summary)),
-            format!("missing_context: {}", static_list_or_none(&self.missing_context)),
+            format!(
+                "missing_context: {}",
+                static_list_or_none(&self.missing_context)
+            ),
             format!("blockers: {}", list_or_none(&self.blockers)),
             format!("next_action: {}", empty_word(&self.next_action)),
         ]
@@ -397,9 +400,7 @@ impl AgentSession {
             .map(|event| match event {
                 AgentEvent::Frame(frame) => format!(
                     "frame {} -> {} ({})",
-                    frame.from.name,
-                    frame.to.name,
-                    frame.task_id
+                    frame.from.name, frame.to.name, frame.task_id
                 ),
                 AgentEvent::Response(response) => format!(
                     "response {} -> {} ({}) [{}]",
@@ -418,7 +419,12 @@ impl AgentSession {
         let recent_events = self.recent_event_summaries(limit);
         let packet_id = build_packet_id(
             "pkt",
-            &format!("{}:{}:{}", self.session_id, self.event_count(), recent_events.join("|")),
+            &format!(
+                "{}:{}:{}",
+                self.session_id,
+                self.event_count(),
+                recent_events.join("|")
+            ),
         );
         AgentHandoffPacket {
             context: self.context(),
@@ -455,7 +461,10 @@ impl AgentHandoffPacket {
             format!("lineage_path={}", encode_list(&self.lineage_path)),
             format!("session_id={}", encode_field(&self.context.session_id)),
             format!("event_count={}", self.context.event_count),
-            format!("latest_task_id={}", encode_field(&self.context.latest_task_id)),
+            format!(
+                "latest_task_id={}",
+                encode_field(&self.context.latest_task_id)
+            ),
             format!("latest_goal={}", encode_field(&self.context.latest_goal)),
             format!(
                 "latest_summary={}",
@@ -632,9 +641,7 @@ impl AgentHandoffPacket {
         match self.context.last_response_kind {
             Some(ResponseKind::Completed) => {
                 if !self.context.terminal {
-                    errors.push(
-                        "last_response_kind=completed requires terminal=true".to_string(),
-                    );
+                    errors.push("last_response_kind=completed requires terminal=true".to_string());
                 }
             }
             Some(ResponseKind::Blocked) => {
@@ -648,6 +655,16 @@ impl AgentHandoffPacket {
         }
 
         errors
+    }
+
+    pub fn lineage_contains(&self, packet_id: &str) -> bool {
+        self.packet_id == packet_id || self.lineage_path.iter().any(|node| node == packet_id)
+    }
+
+    pub fn lineage_chain(&self) -> String {
+        let mut chain = self.lineage_path.clone();
+        chain.push(self.packet_id.clone());
+        chain.join(" -> ")
     }
 
     pub fn merge_with(&self, other: &Self) -> Result<Self, String> {
@@ -686,7 +703,10 @@ impl AgentHandoffPacket {
         if !self_task.is_empty() && !other_task.is_empty() && self_task != other_task {
             return Err("cannot merge handoff packets with different latest_task_id".to_string());
         }
-        let merged_depth = self.lineage_depth.max(other.lineage_depth).saturating_add(1);
+        let merged_depth = self
+            .lineage_depth
+            .max(other.lineage_depth)
+            .saturating_add(1);
         if merged_depth > max_lineage_depth {
             return Err(format!(
                 "cannot merge handoff packets beyond lineage depth {}",
@@ -1045,7 +1065,9 @@ mod tests {
         assert!(frame.is_actionable());
         assert_eq!(frame.readiness(), FrameReadiness::Ready);
         assert!(frame.missing_context().is_empty());
-        assert!(frame.handoff_summary().contains("next_action: run package sync"));
+        assert!(frame
+            .handoff_summary()
+            .contains("next_action: run package sync"));
     }
 
     #[test]
@@ -1204,10 +1226,7 @@ mod tests {
         assert_eq!(context.session_id, "session-1");
         assert_eq!(context.event_count, 2);
         assert_eq!(context.latest_task_id, "handoff-cycle");
-        assert_eq!(
-            context.latest_goal,
-            "Create an agent session transcript"
-        );
+        assert_eq!(context.latest_goal, "Create an agent session transcript");
         assert_eq!(context.last_response_kind, Some(ResponseKind::Accepted));
         assert_eq!(context.next_action, "execute");
         assert_eq!(context.facts, vec!["AgentSession stores ordered events"]);
@@ -1528,7 +1547,10 @@ mod tests {
         assert_eq!(merged.context.latest_goal, "goal b");
         assert_eq!(merged.context.latest_summary, "summary b");
         assert_eq!(merged.context.next_action, "resolve-blockers");
-        assert_eq!(merged.context.last_response_kind, Some(ResponseKind::Blocked));
+        assert_eq!(
+            merged.context.last_response_kind,
+            Some(ResponseKind::Blocked)
+        );
         assert_eq!(merged.context.facts, vec!["f1", "f2"]);
         assert_eq!(merged.context.blockers, vec!["b1"]);
         assert_eq!(merged.context.requests, vec!["r1", "r2"]);
@@ -1748,7 +1770,10 @@ mod tests {
             .unwrap();
         assert_eq!(merged.context.latest_summary, "left-summary");
         assert_eq!(merged.context.next_action, "resolve-blockers");
-        assert!(merged.context.blockers.contains(&"left blocker".to_string()));
+        assert!(merged
+            .context
+            .blockers
+            .contains(&"left blocker".to_string()));
     }
 
     #[test]
@@ -1800,5 +1825,94 @@ mod tests {
             .merge_with_strategy_and_limit(&right, MergeStrategy::PreferLatest, 5)
             .unwrap_err();
         assert!(error.contains("beyond lineage depth"));
+    }
+
+    #[test]
+    fn handoff_packet_allows_compact_lineage_without_parent_reference() {
+        let packet = AgentHandoffPacket {
+            packet_id: "pkt_current".to_string(),
+            parent_packet_id: Some("pkt_parent".to_string()),
+            lineage_depth: 2,
+            lineage_path: vec!["pkt_other".to_string()],
+            context: AgentSessionContext {
+                session_id: "s".to_string(),
+                event_count: 1,
+                latest_task_id: "task".to_string(),
+                latest_goal: String::new(),
+                latest_summary: String::new(),
+                facts: vec![],
+                blockers: vec![],
+                requests: vec![],
+                last_response_kind: Some(ResponseKind::Accepted),
+                next_action: "execute".to_string(),
+                terminal: false,
+            },
+            recent_events: vec!["frame planner -> worker (task)".to_string()],
+            merge_strategy: MergeStrategy::PreferLatest,
+        };
+
+        assert!(packet.is_consistent());
+        assert_eq!(packet.lineage_chain(), "pkt_other -> pkt_current");
+    }
+
+    #[test]
+    fn handoff_packet_allows_depth_smaller_than_compact_lineage_path() {
+        let packet = AgentHandoffPacket {
+            packet_id: "pkt_current".to_string(),
+            parent_packet_id: None,
+            lineage_depth: 1,
+            lineage_path: vec!["pkt_a".to_string(), "pkt_b".to_string()],
+            context: AgentSessionContext {
+                session_id: "s".to_string(),
+                event_count: 2,
+                latest_task_id: "task".to_string(),
+                latest_goal: String::new(),
+                latest_summary: String::new(),
+                facts: vec![],
+                blockers: vec![],
+                requests: vec![],
+                last_response_kind: Some(ResponseKind::Accepted),
+                next_action: "execute".to_string(),
+                terminal: false,
+            },
+            recent_events: vec!["frame planner -> worker (task)".to_string()],
+            merge_strategy: MergeStrategy::PreferLatest,
+        };
+
+        assert!(packet.is_consistent());
+        assert_eq!(packet.lineage_chain(), "pkt_a -> pkt_b -> pkt_current");
+    }
+
+    #[test]
+    fn handoff_packet_exposes_lineage_helpers() {
+        let packet = AgentHandoffPacket {
+            packet_id: "pkt_current".to_string(),
+            parent_packet_id: Some("pkt_parent".to_string()),
+            lineage_depth: 3,
+            lineage_path: vec!["pkt_root".to_string(), "pkt_parent".to_string()],
+            context: AgentSessionContext {
+                session_id: "s".to_string(),
+                event_count: 3,
+                latest_task_id: "task".to_string(),
+                latest_goal: String::new(),
+                latest_summary: String::new(),
+                facts: vec![],
+                blockers: vec![],
+                requests: vec![],
+                last_response_kind: Some(ResponseKind::Accepted),
+                next_action: "execute".to_string(),
+                terminal: false,
+            },
+            recent_events: vec!["frame planner -> worker (task)".to_string()],
+            merge_strategy: MergeStrategy::PreferLatest,
+        };
+
+        assert!(packet.lineage_contains("pkt_root"));
+        assert!(packet.lineage_contains("pkt_current"));
+        assert!(!packet.lineage_contains("pkt_unknown"));
+        assert_eq!(
+            packet.lineage_chain(),
+            "pkt_root -> pkt_parent -> pkt_current"
+        );
     }
 }

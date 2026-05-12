@@ -1,0 +1,58 @@
+# Exemplo: Usando NumPy do Python em Matter
+
+import "numpy" from python as np
+
+fn analyze_data() {
+    print "=== NumPy Integration Demo ==="
+    
+    # Cria array NumPy
+    let arr = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    print "Array: " + arr
+    
+    # Operações estatísticas
+    let mean = np.mean(arr)
+    let std = np.std(arr)
+    let sum = np.sum(arr)
+    
+    print "Mean: " + mean
+    print "Std Dev: " + std
+    print "Sum: " + sum
+    
+    # Operações matemáticas
+    let squared = np.square(arr)
+    print "Squared: " + squared
+    
+    let sqrt_arr = np.sqrt(arr)
+    print "Square Root: " + sqrt_arr
+}
+
+fn matrix_operations() {
+    print "\n=== Matrix Operations ==="
+    
+    # Cria matrizes
+    let matrix_a = np.array([[1, 2], [3, 4]])
+    let matrix_b = np.array([[5, 6], [7, 8]])
+    
+    print "Matrix A:"
+    print matrix_a
+    
+    print "Matrix B:"
+    print matrix_b
+    
+    # Multiplicação de matrizes
+    let result = np.matmul(matrix_a, matrix_b)
+    print "A @ B ="
+    print result
+    
+    # Transposta
+    let transpose = np.transpose(matrix_a)
+    print "Transpose of A:"
+    print transpose
+}
+
+fn main() {
+    analyze_data()
+    matrix_operations()
+    
+    print "\n✅ NumPy integration working perfectly!"
+}

@@ -1,0 +1,53 @@
+# Math Utils Module
+# Funções matemáticas úteis
+
+fn abs(n) {
+    if n < 0 {
+        return 0 - n
+    }
+    return n
+}
+
+fn max(a, b) {
+    if a > b {
+        return a
+    }
+    return b
+}
+
+fn min(a, b) {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+fn square(n) {
+    return n * n
+}
+
+fn cube(n) {
+    return n * n * n
+}
+
+fn factorial(n) {
+    if n <= 1 {
+        return 1
+    }
+    return n * factorial(n - 1)
+}
+
+fn fibonacci(n) {
+    if n <= 1 {
+        return n
+    }
+    return fibonacci(n - 1) + fibonacci(n - 2)
+}
+
+fn is_even(n) {
+    return n - (n / 2) * 2 == 0
+}
+
+fn is_odd(n) {
+    return n - (n / 2) * 2 != 0
+}

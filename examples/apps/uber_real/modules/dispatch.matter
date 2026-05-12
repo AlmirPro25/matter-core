@@ -1,0 +1,6 @@
+fn create_dispatch_result(ride, driver) {
+    return {
+        "ride": ride,
+        "driver": driver
+    }
+}

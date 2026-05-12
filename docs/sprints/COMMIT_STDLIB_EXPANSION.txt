@@ -1,0 +1,107 @@
+feat: Expand standard library with time, random, and json backends
+
+## Summary
+
+Significantly expanded Matter Core's standard library with three new backends
+and additional methods for existing backends, improving developer productivity
+and enabling real-world use cases.
+
+## New Backends
+
+### TimeBackend ⏰
+- `time.now()` - Get current timestamp (ms since Unix epoch)
+- `time.sleep(ms)` - Sleep for specified milliseconds
+
+Use cases: timestamps, performance measurement, delays
+
+### RandomBackend 🎲
+- `random.int()` - Random integer (full range)
+- `random.int(max)` - Random integer [0, max)
+- `random.int(min, max)` - Random integer [min, max)
+- `random.bool()` - Random boolean
+- `random.choice(list)` - Random element from list
+
+Use cases: games, simulations, testing, data generation
+
+### JsonBackend 📄
+- `json.stringify(value)` - Convert value to JSON string
+- `json.parse(json)` - Parse JSON string to value
+
+Use cases: API communication, data serialization, logging
+
+## Enhanced Backends
+
+### MathBackend
+- `math.mod(a, b)` - Modulo operation
+- `math.clamp(value, min, max)` - Clamp value between min and max
+
+## Testing
+
+- 15 stdlib tests (100% passing)
+- 43 total tests (100% passing)
+- All new backends fully tested
+
+## Examples
+
+- `examples/stdlib_demo.matter` - Complete stdlib demonstration
+- `examples/json_api_demo.matter` - JSON and API integration
+
+## Documentation
+
+- `STDLIB_EXPANSION.md` - Complete expansion documentation
+- Updated `README.md` with new backends
+- Updated `PROGRESS.md` with Sprint 3.7
+
+## Statistics
+
+### Before
+- 6 backends
+- ~20 methods
+- 8 stdlib tests
+
+### After
+- 9 backends (+3)
+- ~35 methods (+15)
+- 15 stdlib tests (+7)
+- 43 total tests
+
+## Use Cases Enabled
+
+1. **Game Development**: Random mechanics, timing
+2. **Data Analytics**: JSON processing, statistics
+3. **API Integration**: JSON serialization, timestamps
+4. **Testing**: Random data generation
+5. **Simulations**: Random events, time-based logic
+
+## Files Changed
+
+### Added
+- TimeBackend implementation
+- RandomBackend implementation
+- JsonBackend implementation
+- examples/stdlib_demo.matter
+- examples/json_api_demo.matter
+- STDLIB_EXPANSION.md
+
+### Modified
+- crates/matter-stdlib/src/lib.rs (expanded)
+- crates/matter-runtime/src/lib.rs (register new backends)
+- README.md (updated statistics)
+- PROGRESS.md (Sprint 3.7)
+
+## Breaking Changes
+
+None. All changes are additive.
+
+## Performance
+
+- Random backend uses simple LCG (fast)
+- JSON parser is simplified (good for basic use)
+- Time operations use std::time (efficient)
+
+---
+
+Date: May 9, 2026
+Status: ✅ COMPLETE
+Tests: 43/43 passing (100%)
+Version: v0.1.7

@@ -1,5 +1,5 @@
-/// Matter Package Manager
-/// Sistema de pacotes, dependências e versionamento
+//! Matter Package Manager
+//! Sistema de pacotes, dependências e versionamento
 
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -16,7 +16,11 @@ pub struct Version {
 
 impl Version {
     pub fn new(major: u32, minor: u32, patch: u32) -> Self {
-        Self { major, minor, patch }
+        Self {
+            major,
+            minor,
+            patch,
+        }
     }
 
     pub fn parse(s: &str) -> Result<Self, String> {
@@ -25,11 +29,21 @@ impl Version {
             return Err(format!("Invalid version format: {}", s));
         }
 
-        let major = parts[0].parse().map_err(|_| format!("Invalid major version: {}", parts[0]))?;
-        let minor = parts[1].parse().map_err(|_| format!("Invalid minor version: {}", parts[1]))?;
-        let patch = parts[2].parse().map_err(|_| format!("Invalid patch version: {}", parts[2]))?;
+        let major = parts[0]
+            .parse()
+            .map_err(|_| format!("Invalid major version: {}", parts[0]))?;
+        let minor = parts[1]
+            .parse()
+            .map_err(|_| format!("Invalid minor version: {}", parts[1]))?;
+        let patch = parts[2]
+            .parse()
+            .map_err(|_| format!("Invalid patch version: {}", parts[2]))?;
 
-        Ok(Self { major, minor, patch })
+        Ok(Self {
+            major,
+            minor,
+            patch,
+        })
     }
 
     pub fn is_compatible(&self, requirement: &VersionReq) -> bool {
@@ -43,9 +57,7 @@ impl Version {
                 // ~1.2.3 = >= 1.2.3, < 1.3.0
                 self >= v && self.major == v.major && self.minor == v.minor
             }
-            VersionReq::Range(min, max) => {
-                self >= min && self < max
-            }
+            VersionReq::Range(min, max) => self >= min && self < max,
         }
     }
 }
@@ -60,18 +72,18 @@ impl fmt::Display for Version {
 #[derive(Debug, Clone, PartialEq)]
 pub enum VersionReq {
     Exact(Version),
-    Caret(Version),  // ^1.0.0
-    Tilde(Version),  // ~1.0.0
+    Caret(Version), // ^1.0.0
+    Tilde(Version), // ~1.0.0
     Range(Version, Version),
 }
 
 impl VersionReq {
     pub fn parse(s: &str) -> Result<Self, String> {
-        if s.starts_with('^') {
-            let version = Version::parse(&s[1..])?;
+        if let Some(stripped) = s.strip_prefix('^') {
+            let version = Version::parse(stripped)?;
             Ok(VersionReq::Caret(version))
-        } else if s.starts_with('~') {
-            let version = Version::parse(&s[1..])?;
+        } else if let Some(stripped) = s.strip_prefix('~') {
+            let version = Version::parse(stripped)?;
             Ok(VersionReq::Tilde(version))
         } else {
             let version = Version::parse(s)?;
@@ -135,7 +147,7 @@ impl Manifest {
             }
 
             if line.starts_with('[') && line.ends_with(']') {
-                current_section = &line[1..line.len()-1];
+                current_section = &line[1..line.len() - 1];
                 continue;
             }
 
@@ -144,16 +156,14 @@ impl Manifest {
                 let value = value.trim().trim_matches('"');
 
                 match current_section {
-                    "package" => {
-                        match key {
-                            "name" => name = value.to_string(),
-                            "version" => version = Version::parse(value)?,
-                            "description" => description = value.to_string(),
-                            "license" => license = value.to_string(),
-                            "entry" => entry = value.to_string(),
-                            _ => {}
-                        }
-                    }
+                    "package" => match key {
+                        "name" => name = value.to_string(),
+                        "version" => version = Version::parse(value)?,
+                        "description" => description = value.to_string(),
+                        "license" => license = value.to_string(),
+                        "entry" => entry = value.to_string(),
+                        _ => {}
+                    },
                     "dependencies" => {
                         let dep = if value.starts_with('{') {
                             // Complex dependency: { version = "1.0.0", path = "../lib" }
@@ -519,9 +529,9 @@ impl Lockfile {
                     _ => {}
                 },
                 "dependencies" => {
-                    let entry = current_entry
-                        .as_mut()
-                        .ok_or_else(|| "matter.lock dependency field outside dependency block".to_string())?;
+                    let entry = current_entry.as_mut().ok_or_else(|| {
+                        "matter.lock dependency field outside dependency block".to_string()
+                    })?;
                     match key {
                         "name" => entry.name = value.to_string(),
                         "version" => entry.version = Version::parse(value)?,
@@ -609,9 +619,17 @@ impl PackageManager {
         Ok(Package::new(manifest, path.to_path_buf()))
     }
 
-    pub fn add_dependency(&self, package: &mut Package, name: &str, version: &str) -> Result<(), String> {
+    pub fn add_dependency(
+        &self,
+        package: &mut Package,
+        name: &str,
+        version: &str,
+    ) -> Result<(), String> {
         let version_req = VersionReq::parse(version)?;
-        package.manifest.dependencies.insert(name.to_string(), Dependency::Registry(version_req));
+        package
+            .manifest
+            .dependencies
+            .insert(name.to_string(), Dependency::Registry(version_req));
 
         let manifest_path = package.root.join("matter.toml");
         package.manifest.save(&manifest_path)?;
@@ -775,15 +793,17 @@ impl PackageManager {
         if !entry_path.exists() {
             return Err(format!(
                 "Dependency '{}' entry '{}' does not exist",
-                name,
-                dependency.manifest.entry
+                name, dependency.manifest.entry
             ));
         }
 
         Ok(entry_path)
     }
 
-    pub fn resolve_all_imports(&self, package: &Package) -> Result<HashMap<String, PathBuf>, String> {
+    pub fn resolve_all_imports(
+        &self,
+        package: &Package,
+    ) -> Result<HashMap<String, PathBuf>, String> {
         let mut imports = HashMap::new();
         let mut names = package
             .manifest
@@ -813,7 +833,10 @@ impl PackageManager {
                 .join("packages")
                 .join(&entry.name);
             if !installed_root.exists() {
-                return Err(format!("Dependency '{}' is missing from .matter/packages", entry.name));
+                return Err(format!(
+                    "Dependency '{}' is missing from .matter/packages",
+                    entry.name
+                ));
             }
 
             let dependency = Package::load(&installed_root)?;
@@ -933,7 +956,7 @@ impl Registry {
 
     pub fn register(&mut self, package: Package) {
         let name = package.manifest.name.clone();
-        self.packages.entry(name).or_insert_with(Vec::new).push(package);
+        self.packages.entry(name).or_default().push(package);
     }
 
     pub fn find_package(&self, name: &str, req: &VersionReq) -> Option<Package> {
@@ -1167,8 +1190,14 @@ math-utils = "^1.0.0"
 
         let utils_manifest = Manifest::new("utils".to_string(), Version::new(1, 2, 0));
         let utils_root = registry_root.join("utils");
-        utils_manifest.save(&utils_root.join("matter.toml")).unwrap();
-        fs::write(utils_root.join("src").join("lib.matter"), "fn util() { return 1 }\n").unwrap();
+        utils_manifest
+            .save(&utils_root.join("matter.toml"))
+            .unwrap();
+        fs::write(
+            utils_root.join("src").join("lib.matter"),
+            "fn util() { return 1 }\n",
+        )
+        .unwrap();
         let utils = Package::new(utils_manifest, utils_root.clone());
 
         let mut manager = PackageManager::new();
@@ -1216,8 +1245,14 @@ math-utils = "^1.0.0"
         let mut utils_manifest = Manifest::new("utils".to_string(), Version::new(1, 2, 0));
         utils_manifest.entry = "src/lib.matter".to_string();
         let utils_root = registry_root.join("utils");
-        utils_manifest.save(&utils_root.join("matter.toml")).unwrap();
-        fs::write(utils_root.join("src").join("lib.matter"), "fn util() { return 1 }\n").unwrap();
+        utils_manifest
+            .save(&utils_root.join("matter.toml"))
+            .unwrap();
+        fs::write(
+            utils_root.join("src").join("lib.matter"),
+            "fn util() { return 1 }\n",
+        )
+        .unwrap();
         let utils = Package::new(utils_manifest, utils_root.clone());
 
         let mut manager = PackageManager::new();
@@ -1333,8 +1368,14 @@ math-utils = "^1.0.0"
         let mut utils_manifest = Manifest::new("utils".to_string(), Version::new(1, 2, 0));
         utils_manifest.entry = "src/lib.matter".to_string();
         let utils_root = registry_root.join("utils");
-        utils_manifest.save(&utils_root.join("matter.toml")).unwrap();
-        fs::write(utils_root.join("src").join("lib.matter"), "fn util() { return 1 }\n").unwrap();
+        utils_manifest
+            .save(&utils_root.join("matter.toml"))
+            .unwrap();
+        fs::write(
+            utils_root.join("src").join("lib.matter"),
+            "fn util() { return 1 }\n",
+        )
+        .unwrap();
 
         let mut manager = PackageManager::new();
         manager.register_package(Package::new(utils_manifest, utils_root));
@@ -1369,7 +1410,9 @@ math-utils = "^1.0.0"
 
         let utils_manifest = Manifest::new("utils".to_string(), Version::new(1, 2, 0));
         let utils_root = registry_root.join("utils");
-        utils_manifest.save(&utils_root.join("matter.toml")).unwrap();
+        utils_manifest
+            .save(&utils_root.join("matter.toml"))
+            .unwrap();
         fs::write(utils_root.join("src").join("main.matter"), "print 1\n").unwrap();
 
         let mut manager = PackageManager::new();
@@ -1403,7 +1446,9 @@ math-utils = "^1.0.0"
 
         let utils_manifest = Manifest::new("utils".to_string(), Version::new(1, 2, 0));
         let utils_root = registry_root.join("utils");
-        utils_manifest.save(&utils_root.join("matter.toml")).unwrap();
+        utils_manifest
+            .save(&utils_root.join("matter.toml"))
+            .unwrap();
         fs::write(utils_root.join("src").join("main.matter"), "print 1\n").unwrap();
 
         let mut manager = PackageManager::new();
@@ -1412,7 +1457,11 @@ math-utils = "^1.0.0"
 
         let extra = root.join(".matter").join("packages").join("old");
         fs::create_dir_all(&extra).unwrap();
-        fs::write(extra.join("matter.toml"), "[package]\nname = \"old\"\nversion = \"0.1.0\"\n").unwrap();
+        fs::write(
+            extra.join("matter.toml"),
+            "[package]\nname = \"old\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
 
         let removed = manager.prune_installed_packages(&app).unwrap();
         assert_eq!(removed, vec![extra.clone()]);
@@ -1443,12 +1492,22 @@ math-utils = "^1.0.0"
         let mut utils_manifest = Manifest::new("utils".to_string(), Version::new(1, 2, 0));
         utils_manifest.entry = "src/lib.matter".to_string();
         let utils_root = registry_root.join("utils");
-        utils_manifest.save(&utils_root.join("matter.toml")).unwrap();
-        fs::write(utils_root.join("src").join("lib.matter"), "fn util() { return 1 }\n").unwrap();
+        utils_manifest
+            .save(&utils_root.join("matter.toml"))
+            .unwrap();
+        fs::write(
+            utils_root.join("src").join("lib.matter"),
+            "fn util() { return 1 }\n",
+        )
+        .unwrap();
 
         let extra = root.join(".matter").join("packages").join("old");
         fs::create_dir_all(&extra).unwrap();
-        fs::write(extra.join("matter.toml"), "[package]\nname = \"old\"\nversion = \"0.1.0\"\n").unwrap();
+        fs::write(
+            extra.join("matter.toml"),
+            "[package]\nname = \"old\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
 
         let mut manager = PackageManager::new();
         manager.register_package(Package::new(utils_manifest, utils_root));
@@ -1502,8 +1561,14 @@ math-utils = "^1.0.0"
         let mut utils_manifest = Manifest::new("utils".to_string(), Version::new(1, 2, 0));
         utils_manifest.entry = "src/lib.matter".to_string();
         let utils_root = registry_root.join("utils");
-        utils_manifest.save(&utils_root.join("matter.toml")).unwrap();
-        fs::write(utils_root.join("src").join("lib.matter"), "fn util() { return 1 }\n").unwrap();
+        utils_manifest
+            .save(&utils_root.join("matter.toml"))
+            .unwrap();
+        fs::write(
+            utils_root.join("src").join("lib.matter"),
+            "fn util() { return 1 }\n",
+        )
+        .unwrap();
 
         let mut manager = PackageManager::new();
         manager.register_package(Package::new(utils_manifest, utils_root));

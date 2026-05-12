@@ -124,8 +124,25 @@ backend.method(args)
 Exemplo:
 ```matter
 agent.say("hello")
-visual.run("app")
+visual.run("pizzaria")
+visual.surface("main", 1080, 1920)
+visual.region("checkout", 100, 200, 300, 80)
+visual.pulse("checkout")
+visual.set("checkout", "energy", 80)
 ```
+
+#### Visual Backend (PVM/PXL Integration)
+
+O backend visual integra o sistema PVM/PXL ao Matter Core:
+
+- `visual.run(app_name)` - Executa aplicação visual
+- `visual.load(path)` - Carrega bytecode visual (PVMBC)
+- `visual.surface(name, width, height)` - Cria superfície visual
+- `visual.region(name, x, y, w, h)` - Cria região visual
+- `visual.pulse(target)` - Anima região
+- `visual.set(target, key, value)` - Define propriedade
+
+Ver [VISUAL_BACKEND.md](VISUAL_BACKEND.md) para documentação completa.
 
 ### Comentários
 
@@ -179,11 +196,32 @@ pub trait Backend {
 
 ### Backends Padrão
 
-- `agent` - Interação com agentes
+- `agent` - Interação com agentes IA/LLM
   - `say(message)` - Envia mensagem
   
-- `visual` - Interface visual
+- `visual` - Interface visual (PVM/PXL)
   - `run(app_name)` - Executa aplicação visual
+  - `load(path)` - Carrega bytecode visual (PVMBC)
+  - `surface(name, width, height)` - Cria superfície
+  - `region(name, x, y, w, h)` - Cria região
+  - `pulse(target)` - Anima região
+  - `set(target, key, value)` - Define propriedade
+
+- `store` - Persistência chave-valor
+  - `set(key, value)` - Armazena valor
+  - `get(key)` - Recupera valor
+  - `has(key)` - Verifica existência
+  - `delete(key)` - Remove valor
+  - `clear()` - Limpa store
+  - `list()` - Lista chaves
+
+- `net` - Requisições HTTP
+  - `get(url)` - GET request
+  - `post(url, body)` - POST request
+  - `status(url)` - Retorna status code
+  - `ok(url)` - Verifica se status é 2xx
+
+Ver [VISUAL_BACKEND.md](VISUAL_BACKEND.md) para detalhes do backend visual.
 
 ## Execução
 

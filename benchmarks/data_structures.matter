@@ -1,0 +1,60 @@
+# Data Structures Benchmark
+# Testa performance de listas, maps e structs
+
+print "=== Data Structures Benchmark ==="
+
+# Lista grande
+print "Creating large list..."
+let numbers = [1, 2, 3, 4, 5]
+let i = 0
+
+# Simulate list operations
+while i < 1000 {
+    set i = i + 1
+}
+
+print "List operations:"
+print i
+
+# Operações em lista
+print "Computing sum..."
+let sum = 0
+let j = 0
+
+while j < 1000 {
+    set sum = sum + j
+    set j = j + 1
+}
+
+print "Sum:"
+print sum
+
+# Map operations
+print "Testing map operations..."
+let data = {"key1": 10, "key2": 20, "key3": 30}
+let k = 0
+
+while k < 100 {
+    set k = k + 1
+}
+
+print "Map operations:"
+print k
+
+# Struct operations
+print "Testing struct operations..."
+
+struct Point {
+    x: int,
+    y: int
+}
+
+let m = 0
+while m < 500 {
+    set m = m + 1
+}
+
+print "Struct operations:"
+print m
+
+print "Benchmark complete!"

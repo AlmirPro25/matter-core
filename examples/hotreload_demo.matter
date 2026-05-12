@@ -1,0 +1,63 @@
+//! Hot Code Reloading Demo
+//! 
+//! Este programa demonstra hot code reloading em ação.
+//! 
+//! Como usar:
+//! 1. Execute: matter run-hotreload examples/hotreload_demo.matter
+//! 2. Modifique este arquivo enquanto o programa roda
+//! 3. Salve o arquivo
+//! 4. Veja o código atualizar SEM reiniciar!
+
+// Estado persistente (preservado entre reloads)
+let counter = 0;
+let total_requests = 0;
+
+// Função que pode ser modificada em tempo real
+fn process_request() {
+    set counter = counter + 1;
+    set total_requests = total_requests + 1;
+    
+    // MUDE ESTA MENSAGEM E SALVE O ARQUIVO!
+    print "🚀 Request #" + counter;
+    print "📊 Total: " + total_requests;
+    
+    // Adicione mais lógica aqui e veja atualizar em tempo real!
+    if counter > 10 {
+        print "🎉 Mais de 10 requests!";
+    }
+}
+
+// Event handler para requisições HTTP (simulado)
+on http_request {
+    process_request();
+}
+
+// Event handler para reload de código
+on code_reload {
+    print "🔄 Código atualizado!";
+    print "📈 Counter preservado: " + counter;
+    print "📊 Total preservado: " + total_requests;
+    print "✅ Pronto para continuar!";
+    print "";
+}
+
+// Event handler de inicialização
+on boot {
+    print "🚀 Matter Hot Reload Demo";
+    print "📝 Modifique este arquivo e salve para ver a mágica!";
+    print "";
+}
+
+// Simula requisições HTTP
+let i = 0;
+while i < 100 {
+    // Dispara evento de requisição
+    on http_request;
+    
+    // Aguarda um pouco
+    time.sleep(1000);  // 1 segundo
+    
+    set i = i + 1;
+}
+
+print "✅ Demo completo!";

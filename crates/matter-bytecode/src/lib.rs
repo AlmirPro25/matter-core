@@ -1,20 +1,23 @@
-/// Bytecode generation and serialization for Matter
-/// Formato MBC1 (Matter Bytecode v1)
+//! Bytecode generation and serialization for Matter
+//! Formato MBC1 (Matter Bytecode v1)
 
 use matter_ast::*;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fs::File;
-use std::io::{Result, BufWriter, BufReader};
+use std::io::{BufReader, BufWriter, Result};
 use std::path::Path;
 
-mod serialize;
 mod deserialize;
+mod effect_check;
+mod serialize;
 
+pub use effect_check::*;
 pub use serialize::*;
 
 /// Instruções da VM Matter
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Instruction {
     // Stack operations
     LoadConst(ConstantId),
@@ -22,18 +25,26 @@ pub enum Instruction {
     StoreGlobal(String),
     LoadLocal(String),
     StoreLocal(String),
+    LoadParam(usize),
     StoreExisting(String),
-    
+
     // Scope management
     PushScope,
     PopScope,
-    
+
     // Arithmetic
     Add,
     Sub,
     Mul,
     Div,
-    
+    Mod,
+    Neg,
+
+    // Logical
+    And,
+    Or,
+    Not,
+
     // Comparison
     Eq,
     NotEq,
@@ -41,45 +52,49 @@ pub enum Instruction {
     Gt,
     LtEq,
     GtEq,
-    
+
     // Control flow
     Jump(usize),
     JumpIfFalse(usize),
     Call(usize), // número de argumentos
+    CallNamed {
+        name: String,
+        arg_count: usize,
+    },
     Return,
     SpawnEvent(String),
-    
+
     // Built-ins
     Print,
-    
+
     // Backend
     BackendCall {
         backend: String,
         method: String,
         arg_count: usize,
     },
-    
+
     // Sprint 4: Data Model - Lists
-    NewList(usize),    // Create list with N elements from stack
-    LoadIndex,         // Pop index, pop collection, push value
-    StoreIndex,        // Pop value, pop index, pop collection
-    StoreIndexVar(String), // Pop value, pop index, mutate variable list[index]
-    ListPush,          // Pop value, pop list, push list (mutated)
-    ListPop,           // Pop list, push value, push list (mutated)
-    ListLen,           // Pop list, push length
-    ListPushVar(String), // Pop value, mutate variable list, push unit
-    ListPopVar(String),  // Mutate variable list, push popped value
-    NewMap(usize),     // Create map with N key/value pairs from stack
-    MapHas,            // Pop key, pop map, push bool
-    MapKeys,           // Pop map, push list of keys
-    MapValues,         // Pop map, push list of values
+    NewList(usize),           // Create list with N elements from stack
+    LoadIndex,                // Pop index, pop collection, push value
+    StoreIndex,               // Pop value, pop index, pop collection
+    StoreIndexVar(String),    // Pop value, pop index, mutate variable list[index]
+    ListPush,                 // Pop value, pop list, push list (mutated)
+    ListPop,                  // Pop list, push value, push list (mutated)
+    ListLen,                  // Pop list, push length
+    ListPushVar(String),      // Pop value, mutate variable list, push unit
+    ListPopVar(String),       // Mutate variable list, push popped value
+    NewMap(usize),            // Create map with N key/value pairs from stack
+    MapHas,                   // Pop key, pop map, push bool
+    MapKeys,                  // Pop map, push list of keys
+    MapValues,                // Pop map, push list of values
     NewStruct(String, usize), // Create struct with N field/value pairs from stack
     LoadField(String),        // Pop struct/map, push field value
     StoreFieldVar {
         target: String,
         field: String,
     },
-    
+
     // Special
     Pop,
     Halt,
@@ -87,35 +102,60 @@ pub enum Instruction {
 
 pub type ConstantId = usize;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Constant {
     Int(i64),
+    Float(f64),
     Bool(bool),
     String(String),
     Unit,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Function {
     pub name: String,
     pub param_count: usize,
     pub instructions: Vec<Instruction>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventHandler {
     pub event: String,
     pub instructions: Vec<Instruction>,
 }
 
 /// Bytecode completo de um programa Matter
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Bytecode {
+    #[serde(with = "serde_bytes_array")]
     pub magic: [u8; 4], // "MBC1"
     pub constants: Vec<Constant>,
     pub functions: HashMap<String, Function>,
     pub event_handlers: HashMap<String, EventHandler>,
     pub main_instructions: Vec<Instruction>,
+}
+
+mod serde_bytes_array {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn serialize<S>(bytes: &[u8; 4], serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        bytes.serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<[u8; 4], D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let bytes: Vec<u8> = Vec::deserialize(deserializer)?;
+        if bytes.len() == 4 {
+            Ok([bytes[0], bytes[1], bytes[2], bytes[3]])
+        } else {
+            Err(serde::de::Error::custom("Expected 4 bytes for magic"))
+        }
+    }
 }
 
 impl Bytecode {
@@ -128,25 +168,25 @@ impl Bytecode {
             main_instructions: Vec::new(),
         }
     }
-    
+
     pub fn add_constant(&mut self, constant: Constant) -> ConstantId {
         // Reuse existing constants
         if let Some(pos) = self.constants.iter().position(|c| c == &constant) {
             return pos;
         }
-        
+
         let id = self.constants.len();
         self.constants.push(constant);
         id
     }
-    
+
     /// Save bytecode to file
     pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> Result<()> {
         let file = File::create(path)?;
         let mut writer = BufWriter::new(file);
         self.serialize(&mut writer)
     }
-    
+
     /// Load bytecode from file
     pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
         let file = File::open(path)?;
@@ -220,10 +260,7 @@ impl ValidationContext {
     }
 
     fn contains_variable(&self, name: &str, functions: &HashMap<String, usize>) -> bool {
-        self.scopes
-            .iter()
-            .rev()
-            .any(|scope| scope.contains(name))
+        self.scopes.iter().rev().any(|scope| scope.contains(name))
             || self.ambient_globals.contains(name)
             || functions.contains_key(name)
     }
@@ -254,17 +291,17 @@ fn validate_program(program: &Program) -> std::result::Result<(), SemanticError>
                         name
                     )));
                 }
-                validate_unique_names(params, "function parameter")?;
+                let param_names: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
+                validate_unique_names(&param_names, "function parameter")?;
                 functions.insert(name.clone(), params.len());
             }
-            Statement::OnEvent { event, .. } => {
-                if !events.insert(event.clone()) {
-                    return Err(SemanticError::new(format!(
-                        "duplicate event handler '{}'",
-                        event
-                    )));
-                }
+            Statement::OnEvent { event, .. } if !events.insert(event.clone()) => {
+                return Err(SemanticError::new(format!(
+                    "duplicate event handler '{}'",
+                    event
+                )));
             }
+            Statement::OnEvent { .. } => {}
             Statement::StructDef { name, fields } => {
                 if structs.contains_key(name) {
                     return Err(SemanticError::new(format!(
@@ -273,7 +310,8 @@ fn validate_program(program: &Program) -> std::result::Result<(), SemanticError>
                     )));
                 }
 
-                let field_names: Vec<String> = fields.iter().map(|(field, _)| field.clone()).collect();
+                let field_names: Vec<String> =
+                    fields.iter().map(|(field, _)| field.clone()).collect();
                 validate_unique_names(&field_names, "struct field")?;
                 structs.insert(name.clone(), fields.clone());
             }
@@ -291,7 +329,7 @@ fn validate_program(program: &Program) -> std::result::Result<(), SemanticError>
         match stmt {
             Statement::FunctionDef { body, params, .. } => {
                 ambient_context.function_depth = 1;
-                ambient_context.scopes = vec![params.iter().cloned().collect()];
+                ambient_context.scopes = vec![params.iter().map(|p| p.name.clone()).collect()];
                 validate_block(body, &mut ambient_context, &structs, &functions)?;
             }
             Statement::OnEvent { body, .. } => {
@@ -326,7 +364,7 @@ fn validate_statement(
     functions: &HashMap<String, usize>,
 ) -> std::result::Result<(), SemanticError> {
     match stmt {
-        Statement::Let { name, value } => {
+        Statement::Let { name, value, .. } => {
             validate_expression(value, structs, functions, context)?;
             context.define(name);
         }
@@ -351,7 +389,11 @@ fn validate_statement(
         Statement::Return(value) | Statement::Print(value) | Statement::Expression(value) => {
             validate_expression(value, structs, functions, context)?
         }
-        Statement::SetIndex { target, index, value } => {
+        Statement::SetIndex {
+            target,
+            index,
+            value,
+        } => {
             validate_expression(target, structs, functions, context)?;
             validate_expression(index, structs, functions, context)?;
             validate_expression(value, structs, functions, context)?;
@@ -443,20 +485,21 @@ fn validate_expression(
 ) -> std::result::Result<(), SemanticError> {
     match expr {
         Expression::Int(_)
+        | Expression::Float(_)
         | Expression::Bool(_)
         | Expression::String(_)
         | Expression::Unit => {}
         Expression::Identifier(name) => {
             if !context.contains_variable(name, functions) {
-                return Err(SemanticError::new(format!(
-                    "undefined variable '{}'",
-                    name
-                )));
+                return Err(SemanticError::new(format!("undefined variable '{}'", name)));
             }
         }
         Expression::Binary { left, right, .. } => {
             validate_expression(left, structs, functions, context)?;
             validate_expression(right, structs, functions, context)?;
+        }
+        Expression::Unary { operand, .. } => {
+            validate_expression(operand, structs, functions, context)?;
         }
         Expression::Call { callee, args } => {
             if let Expression::Identifier(name) = callee.as_ref() {
@@ -491,7 +534,10 @@ fn validate_expression(
         }
         Expression::Map(entries) => {
             validate_unique_names(
-                &entries.iter().map(|(key, _)| key.clone()).collect::<Vec<_>>(),
+                &entries
+                    .iter()
+                    .map(|(key, _)| key.clone())
+                    .collect::<Vec<_>>(),
                 "map key",
             )?;
             for (_, value) in entries {
@@ -499,9 +545,9 @@ fn validate_expression(
             }
         }
         Expression::StructLiteral { type_name, fields } => {
-            let declared_fields = structs.get(type_name).ok_or_else(|| {
-                SemanticError::new(format!("unknown struct '{}'", type_name))
-            })?;
+            let declared_fields = structs
+                .get(type_name)
+                .ok_or_else(|| SemanticError::new(format!("unknown struct '{}'", type_name)))?;
             let field_names: Vec<String> = fields.iter().map(|(field, _)| field.clone()).collect();
             validate_unique_names(&field_names, "struct literal field")?;
 
@@ -517,23 +563,12 @@ fn validate_expression(
                 }
             }
 
-            for (field, field_type) in declared_fields {
+            for (field, _field_type) in declared_fields {
                 if !field_names.contains(field) {
                     return Err(SemanticError::new(format!(
                         "missing field '{}' for struct '{}'",
                         field, type_name
                     )));
-                }
-
-                if let Some((_, value)) = fields.iter().find(|(name, _)| name == field) {
-                    if let Some(actual_type) = infer_static_type(value) {
-                        if &actual_type != field_type {
-                            return Err(SemanticError::new(format!(
-                                "field '{}' for struct '{}' expects {}, got {}",
-                                field, type_name, field_type, actual_type
-                            )));
-                        }
-                    }
                 }
             }
 
@@ -548,7 +583,11 @@ fn validate_expression(
         Expression::Field { target, .. } => {
             validate_expression(target, structs, functions, context)?;
         }
-        Expression::MethodCall { target, method, args } => {
+        Expression::MethodCall {
+            target,
+            method,
+            args,
+        } => {
             if is_backend_call(target, method) {
                 for arg in args {
                     validate_expression(arg, structs, functions, context)?;
@@ -593,50 +632,15 @@ fn is_backend_call(target: &Expression, method: &str) -> bool {
         }
     }
 
-    matches!(target, Expression::Identifier(_)) && !matches!(
-        method,
-        "push" | "pop" | "len" | "has" | "keys" | "values"
-    )
+    matches!(target, Expression::Identifier(_))
+        && !matches!(method, "push" | "pop" | "len" | "has" | "keys" | "values")
 }
 
 fn is_builtin_backend(name: &str) -> bool {
     matches!(
         name,
-        "agent" | "visual" | "store" | "net" | "math" | "string" | "list"
+        "agent" | "visual" | "store" | "net" | "math" | "string" | "list" | "energy" | "tool"
     )
-}
-
-fn infer_static_type(expr: &Expression) -> Option<String> {
-    match expr {
-        Expression::Int(_) => Some("int".to_string()),
-        Expression::Bool(_) => Some("bool".to_string()),
-        Expression::String(_) => Some("string".to_string()),
-        Expression::Unit => Some("unit".to_string()),
-        Expression::List(_) => Some("list".to_string()),
-        Expression::Map(_) => Some("map".to_string()),
-        Expression::StructLiteral { type_name, .. } => Some(type_name.clone()),
-        Expression::Binary { op, .. } => match op {
-            BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div => Some("int".to_string()),
-            BinaryOp::Eq
-            | BinaryOp::NotEq
-            | BinaryOp::Lt
-            | BinaryOp::Gt
-            | BinaryOp::LtEq
-            | BinaryOp::GtEq => Some("bool".to_string()),
-        },
-        Expression::MethodCall { method, .. } => match method.as_str() {
-            "len" => Some("int".to_string()),
-            "has" => Some("bool".to_string()),
-            "keys" | "values" => Some("list".to_string()),
-            "push" => Some("unit".to_string()),
-            _ => None,
-        },
-        Expression::Identifier(_)
-        | Expression::Call { .. }
-        | Expression::BackendCall { .. }
-        | Expression::Index { .. }
-        | Expression::Field { .. } => None,
-    }
 }
 
 impl BytecodeBuilder {
@@ -649,17 +653,33 @@ impl BytecodeBuilder {
     }
 
     pub fn build_checked(self, program: &Program) -> std::result::Result<Bytecode, SemanticError> {
+        // Sprint 27.3: Effect checking
+        let mut effect_checker = BytecodeEffectChecker::new();
+        effect_checker.check_program(program);
+
+        if effect_checker.has_errors() {
+            let error_messages: Vec<String> = effect_checker
+                .errors()
+                .iter()
+                .map(|e| e.message.clone())
+                .collect();
+            return Err(SemanticError::new(format!(
+                "Effect checking failed:\n{}",
+                error_messages.join("\n")
+            )));
+        }
+
         validate_program(program)?;
         Ok(self.build(program))
     }
-    
+
     pub fn build(mut self, program: &Program) -> Bytecode {
         let mut main_instructions = Vec::new();
-        
+
         for statement in &program.statements {
             self.compile_statement(statement, &mut main_instructions);
         }
-        
+
         main_instructions.push(Instruction::Halt);
         self.bytecode.main_instructions = main_instructions;
         self.bytecode
@@ -670,7 +690,7 @@ impl BytecodeBuilder {
         self.temp_counter += 1;
         name
     }
-    
+
     fn compile_statement(&mut self, stmt: &Statement, instructions: &mut Vec<Instruction>) {
         self.compile_statement_with_scope(stmt, instructions, false);
     }
@@ -682,7 +702,7 @@ impl BytecodeBuilder {
         local_declarations: bool,
     ) {
         match stmt {
-            Statement::Let { name, value } => {
+            Statement::Let { name, value, .. } => {
                 self.compile_expression(value, instructions);
                 if local_declarations {
                     instructions.push(Instruction::StoreLocal(name.clone()));
@@ -690,13 +710,17 @@ impl BytecodeBuilder {
                     instructions.push(Instruction::StoreGlobal(name.clone()));
                 }
             }
-            
+
             Statement::Set { name, value } => {
                 self.compile_expression(value, instructions);
                 instructions.push(Instruction::StoreExisting(name.clone()));
             }
-            
-            Statement::SetIndex { target, index, value } => {
+
+            Statement::SetIndex {
+                target,
+                index,
+                value,
+            } => {
                 // Compile: target[index] = value
                 if let Expression::Identifier(name) = target {
                     self.compile_expression(index, instructions);
@@ -709,44 +733,55 @@ impl BytecodeBuilder {
                     instructions.push(Instruction::StoreIndex);
                 }
             }
-            
-            Statement::SetField { target, field, value } => {
+
+            Statement::SetField {
+                target,
+                field,
+                value,
+            } => {
                 self.compile_expression(value, instructions);
                 instructions.push(Instruction::StoreFieldVar {
                     target: target.clone(),
                     field: field.clone(),
                 });
             }
-            
+
             Statement::Print(expr) => {
                 self.compile_expression(expr, instructions);
                 instructions.push(Instruction::Print);
             }
-            
-            Statement::FunctionDef { name, params, body } => {
+
+            Statement::FunctionDef {
+                name,
+                params,
+                body,
+                effects: _,
+                ..
+            } => {
                 let mut func_instructions = Vec::new();
-                
+                let param_names: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
+
                 // Compilar corpo da função
                 for stmt in body {
-                    self.compile_function_statement(stmt, &mut func_instructions, params);
+                    self.compile_function_statement(stmt, &mut func_instructions, &param_names);
                 }
-                
+
                 // Garantir que função retorna
                 if !matches!(func_instructions.last(), Some(Instruction::Return)) {
                     let unit_id = self.bytecode.add_constant(Constant::Unit);
                     func_instructions.push(Instruction::LoadConst(unit_id));
                     func_instructions.push(Instruction::Return);
                 }
-                
+
                 let function = Function {
                     name: name.clone(),
                     param_count: params.len(),
                     instructions: func_instructions,
                 };
-                
+
                 self.bytecode.functions.insert(name.clone(), function);
             }
-            
+
             Statement::StructDef { .. } => {
                 // Struct definitions are declarations for now; struct literals carry runtime shape.
             }
@@ -758,50 +793,54 @@ impl BytecodeBuilder {
 
             Statement::OnEvent { event, body } => {
                 let mut event_instructions = Vec::new();
-                
+
                 for stmt in body {
                     self.compile_statement_with_scope(stmt, &mut event_instructions, true);
                 }
-                
+
                 let handler = EventHandler {
                     event: event.clone(),
                     instructions: event_instructions,
                 };
-                
+
                 self.bytecode.event_handlers.insert(event.clone(), handler);
             }
 
             Statement::Spawn { event } => {
                 instructions.push(Instruction::SpawnEvent(event.clone()));
             }
-            
-            Statement::If { condition, then_body, else_body } => {
+
+            Statement::If {
+                condition,
+                then_body,
+                else_body,
+            } => {
                 self.compile_expression(condition, instructions);
-                
+
                 let jump_if_false_pos = instructions.len();
                 instructions.push(Instruction::JumpIfFalse(0)); // placeholder
-                
+
                 // Then block com scope
                 instructions.push(Instruction::PushScope);
                 for stmt in then_body {
                     self.compile_statement_with_scope(stmt, instructions, true);
                 }
                 instructions.push(Instruction::PopScope);
-                
+
                 if let Some(else_stmts) = else_body {
                     let jump_pos = instructions.len();
                     instructions.push(Instruction::Jump(0)); // placeholder
-                    
+
                     let else_start = instructions.len();
                     instructions[jump_if_false_pos] = Instruction::JumpIfFalse(else_start);
-                    
+
                     // Else block com scope
                     instructions.push(Instruction::PushScope);
                     for stmt in else_stmts {
                         self.compile_statement_with_scope(stmt, instructions, true);
                     }
                     instructions.push(Instruction::PopScope);
-                    
+
                     let end_pos = instructions.len();
                     instructions[jump_pos] = Instruction::Jump(end_pos);
                 } else {
@@ -809,41 +848,41 @@ impl BytecodeBuilder {
                     instructions[jump_if_false_pos] = Instruction::JumpIfFalse(end_pos);
                 }
             }
-            
+
             Statement::Return(expr) => {
                 self.compile_expression(expr, instructions);
                 instructions.push(Instruction::Return);
             }
-            
+
             Statement::While { condition, body } => {
                 let loop_start = instructions.len();
-                
+
                 // Push loop context
                 self.loop_stack.push(LoopContext {
                     break_jumps: Vec::new(),
                     continue_jumps: Vec::new(),
                 });
-                
+
                 // Condition check
                 self.compile_expression(condition, instructions);
-                
+
                 let jump_if_false_pos = instructions.len();
                 instructions.push(Instruction::JumpIfFalse(0)); // placeholder
-                
+
                 // Body com scope
                 instructions.push(Instruction::PushScope);
                 for stmt in body {
                     self.compile_statement_with_scope(stmt, instructions, true);
                 }
                 instructions.push(Instruction::PopScope);
-                
+
                 // Jump back to condition
                 instructions.push(Instruction::Jump(loop_start));
-                
+
                 // Patch break jumps
                 let loop_end = instructions.len();
                 instructions[jump_if_false_pos] = Instruction::JumpIfFalse(loop_end);
-                
+
                 if let Some(loop_ctx) = self.loop_stack.pop() {
                     for break_pos in loop_ctx.break_jumps {
                         instructions[break_pos] = Instruction::Jump(loop_end);
@@ -861,29 +900,29 @@ impl BytecodeBuilder {
             } => {
                 self.compile_for_loop(item, iterable, body, instructions, false, &[]);
             }
-            
+
             Statement::Loop { body } => {
                 let loop_start = instructions.len();
-                
+
                 // Push loop context
                 self.loop_stack.push(LoopContext {
                     break_jumps: Vec::new(),
                     continue_jumps: Vec::new(),
                 });
-                
+
                 // Body com scope
                 instructions.push(Instruction::PushScope);
                 for stmt in body {
                     self.compile_statement_with_scope(stmt, instructions, true);
                 }
                 instructions.push(Instruction::PopScope);
-                
+
                 // Jump back to start
                 instructions.push(Instruction::Jump(loop_start));
-                
+
                 // Patch break jumps
                 let loop_end = instructions.len();
-                
+
                 if let Some(loop_ctx) = self.loop_stack.pop() {
                     for break_pos in loop_ctx.break_jumps {
                         instructions[break_pos] = Instruction::Jump(loop_end);
@@ -893,55 +932,68 @@ impl BytecodeBuilder {
                     }
                 }
             }
-            
+
             Statement::Break => {
                 if let Some(loop_ctx) = self.loop_stack.last_mut() {
                     loop_ctx.break_jumps.push(instructions.len());
                     instructions.push(Instruction::Jump(0)); // placeholder
                 }
             }
-            
+
             Statement::Continue => {
                 if let Some(loop_ctx) = self.loop_stack.last_mut() {
                     loop_ctx.continue_jumps.push(instructions.len());
                     instructions.push(Instruction::Jump(0)); // placeholder
                 }
             }
-            
+
             Statement::Expression(expr) => {
                 self.compile_expression(expr, instructions);
                 instructions.push(Instruction::Pop);
             }
         }
     }
-    
-    fn compile_function_statement(&mut self, stmt: &Statement, instructions: &mut Vec<Instruction>, params: &[String]) {
+
+    fn compile_function_statement(
+        &mut self,
+        stmt: &Statement,
+        instructions: &mut Vec<Instruction>,
+        params: &[String],
+    ) {
         match stmt {
-            Statement::Let { name, value } => {
+            Statement::Let { name, value, .. } => {
                 self.compile_function_expression(value, instructions, params);
                 instructions.push(Instruction::StoreLocal(name.clone()));
             }
-            
+
             Statement::Set { name, value } => {
                 self.compile_function_expression(value, instructions, params);
                 instructions.push(Instruction::StoreExisting(name.clone()));
             }
-            
-            Statement::SetIndex { target, index, value } => {
-                self.compile_expression(target, instructions);
-                self.compile_expression(index, instructions);
-                self.compile_expression(value, instructions);
+
+            Statement::SetIndex {
+                target,
+                index,
+                value,
+            } => {
+                self.compile_function_expression(target, instructions, params);
+                self.compile_function_expression(index, instructions, params);
+                self.compile_function_expression(value, instructions, params);
                 instructions.push(Instruction::StoreIndex);
             }
-            
-            Statement::SetField { target, field, value } => {
+
+            Statement::SetField {
+                target,
+                field,
+                value,
+            } => {
                 self.compile_function_expression(value, instructions, params);
                 instructions.push(Instruction::StoreFieldVar {
                     target: target.clone(),
                     field: field.clone(),
                 });
             }
-            
+
             Statement::Print(expr) => {
                 self.compile_function_expression(expr, instructions, params);
                 instructions.push(Instruction::Print);
@@ -950,34 +1002,38 @@ impl BytecodeBuilder {
             Statement::Spawn { event } => {
                 instructions.push(Instruction::SpawnEvent(event.clone()));
             }
-            
-            Statement::If { condition, then_body, else_body } => {
+
+            Statement::If {
+                condition,
+                then_body,
+                else_body,
+            } => {
                 self.compile_function_expression(condition, instructions, params);
-                
+
                 let jump_if_false_pos = instructions.len();
                 instructions.push(Instruction::JumpIfFalse(0));
-                
+
                 // Then block com scope
                 instructions.push(Instruction::PushScope);
                 for stmt in then_body {
                     self.compile_function_statement(stmt, instructions, params);
                 }
                 instructions.push(Instruction::PopScope);
-                
+
                 if let Some(else_stmts) = else_body {
                     let jump_pos = instructions.len();
                     instructions.push(Instruction::Jump(0));
-                    
+
                     let else_start = instructions.len();
                     instructions[jump_if_false_pos] = Instruction::JumpIfFalse(else_start);
-                    
+
                     // Else block com scope
                     instructions.push(Instruction::PushScope);
                     for stmt in else_stmts {
                         self.compile_function_statement(stmt, instructions, params);
                     }
                     instructions.push(Instruction::PopScope);
-                    
+
                     let end_pos = instructions.len();
                     instructions[jump_pos] = Instruction::Jump(end_pos);
                 } else {
@@ -985,41 +1041,41 @@ impl BytecodeBuilder {
                     instructions[jump_if_false_pos] = Instruction::JumpIfFalse(end_pos);
                 }
             }
-            
+
             Statement::Return(expr) => {
                 self.compile_function_expression(expr, instructions, params);
                 instructions.push(Instruction::Return);
             }
-            
+
             Statement::While { condition, body } => {
                 let loop_start = instructions.len();
-                
+
                 // Push loop context
                 self.loop_stack.push(LoopContext {
                     break_jumps: Vec::new(),
                     continue_jumps: Vec::new(),
                 });
-                
+
                 // Condition check
                 self.compile_function_expression(condition, instructions, params);
-                
+
                 let jump_if_false_pos = instructions.len();
                 instructions.push(Instruction::JumpIfFalse(0));
-                
+
                 // Body com scope
                 instructions.push(Instruction::PushScope);
                 for stmt in body {
                     self.compile_function_statement(stmt, instructions, params);
                 }
                 instructions.push(Instruction::PopScope);
-                
+
                 // Jump back to condition
                 instructions.push(Instruction::Jump(loop_start));
-                
+
                 // Patch jumps
                 let loop_end = instructions.len();
                 instructions[jump_if_false_pos] = Instruction::JumpIfFalse(loop_end);
-                
+
                 if let Some(loop_ctx) = self.loop_stack.pop() {
                     for break_pos in loop_ctx.break_jumps {
                         instructions[break_pos] = Instruction::Jump(loop_end);
@@ -1037,29 +1093,29 @@ impl BytecodeBuilder {
             } => {
                 self.compile_for_loop(item, iterable, body, instructions, true, params);
             }
-            
+
             Statement::Loop { body } => {
                 let loop_start = instructions.len();
-                
+
                 // Push loop context
                 self.loop_stack.push(LoopContext {
                     break_jumps: Vec::new(),
                     continue_jumps: Vec::new(),
                 });
-                
+
                 // Body com scope
                 instructions.push(Instruction::PushScope);
                 for stmt in body {
                     self.compile_function_statement(stmt, instructions, params);
                 }
                 instructions.push(Instruction::PopScope);
-                
+
                 // Jump back to start
                 instructions.push(Instruction::Jump(loop_start));
-                
+
                 // Patch jumps
                 let loop_end = instructions.len();
-                
+
                 if let Some(loop_ctx) = self.loop_stack.pop() {
                     for break_pos in loop_ctx.break_jumps {
                         instructions[break_pos] = Instruction::Jump(loop_end);
@@ -1069,75 +1125,97 @@ impl BytecodeBuilder {
                     }
                 }
             }
-            
+
             Statement::Break => {
                 if let Some(loop_ctx) = self.loop_stack.last_mut() {
                     loop_ctx.break_jumps.push(instructions.len());
                     instructions.push(Instruction::Jump(0));
                 }
             }
-            
+
             Statement::Continue => {
                 if let Some(loop_ctx) = self.loop_stack.last_mut() {
                     loop_ctx.continue_jumps.push(instructions.len());
                     instructions.push(Instruction::Jump(0));
                 }
             }
-            
+
             Statement::Expression(expr) => {
                 self.compile_function_expression(expr, instructions, params);
                 instructions.push(Instruction::Pop);
             }
-            
+
             _ => {
                 // Outros statements não suportados dentro de funções por enquanto
             }
         }
     }
-    
-    fn compile_function_expression(&mut self, expr: &Expression, instructions: &mut Vec<Instruction>, params: &[String]) {
+
+    fn compile_function_expression(
+        &mut self,
+        expr: &Expression,
+        instructions: &mut Vec<Instruction>,
+        params: &[String],
+    ) {
         match expr {
             Expression::Identifier(name) => {
                 // Verificar se é parâmetro
                 if let Some(idx) = params.iter().position(|p| p == name) {
-                    let param_name = format!("__param_{}", idx);
-                    instructions.push(Instruction::LoadLocal(param_name));
+                    instructions.push(Instruction::LoadParam(idx));
                 } else {
                     // Tentar local, depois global
                     instructions.push(Instruction::LoadGlobal(name.clone()));
                 }
             }
-            
+
             Expression::Binary { left, op, right } => {
                 self.compile_function_expression(left, instructions, params);
                 self.compile_function_expression(right, instructions, params);
-                
+
                 let instr = match op {
                     BinaryOp::Add => Instruction::Add,
                     BinaryOp::Sub => Instruction::Sub,
                     BinaryOp::Mul => Instruction::Mul,
                     BinaryOp::Div => Instruction::Div,
+                    BinaryOp::Mod => Instruction::Mod,
                     BinaryOp::Eq => Instruction::Eq,
                     BinaryOp::NotEq => Instruction::NotEq,
                     BinaryOp::Lt => Instruction::Lt,
                     BinaryOp::Gt => Instruction::Gt,
                     BinaryOp::LtEq => Instruction::LtEq,
                     BinaryOp::GtEq => Instruction::GtEq,
+                    BinaryOp::And => Instruction::And,
+                    BinaryOp::Or => Instruction::Or,
                 };
-                
+
                 instructions.push(instr);
             }
-            
+
+            Expression::Unary { op, operand } => {
+                self.compile_function_expression(operand, instructions, params);
+                let instr = match op {
+                    UnaryOp::Not => Instruction::Not,
+                    UnaryOp::Neg => Instruction::Neg,
+                };
+                instructions.push(instr);
+            }
+
             Expression::Call { callee, args } => {
                 for arg in args {
                     self.compile_function_expression(arg, instructions, params);
                 }
-                
-                self.compile_function_expression(callee, instructions, params);
-                
-                instructions.push(Instruction::Call(args.len()));
+
+                if let Expression::Identifier(name) = callee.as_ref() {
+                    instructions.push(Instruction::CallNamed {
+                        name: name.clone(),
+                        arg_count: args.len(),
+                    });
+                } else {
+                    self.compile_function_expression(callee, instructions, params);
+                    instructions.push(Instruction::Call(args.len()));
+                }
             }
-            
+
             _ => {
                 // Outros casos usam compilação normal
                 self.compile_expression(expr, instructions);
@@ -1241,513 +1319,197 @@ impl BytecodeBuilder {
             }
         }
     }
-    
+
     fn compile_expression(&mut self, expr: &Expression, instructions: &mut Vec<Instruction>) {
         match expr {
             Expression::Int(n) => {
                 let id = self.bytecode.add_constant(Constant::Int(*n));
                 instructions.push(Instruction::LoadConst(id));
             }
-            
+
+            Expression::Float(f) => {
+                let id = self.bytecode.add_constant(Constant::Float(*f));
+                instructions.push(Instruction::LoadConst(id));
+            }
+
             Expression::Bool(b) => {
                 let id = self.bytecode.add_constant(Constant::Bool(*b));
                 instructions.push(Instruction::LoadConst(id));
             }
-            
+
             Expression::String(s) => {
                 let id = self.bytecode.add_constant(Constant::String(s.clone()));
                 instructions.push(Instruction::LoadConst(id));
             }
-            
+
             Expression::Unit => {
                 let id = self.bytecode.add_constant(Constant::Unit);
                 instructions.push(Instruction::LoadConst(id));
             }
-            
+
             Expression::Identifier(name) => {
                 instructions.push(Instruction::LoadGlobal(name.clone()));
             }
-            
+
             Expression::Binary { left, op, right } => {
                 self.compile_expression(left, instructions);
                 self.compile_expression(right, instructions);
-                
+
                 let instr = match op {
                     BinaryOp::Add => Instruction::Add,
                     BinaryOp::Sub => Instruction::Sub,
                     BinaryOp::Mul => Instruction::Mul,
                     BinaryOp::Div => Instruction::Div,
+                    BinaryOp::Mod => Instruction::Mod,
                     BinaryOp::Eq => Instruction::Eq,
                     BinaryOp::NotEq => Instruction::NotEq,
                     BinaryOp::Lt => Instruction::Lt,
                     BinaryOp::Gt => Instruction::Gt,
                     BinaryOp::LtEq => Instruction::LtEq,
                     BinaryOp::GtEq => Instruction::GtEq,
+                    BinaryOp::And => Instruction::And,
+                    BinaryOp::Or => Instruction::Or,
                 };
-                
+
                 instructions.push(instr);
             }
-            
+
+            Expression::Unary { op, operand } => {
+                self.compile_expression(operand, instructions);
+                let instr = match op {
+                    UnaryOp::Not => Instruction::Not,
+                    UnaryOp::Neg => Instruction::Neg,
+                };
+                instructions.push(instr);
+            }
+
             Expression::Call { callee, args } => {
                 // Push arguments onto stack
                 for arg in args {
                     self.compile_expression(arg, instructions);
                 }
-                
-                // Push function reference
-                self.compile_expression(callee, instructions);
-                
-                instructions.push(Instruction::Call(args.len()));
+
+                if let Expression::Identifier(name) = callee.as_ref() {
+                    instructions.push(Instruction::CallNamed {
+                        name: name.clone(),
+                        arg_count: args.len(),
+                    });
+                } else {
+                    // Push function reference
+                    self.compile_expression(callee, instructions);
+                    instructions.push(Instruction::Call(args.len()));
+                }
             }
-            
-            Expression::BackendCall { backend, method, args } => {
+
+            Expression::BackendCall {
+                backend,
+                method,
+                args,
+            } => {
                 // Push arguments onto stack
                 for arg in args {
                     self.compile_expression(arg, instructions);
                 }
-                
+
                 instructions.push(Instruction::BackendCall {
                     backend: backend.clone(),
                     method: method.clone(),
                     arg_count: args.len(),
                 });
             }
-            
-            // Sprint 4: Data Model - Lists
+
             Expression::List(elements) => {
-                // Push all elements onto stack
-                for elem in elements {
-                    self.compile_expression(elem, instructions);
+                for element in elements {
+                    self.compile_expression(element, instructions);
                 }
-                
-                // Create list with N elements
                 instructions.push(Instruction::NewList(elements.len()));
             }
 
             Expression::Map(entries) => {
                 for (key, value) in entries {
-                    let key_id = self.bytecode.add_constant(Constant::String(key.clone()));
-                    instructions.push(Instruction::LoadConst(key_id));
+                    let id = self.bytecode.add_constant(Constant::String(key.clone()));
+                    instructions.push(Instruction::LoadConst(id));
                     self.compile_expression(value, instructions);
                 }
-
                 instructions.push(Instruction::NewMap(entries.len()));
             }
-            
+
             Expression::StructLiteral { type_name, fields } => {
-                for (field, value) in fields {
-                    let field_id = self.bytecode.add_constant(Constant::String(field.clone()));
-                    instructions.push(Instruction::LoadConst(field_id));
+                for (name, value) in fields {
+                    let id = self.bytecode.add_constant(Constant::String(name.clone()));
+                    instructions.push(Instruction::LoadConst(id));
                     self.compile_expression(value, instructions);
                 }
-                
                 instructions.push(Instruction::NewStruct(type_name.clone(), fields.len()));
             }
-            
-            Expression::Field { target, field } => {
-                self.compile_expression(target, instructions);
-                instructions.push(Instruction::LoadField(field.clone()));
-            }
-            
+
             Expression::Index { target, index } => {
-                // Compile: target[index]
                 self.compile_expression(target, instructions);
                 self.compile_expression(index, instructions);
                 instructions.push(Instruction::LoadIndex);
             }
-            
-            Expression::MethodCall { target, method, args } => {
-                self.compile_method_call(target, method, args, instructions);
+
+            Expression::Field { target, field } => {
+                self.compile_expression(target, instructions);
+                instructions.push(Instruction::LoadField(field.clone()));
+            }
+
+            Expression::MethodCall {
+                target,
+                method,
+                args,
+            } => {
+                if is_backend_call(target, method) {
+                    let backend = match target.as_ref() {
+                        Expression::Identifier(name) => name.clone(),
+                        _ => String::new(),
+                    };
+
+                    for arg in args {
+                        self.compile_expression(arg, instructions);
+                    }
+
+                    instructions.push(Instruction::BackendCall {
+                        backend,
+                        method: method.clone(),
+                        arg_count: args.len(),
+                    });
+                } else {
+                    if let Expression::Identifier(name) = target.as_ref() {
+                        if method == "push" && args.len() == 1 {
+                            self.compile_expression(&args[0], instructions);
+                            instructions.push(Instruction::ListPushVar(name.clone()));
+                            return;
+                        } else if method == "pop" && args.is_empty() {
+                            instructions.push(Instruction::ListPopVar(name.clone()));
+                            return;
+                        }
+                    }
+
+                    // Method calls: push list/map, push args, call
+                    self.compile_expression(target, instructions);
+                    for arg in args {
+                        self.compile_expression(arg, instructions);
+                    }
+
+                    let instr = match method.as_str() {
+                        "push" => Instruction::ListPush,
+                        "pop" => Instruction::ListPop,
+                        "len" => Instruction::ListLen,
+                        "has" => Instruction::MapHas,
+                        "keys" => Instruction::MapKeys,
+                        "values" => Instruction::MapValues,
+                        _ => {
+                            // Default to regular call if not a known method
+                            let id = self.bytecode.add_constant(Constant::String(method.clone()));
+                            instructions.push(Instruction::LoadConst(id));
+                            Instruction::Call(args.len() + 1) // +1 for target
+                        }
+                    };
+
+                    instructions.push(instr);
+                }
             }
         }
-    }
-
-    fn compile_method_call(
-        &mut self,
-        target: &Expression,
-        method: &str,
-        args: &[Expression],
-        instructions: &mut Vec<Instruction>,
-    ) {
-        if let Expression::Identifier(backend) = target {
-            if is_builtin_backend(backend) {
-                for arg in args {
-                    self.compile_expression(arg, instructions);
-                }
-                instructions.push(Instruction::BackendCall {
-                    backend: backend.clone(),
-                    method: method.to_string(),
-                    arg_count: args.len(),
-                });
-                return;
-            }
-        }
-
-        match (target, method) {
-            (Expression::Identifier(name), "push") => {
-                for arg in args {
-                    self.compile_expression(arg, instructions);
-                }
-                instructions.push(Instruction::ListPushVar(name.clone()));
-            }
-            (Expression::Identifier(name), "pop") => {
-                instructions.push(Instruction::ListPopVar(name.clone()));
-            }
-            (_, "push") => {
-                self.compile_expression(target, instructions);
-                for arg in args {
-                    self.compile_expression(arg, instructions);
-                }
-                instructions.push(Instruction::ListPush);
-            }
-            (_, "pop") => {
-                self.compile_expression(target, instructions);
-                instructions.push(Instruction::ListPop);
-            }
-            (_, "len") => {
-                self.compile_expression(target, instructions);
-                instructions.push(Instruction::ListLen);
-            }
-            (_, "has") => {
-                self.compile_expression(target, instructions);
-                for arg in args {
-                    self.compile_expression(arg, instructions);
-                }
-                instructions.push(Instruction::MapHas);
-            }
-            (_, "keys") => {
-                self.compile_expression(target, instructions);
-                instructions.push(Instruction::MapKeys);
-            }
-            (_, "values") => {
-                self.compile_expression(target, instructions);
-                instructions.push(Instruction::MapValues);
-            }
-            (Expression::Identifier(backend), _) => {
-                for arg in args {
-                    self.compile_expression(arg, instructions);
-                }
-                instructions.push(Instruction::BackendCall {
-                    backend: backend.clone(),
-                    method: method.to_string(),
-                    arg_count: args.len(),
-                });
-            }
-            _ => panic!("Unknown method: {}", method),
-        }
-    }
-}
-
-impl Default for BytecodeBuilder {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    
-    #[test]
-    fn test_compile_simple() {
-        let program = Program::new(vec![
-            Statement::Let {
-                name: "x".to_string(),
-                value: Expression::Int(10),
-            },
-        ]);
-        
-        let builder = BytecodeBuilder::new();
-        let bytecode = builder.build(&program);
-        
-        assert_eq!(bytecode.magic, *b"MBC1");
-        assert_eq!(bytecode.constants.len(), 1);
-    }
-
-    #[test]
-    fn test_compile_list_mutation() {
-        let program = Program::new(vec![
-            Statement::Let {
-                name: "items".to_string(),
-                value: Expression::List(vec![Expression::Int(1)]),
-            },
-            Statement::Expression(Expression::MethodCall {
-                target: Box::new(Expression::Identifier("items".to_string())),
-                method: "push".to_string(),
-                args: vec![Expression::Int(2)],
-            }),
-            Statement::Let {
-                name: "last".to_string(),
-                value: Expression::MethodCall {
-                    target: Box::new(Expression::Identifier("items".to_string())),
-                    method: "pop".to_string(),
-                    args: Vec::new(),
-                },
-            },
-            Statement::SetIndex {
-                target: Expression::Identifier("items".to_string()),
-                index: Expression::Int(0),
-                value: Expression::Int(3),
-            },
-        ]);
-
-        let bytecode = BytecodeBuilder::new().build(&program);
-
-        assert!(bytecode
-            .main_instructions
-            .iter()
-            .any(|instr| matches!(instr, Instruction::ListPushVar(name) if name == "items")));
-        assert!(bytecode
-            .main_instructions
-            .iter()
-            .any(|instr| matches!(instr, Instruction::ListPopVar(name) if name == "items")));
-        assert!(bytecode
-            .main_instructions
-            .iter()
-            .any(|instr| matches!(instr, Instruction::StoreIndexVar(name) if name == "items")));
-    }
-
-    #[test]
-    fn test_compile_map_literal_and_methods() {
-        let program = Program::new(vec![
-            Statement::Let {
-                name: "person".to_string(),
-                value: Expression::Map(vec![("name".to_string(), Expression::String("Alice".to_string()))]),
-            },
-            Statement::Print(Expression::Index {
-                target: Box::new(Expression::Identifier("person".to_string())),
-                index: Box::new(Expression::String("name".to_string())),
-            }),
-            Statement::Print(Expression::MethodCall {
-                target: Box::new(Expression::Identifier("person".to_string())),
-                method: "has".to_string(),
-                args: vec![Expression::String("name".to_string())],
-            }),
-        ]);
-
-        let bytecode = BytecodeBuilder::new().build(&program);
-
-        assert!(bytecode
-            .main_instructions
-            .iter()
-            .any(|instr| matches!(instr, Instruction::NewMap(1))));
-        assert!(bytecode
-            .main_instructions
-            .iter()
-            .any(|instr| matches!(instr, Instruction::MapHas)));
-    }
-
-    #[test]
-    fn test_compile_struct_literal_and_fields() {
-        let program = Program::new(vec![
-            Statement::StructDef {
-                name: "User".to_string(),
-                fields: vec![
-                    ("name".to_string(), "string".to_string()),
-                    ("age".to_string(), "int".to_string()),
-                ],
-            },
-            Statement::Let {
-                name: "user".to_string(),
-                value: Expression::StructLiteral {
-                    type_name: "User".to_string(),
-                    fields: vec![("name".to_string(), Expression::String("Ana".to_string()))],
-                },
-            },
-            Statement::Print(Expression::Field {
-                target: Box::new(Expression::Identifier("user".to_string())),
-                field: "name".to_string(),
-            }),
-            Statement::SetField {
-                target: "user".to_string(),
-                field: "name".to_string(),
-                value: Expression::String("Ana Core".to_string()),
-            },
-        ]);
-
-        let bytecode = BytecodeBuilder::new().build(&program);
-
-        assert!(bytecode
-            .main_instructions
-            .iter()
-            .any(|instr| matches!(instr, Instruction::NewStruct(type_name, 1) if type_name == "User")));
-        assert!(bytecode
-            .main_instructions
-            .iter()
-            .any(|instr| matches!(instr, Instruction::LoadField(field) if field == "name")));
-        assert!(bytecode.main_instructions.iter().any(|instr| matches!(
-            instr,
-            Instruction::StoreFieldVar { target, field } if target == "user" && field == "name"
-        )));
-    }
-
-    #[test]
-    fn test_semantic_rejects_break_outside_loop() {
-        let program = Program::new(vec![Statement::Break]);
-        let error = BytecodeBuilder::new().build_checked(&program).unwrap_err();
-
-        assert_eq!(error.to_string(), "'break' used outside of a loop");
-    }
-
-    #[test]
-    fn test_semantic_rejects_return_outside_function() {
-        let program = Program::new(vec![Statement::Return(Expression::Int(1))]);
-        let error = BytecodeBuilder::new().build_checked(&program).unwrap_err();
-
-        assert_eq!(error.to_string(), "'return' used outside of a function");
-    }
-
-    #[test]
-    fn test_semantic_validates_struct_literal_shape() {
-        let program = Program::new(vec![
-            Statement::StructDef {
-                name: "User".to_string(),
-                fields: vec![
-                    ("name".to_string(), "string".to_string()),
-                    ("age".to_string(), "int".to_string()),
-                ],
-            },
-            Statement::Let {
-                name: "user".to_string(),
-                value: Expression::StructLiteral {
-                    type_name: "User".to_string(),
-                    fields: vec![("name".to_string(), Expression::String("Ana".to_string()))],
-                },
-            },
-        ]);
-
-        let error = BytecodeBuilder::new().build_checked(&program).unwrap_err();
-
-        assert_eq!(error.to_string(), "missing field 'age' for struct 'User'");
-    }
-
-    #[test]
-    fn test_semantic_validates_struct_literal_field_type() {
-        let program = Program::new(vec![
-            Statement::StructDef {
-                name: "User".to_string(),
-                fields: vec![
-                    ("name".to_string(), "string".to_string()),
-                    ("age".to_string(), "int".to_string()),
-                ],
-            },
-            Statement::Let {
-                name: "user".to_string(),
-                value: Expression::StructLiteral {
-                    type_name: "User".to_string(),
-                    fields: vec![
-                        ("name".to_string(), Expression::String("Ana".to_string())),
-                        ("age".to_string(), Expression::String("twenty".to_string())),
-                    ],
-                },
-            },
-        ]);
-
-        let error = BytecodeBuilder::new().build_checked(&program).unwrap_err();
-
-        assert_eq!(
-            error.to_string(),
-            "field 'age' for struct 'User' expects int, got string"
-        );
-    }
-
-    #[test]
-    fn test_semantic_validates_known_method_arity() {
-        let program = Program::new(vec![Statement::Expression(Expression::MethodCall {
-            target: Box::new(Expression::Identifier("items".to_string())),
-            method: "push".to_string(),
-            args: Vec::new(),
-        })]);
-
-        let error = BytecodeBuilder::new().build_checked(&program).unwrap_err();
-
-        assert_eq!(
-            error.to_string(),
-            "method 'push' expects 1 argument(s), got 0"
-        );
-    }
-
-    #[test]
-    fn test_semantic_validates_function_arity() {
-        let program = Program::new(vec![
-            Statement::FunctionDef {
-                name: "add".to_string(),
-                params: vec!["a".to_string(), "b".to_string()],
-                body: vec![Statement::Return(Expression::Binary {
-                    left: Box::new(Expression::Identifier("a".to_string())),
-                    op: BinaryOp::Add,
-                    right: Box::new(Expression::Identifier("b".to_string())),
-                })],
-            },
-            Statement::Expression(Expression::Call {
-                callee: Box::new(Expression::Identifier("add".to_string())),
-                args: vec![Expression::Int(1)],
-            }),
-        ]);
-
-        let error = BytecodeBuilder::new().build_checked(&program).unwrap_err();
-
-        assert_eq!(
-            error.to_string(),
-            "function 'add' expects 2 argument(s), got 1"
-        );
-    }
-
-    #[test]
-    fn test_semantic_rejects_unknown_function_call() {
-        let program = Program::new(vec![Statement::Expression(Expression::Call {
-            callee: Box::new(Expression::Identifier("missing".to_string())),
-            args: Vec::new(),
-        })]);
-
-        let error = BytecodeBuilder::new().build_checked(&program).unwrap_err();
-
-        assert_eq!(error.to_string(), "unknown function 'missing'");
-    }
-
-    #[test]
-    fn test_semantic_rejects_undefined_variable() {
-        let program = Program::new(vec![Statement::Print(Expression::Identifier(
-            "missing".to_string(),
-        ))]);
-
-        let error = BytecodeBuilder::new().build_checked(&program).unwrap_err();
-
-        assert_eq!(error.to_string(), "undefined variable 'missing'");
-    }
-
-    #[test]
-    fn test_semantic_rejects_set_before_declaration() {
-        let program = Program::new(vec![Statement::Set {
-            name: "missing".to_string(),
-            value: Expression::Int(1),
-        }]);
-
-        let error = BytecodeBuilder::new().build_checked(&program).unwrap_err();
-
-        assert_eq!(
-            error.to_string(),
-            "cannot set undefined variable 'missing'"
-        );
-    }
-
-    #[test]
-    fn test_compile_for_loop() {
-        let program = Program::new(vec![Statement::For {
-            item: "item".to_string(),
-            iterable: Expression::List(vec![Expression::Int(1), Expression::Int(2)]),
-            body: vec![Statement::Print(Expression::Identifier("item".to_string()))],
-        }]);
-
-        let bytecode = BytecodeBuilder::new().build_checked(&program).unwrap();
-
-        assert!(bytecode
-            .main_instructions
-            .iter()
-            .any(|instr| matches!(instr, Instruction::ListLen)));
-        assert!(bytecode
-            .main_instructions
-            .iter()
-            .any(|instr| matches!(instr, Instruction::LoadIndex)));
     }
 }

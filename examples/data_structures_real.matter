@@ -1,0 +1,25 @@
+// Estruturas de Dados Reais
+fn main() {
+    print("=== Testando Listas ===")
+    let numbers = [1, 2, 3, 4, 5]
+    print(numbers)
+    
+    numbers.push(6)
+    print(numbers)
+    
+    let len = numbers.len()
+    print("Tamanho:")
+    print(len)
+    
+    print("=== Testando Maps ===")
+    let person = {
+        "name": "Matter",
+        "age": 1,
+        "active": true
+    }
+    print(person)
+    
+    let keys = person.keys()
+    print("Keys:")
+    print(keys)
+}

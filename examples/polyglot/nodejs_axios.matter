@@ -1,0 +1,70 @@
+# Exemplo: HTTP Client com Axios (Node.js) em Matter
+
+import "axios" from nodejs
+
+fn fetch_data() {
+    print "=== Axios HTTP Client Demo ==="
+    
+    # GET request
+    print "\n1. Fetching users..."
+    let response = axios.get("https://jsonplaceholder.typicode.com/users")
+    
+    if response.status == 200 {
+        let users = response.data
+        print "Found " + users.length + " users"
+        
+        for user in users.slice(0, 3) {
+            print "  - " + user.name + " (" + user.email + ")"
+        }
+    }
+}
+
+fn post_data() {
+    print "\n2. Creating new post..."
+    
+    let new_post = {
+        "title": "Matter Polyglot is Amazing!",
+        "body": "I can use Node.js libraries directly in Matter",
+        "userId": 1
+    }
+    
+    let response = axios.post(
+        "https://jsonplaceholder.typicode.com/posts",
+        new_post
+    )
+    
+    if response.status == 201 {
+        print "Post created successfully!"
+        print "Post ID: " + response.data.id
+        print "Title: " + response.data.title
+    }
+}
+
+fn fetch_with_params() {
+    print "\n3. Fetching with query parameters..."
+    
+    let response = axios.get("https://jsonplaceholder.typicode.com/posts", {
+        "params": {
+            "userId": 1,
+            "_limit": 5
+        }
+    })
+    
+    if response.status == 200 {
+        let posts = response.data
+        print "Found " + posts.length + " posts from user 1"
+        
+        for post in posts {
+            print "  - " + post.title
+        }
+    }
+}
+
+fn main() {
+    fetch_data()
+    post_data()
+    fetch_with_params()
+    
+    print "\n✅ Axios integration working perfectly!"
+    print "Matter can now make HTTP requests with Node.js! 🚀"
+}

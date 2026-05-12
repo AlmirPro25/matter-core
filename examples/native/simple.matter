@@ -1,0 +1,13 @@
+# Simple Native Compilation Example
+# This will be compiled to native code using LLVM
+
+let x = 10
+let y = 20
+let sum = x + y
+
+print "Sum:"
+print sum
+
+# Expected output:
+# Sum:
+# 30

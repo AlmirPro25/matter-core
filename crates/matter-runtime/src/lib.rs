@@ -1,52 +1,78 @@
-/// Matter Runtime
-/// Sistema de eventos, estado e scheduler
+//! Matter Runtime
+//! Sistema de eventos, estado e scheduler
 
-use matter_backend::{AgentBackend, Backend, GraphBackend, NetBackend, StoreBackend, Value};
-use matter_visual::TraceVisualBackend;
+use matter_backend::{
+    AgentBackend, Backend, GraphBackend, NetBackend, StoreBackend, ToolBackend, Value,
+};
 use matter_bytecode::Bytecode;
-use matter_stdlib::{ListBackend, MathBackend, StringBackend};
+use matter_energy::{EnergyBackend, EnergyRuntime};
+use matter_stdlib::{
+    JsonBackend, ListBackend, MathBackend, RandomBackend, StringBackend, TimeBackend,
+};
+use matter_visual::TraceVisualBackend;
 use matter_vm::Vm;
+use std::collections::HashMap;
 
 pub struct Runtime {
     vm: Vm,
+    energy_runtime: Option<EnergyRuntime>,
 }
 
 impl Runtime {
     pub fn new(bytecode: Bytecode) -> Self {
         let mut vm = Vm::new(bytecode);
-        
+
         // Register default backends
         vm.register_backend("agent".to_string(), Box::new(AgentBackend::new()));
         vm.register_backend("visual".to_string(), Box::new(TraceVisualBackend::new()));
         vm.register_backend("graph".to_string(), Box::new(GraphBackend::new()));
         vm.register_backend("store".to_string(), Box::new(StoreBackend::new()));
         vm.register_backend("net".to_string(), Box::new(NetBackend::new()));
-        
+        vm.register_backend("energy".to_string(), Box::new(EnergyBackend::new()));
+        vm.register_backend("tool".to_string(), Box::new(ToolBackend::new()));
+
         // Register standard library backends
         vm.register_backend("math".to_string(), Box::new(MathBackend::new()));
         vm.register_backend("string".to_string(), Box::new(StringBackend::new()));
         vm.register_backend("list".to_string(), Box::new(ListBackend::new()));
-        
-        Self { vm }
+        vm.register_backend("time".to_string(), Box::new(TimeBackend::new()));
+        vm.register_backend("random".to_string(), Box::new(RandomBackend::new()));
+        vm.register_backend("json".to_string(), Box::new(JsonBackend::new()));
+
+        Self {
+            vm,
+            energy_runtime: Some(EnergyRuntime::new()),
+        }
     }
 
     pub fn new_silent(bytecode: Bytecode) -> Self {
         let mut vm = Vm::new(bytecode);
 
         vm.register_backend("agent".to_string(), Box::new(SilentAgentBackend));
-        vm.register_backend("visual".to_string(), Box::new(TraceVisualBackend::new_silent()));
+        vm.register_backend(
+            "visual".to_string(),
+            Box::new(TraceVisualBackend::new_silent()),
+        );
         vm.register_backend("graph".to_string(), Box::new(GraphBackend::new()));
         vm.register_backend("store".to_string(), Box::new(StoreBackend::new()));
         vm.register_backend("net".to_string(), Box::new(NetBackend::new()));
-        
+        vm.register_backend("energy".to_string(), Box::new(EnergyBackend::new()));
+        vm.register_backend("tool".to_string(), Box::new(ToolBackend::new()));
+
         // Register standard library backends
         vm.register_backend("math".to_string(), Box::new(MathBackend::new()));
         vm.register_backend("string".to_string(), Box::new(StringBackend::new()));
         vm.register_backend("list".to_string(), Box::new(ListBackend::new()));
+        vm.register_backend("time".to_string(), Box::new(TimeBackend::new()));
+        vm.register_backend("random".to_string(), Box::new(RandomBackend::new()));
+        vm.register_backend("json".to_string(), Box::new(JsonBackend::new()));
 
-        Self { vm }
+        Self {
+            vm,
+            energy_runtime: Some(EnergyRuntime::new()),
+        }
     }
-    
+
     pub fn register_backend(&mut self, name: String, backend: Box<dyn Backend>) {
         self.vm.register_backend(name, backend);
     }
@@ -58,13 +84,251 @@ impl Runtime {
     pub fn take_output(&mut self) -> Vec<String> {
         self.vm.take_output()
     }
-    
-    pub fn run(&mut self) -> Result<(), String> {
-        self.vm.run().map_err(|e| e.to_string())
+
+    /// Extrai o estado global atual (para REPL)
+    pub fn get_globals(&self) -> std::collections::HashMap<String, Value> {
+        self.vm.get_globals()
     }
-    
+
+    /// Injeta estado global (para REPL)
+    pub fn set_globals(&mut self, globals: std::collections::HashMap<String, Value>) {
+        self.vm.set_globals(globals);
+    }
+
+    /// Mescla funções de outro bytecode (para REPL)
+    pub fn merge_functions(&mut self, other_bytecode: &Bytecode) {
+        self.vm.merge_functions(other_bytecode);
+    }
+
+    pub fn run(&mut self) -> Result<(), String> {
+        self.vm.run().map_err(|e| e.to_string())?;
+        self.poll_energy_events()
+    }
+
     pub fn emit_event(&mut self, event: &str) -> Result<(), String> {
         self.vm.emit_event(event).map_err(|e| e.to_string())
+    }
+
+    pub fn set_energy_runtime(&mut self, energy_runtime: Option<EnergyRuntime>) {
+        self.energy_runtime = energy_runtime;
+    }
+
+    fn poll_energy_events(&mut self) -> Result<(), String> {
+        let Some(energy_runtime) = &self.energy_runtime else {
+            return Ok(());
+        };
+        let snapshot = energy_runtime.snapshot();
+
+        if snapshot.cpu_usage > 80.0 {
+            self.emit_event("energy.high")?;
+        }
+        if snapshot.cpu_usage < 20.0 {
+            self.emit_event("energy.low")?;
+        }
+        if snapshot.cpu_usage > 90.0 || snapshot.memory_usage > 90.0 {
+            self.emit_event("energy.spike")?;
+            self.emit_event("performance.drop")?;
+        }
+        if snapshot.battery_level < 20.0 {
+            self.emit_event("battery.low")?;
+        }
+        if snapshot.temperature > 75.0 {
+            self.emit_event("heat.high")?;
+        }
+        Ok(())
+    }
+
+    pub fn vm(&self) -> &Vm {
+        &self.vm
+    }
+
+    pub fn bridge_visual_events(&mut self, event_path: &str) -> Result<Value, String> {
+        let dispatch = self
+            .vm
+            .call_backend(
+                "visual",
+                "dispatch_events",
+                vec![Value::new_string(event_path.to_string())],
+            )
+            .map_err(|e| e.to_string())?;
+        let loaded = self
+            .vm
+            .call_backend(
+                "visual",
+                "load_events",
+                vec![Value::new_string(event_path.to_string())],
+            )
+            .map_err(|e| e.to_string())?;
+
+        let emitted = self.emit_named_visual_events(&loaded)?;
+
+        Ok(Value::new_map(HashMap::from([
+            ("dispatch".to_string(), dispatch),
+            ("emitted".to_string(), Value::new_list(emitted)),
+        ])))
+    }
+
+    pub fn visual_app_step(&mut self, event_path: &str, delta_ms: i64) -> Result<Value, String> {
+        let app = self
+            .vm
+            .call_backend(
+                "visual",
+                "app_step",
+                vec![
+                    Value::new_string(event_path.to_string()),
+                    Value::Int(delta_ms),
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        let loaded = self
+            .vm
+            .call_backend(
+                "visual",
+                "load_events",
+                vec![Value::new_string(event_path.to_string())],
+            )
+            .map_err(|e| e.to_string())?;
+        let emitted = self.emit_named_visual_events(&loaded)?;
+
+        Ok(Value::new_map(HashMap::from([
+            ("app".to_string(), app),
+            ("emitted".to_string(), Value::new_list(emitted)),
+        ])))
+    }
+
+    pub fn visual_app_run(
+        &mut self,
+        event_path: &str,
+        frames: i64,
+        delta_ms: i64,
+    ) -> Result<Value, String> {
+        let app = self
+            .vm
+            .call_backend(
+                "visual",
+                "app_run",
+                vec![
+                    Value::new_string(event_path.to_string()),
+                    Value::Int(frames),
+                    Value::Int(delta_ms),
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        let loaded = self
+            .vm
+            .call_backend(
+                "visual",
+                "load_events",
+                vec![Value::new_string(event_path.to_string())],
+            )
+            .map_err(|e| e.to_string())?;
+        let emitted = self.emit_named_visual_events(&loaded)?;
+
+        Ok(Value::new_map(HashMap::from([
+            ("app".to_string(), app),
+            ("emitted".to_string(), Value::new_list(emitted)),
+        ])))
+    }
+
+    pub fn visual_export_web_runtime(
+        &mut self,
+        dir: &str,
+        app_name: &str,
+    ) -> Result<Value, String> {
+        self.vm
+            .call_backend(
+                "visual",
+                "web",
+                vec![
+                    Value::new_string(dir.to_string()),
+                    Value::new_string(app_name.to_string()),
+                ],
+            )
+            .map_err(|e| e.to_string())
+    }
+
+    pub fn visual_verify_web_runtime(&mut self, dir: &str) -> Result<Value, String> {
+        self.vm
+            .call_backend(
+                "visual",
+                "verify_web",
+                vec![Value::new_string(dir.to_string())],
+            )
+            .map_err(|e| e.to_string())
+    }
+
+    pub fn tool_invoke_frame(&mut self, frame_payload: Value) -> Result<Value, String> {
+        let result = self
+            .vm
+            .call_backend("tool", "invoke_frame", vec![frame_payload])
+            .map_err(|e| e.to_string())?;
+
+        if let Value::Map(map) = &result {
+            if let Some(Value::String(kind)) = map.get("response_kind") {
+                let response_kind = kind.to_ascii_lowercase();
+                if response_kind == "needscontext" || response_kind == "needs_context" {
+                    self.emit_event("tool.needs_context")?;
+                } else if response_kind == "blocked" {
+                    self.emit_event("tool.blocked")?;
+                } else if response_kind == "accepted" {
+                    self.emit_event("tool.accepted")?;
+                } else if response_kind == "completed" {
+                    self.emit_event("tool.completed")?;
+                }
+            }
+        }
+        Ok(result)
+    }
+
+    pub fn tool_validate_wire(&mut self, wire: &str) -> Result<Value, String> {
+        self.vm
+            .call_backend(
+                "tool",
+                "validate_wire",
+                vec![Value::new_string(wire.to_string())],
+            )
+            .map_err(|e| e.to_string())
+    }
+
+    pub fn tool_merge_wire(
+        &mut self,
+        left_wire: &str,
+        right_wire: &str,
+        strategy: Option<&str>,
+    ) -> Result<Value, String> {
+        let mut args = vec![
+            Value::new_string(left_wire.to_string()),
+            Value::new_string(right_wire.to_string()),
+        ];
+        if let Some(strategy) = strategy {
+            args.push(Value::new_string(strategy.to_string()));
+        }
+        self.vm
+            .call_backend("tool", "merge_wire", args)
+            .map_err(|e| e.to_string())
+    }
+
+    pub fn energy_mode_backend(&mut self) -> Result<String, String> {
+        self.vm
+            .call_backend("energy", "mode", vec![])
+            .map_err(|e| e.to_string())?
+            .as_string()
+    }
+
+    fn emit_named_visual_events(&mut self, loaded: &Value) -> Result<Vec<Value>, String> {
+        let mut emitted = Vec::new();
+        if let Value::List(events) = loaded {
+            for event in events.iter() {
+                if let Value::Map(fields) = event {
+                    if let Some(Value::String(name)) = fields.get("event") {
+                        let event_name = (**name).clone();
+                        self.vm.emit_event(&event_name).map_err(|e| e.to_string())?;
+                        emitted.push(Value::new_string(event_name));
+                    }
+                }
+            }
+        }
+        Ok(emitted)
     }
 }
 
@@ -74,7 +338,327 @@ impl Backend for SilentAgentBackend {
     fn call(&mut self, method: &str, _args: Vec<Value>) -> Result<Value, String> {
         match method {
             "say" => Ok(Value::Unit),
-            _ => Err(format!("Unknown agent method: {}", method)),
+            _ => Err(format!(
+                "Runtime backend call failed [context:backend=agent,method={}]: unknown method",
+                method
+            )),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use matter_bytecode::{Constant, EventHandler, Instruction};
+    use matter_energy::{EnergyMonitor, EnergySnapshot};
+    use std::collections::HashMap;
+    use std::fs;
+
+    struct LowEnergyMonitor;
+
+    impl EnergyMonitor for LowEnergyMonitor {
+        fn snapshot(&self) -> EnergySnapshot {
+            EnergySnapshot {
+                cpu_usage: 10.0,
+                memory_usage: 20.0,
+                io_usage: 5.0,
+                network_usage: 5.0,
+                battery_level: 50.0,
+                temperature: 40.0,
+                timestamp: 0,
+            }
+        }
+    }
+
+    struct LowBatteryMonitor;
+
+    impl EnergyMonitor for LowBatteryMonitor {
+        fn snapshot(&self) -> EnergySnapshot {
+            EnergySnapshot {
+                cpu_usage: 35.0,
+                memory_usage: 40.0,
+                io_usage: 10.0,
+                network_usage: 10.0,
+                battery_level: 8.0,
+                temperature: 45.0,
+                timestamp: 0,
+            }
+        }
+    }
+
+    #[test]
+    fn bridge_visual_events_dispatches_and_emits_into_vm() {
+        let path = std::env::temp_dir().join("matter_runtime_bridge_events_test.json");
+        fs::write(
+            &path,
+            r#"{"format":"PXL_EVENT_QUEUE","version":1,"events":[{"type":"pointer","target":"button","event":"button_tap"}]}"#,
+        )
+        .unwrap();
+
+        let mut bytecode = Bytecode::new();
+        let ok_const = bytecode.add_constant(Constant::String("ok".to_string()));
+        bytecode.event_handlers.insert(
+            "button_tap".to_string(),
+            EventHandler {
+                event: "button_tap".to_string(),
+                instructions: vec![
+                    Instruction::LoadConst(ok_const),
+                    Instruction::StoreGlobal("last_visual_event".to_string()),
+                    Instruction::Halt,
+                ],
+            },
+        );
+
+        let mut runtime = Runtime::new_silent(bytecode);
+        runtime
+            .bridge_visual_events(path.to_str().unwrap_or_default())
+            .unwrap();
+
+        let globals = runtime.get_globals();
+        assert_eq!(
+            globals.get("last_visual_event"),
+            Some(&Value::new_string("ok".to_string()))
+        );
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn visual_app_step_advances_loop_and_emits_events_into_vm() {
+        let path = std::env::temp_dir().join("matter_runtime_visual_app_step_test.json");
+        fs::write(
+            &path,
+            r#"{"format":"PXL_EVENT_QUEUE","version":1,"events":[{"type":"pointer","target":"play","event":"play_tap"}]}"#,
+        )
+        .unwrap();
+
+        let mut bytecode = Bytecode::new();
+        let fired_const = bytecode.add_constant(Constant::String("fired".to_string()));
+        bytecode.event_handlers.insert(
+            "play_tap".to_string(),
+            EventHandler {
+                event: "play_tap".to_string(),
+                instructions: vec![
+                    Instruction::LoadConst(fired_const),
+                    Instruction::StoreGlobal("last_visual_step_event".to_string()),
+                    Instruction::Halt,
+                ],
+            },
+        );
+
+        let mut runtime = Runtime::new_silent(bytecode);
+        runtime
+            .visual_app_step(path.to_str().unwrap_or_default(), 16)
+            .unwrap();
+
+        let globals = runtime.get_globals();
+        assert_eq!(
+            globals.get("last_visual_step_event"),
+            Some(&Value::new_string("fired".to_string()))
+        );
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn silent_agent_backend_unknown_method_uses_context_contract() {
+        let mut backend = SilentAgentBackend;
+        let err = backend
+            .call("do_magic", vec![])
+            .expect_err("expected unknown method error");
+
+        assert!(err.starts_with("Runtime backend call failed"));
+        assert!(err.contains("[context:backend=agent,method=do_magic]"));
+        assert!(err.contains("unknown method"));
+    }
+
+    #[test]
+    fn emits_energy_low_event_when_snapshot_is_low() {
+        let mut bytecode = Bytecode::new();
+        let ok_const = bytecode.add_constant(Constant::String("ok".to_string()));
+        bytecode.event_handlers.insert(
+            "energy.low".to_string(),
+            EventHandler {
+                event: "energy.low".to_string(),
+                instructions: vec![
+                    Instruction::LoadConst(ok_const),
+                    Instruction::StoreGlobal("energy_low_seen".to_string()),
+                    Instruction::Halt,
+                ],
+            },
+        );
+
+        let mut runtime = Runtime::new_silent(bytecode);
+        runtime.set_energy_runtime(Some(EnergyRuntime::with_monitor(Box::new(
+            LowEnergyMonitor,
+        ))));
+        runtime.run().unwrap();
+
+        let globals = runtime.get_globals();
+        assert_eq!(
+            globals.get("energy_low_seen"),
+            Some(&Value::new_string("ok".to_string()))
+        );
+    }
+
+    #[test]
+    fn emits_battery_low_event() {
+        let mut bytecode = Bytecode::new();
+        let ok_const = bytecode.add_constant(Constant::String("ok".to_string()));
+        bytecode.event_handlers.insert(
+            "battery.low".to_string(),
+            EventHandler {
+                event: "battery.low".to_string(),
+                instructions: vec![
+                    Instruction::LoadConst(ok_const),
+                    Instruction::StoreGlobal("battery_low_seen".to_string()),
+                    Instruction::Halt,
+                ],
+            },
+        );
+
+        let mut runtime = Runtime::new_silent(bytecode);
+        runtime.set_energy_runtime(Some(EnergyRuntime::with_monitor(Box::new(
+            LowBatteryMonitor,
+        ))));
+        runtime.run().unwrap();
+
+        let globals = runtime.get_globals();
+        assert_eq!(
+            globals.get("battery_low_seen"),
+            Some(&Value::new_string("ok".to_string()))
+        );
+    }
+
+    #[test]
+    fn tool_invoke_frame_emits_blocked_event() {
+        let mut bytecode = Bytecode::new();
+        let ok_const = bytecode.add_constant(Constant::String("ok".to_string()));
+        bytecode.event_handlers.insert(
+            "tool.blocked".to_string(),
+            EventHandler {
+                event: "tool.blocked".to_string(),
+                instructions: vec![
+                    Instruction::LoadConst(ok_const),
+                    Instruction::StoreGlobal("tool_blocked_seen".to_string()),
+                    Instruction::Halt,
+                ],
+            },
+        );
+
+        let mut payload = HashMap::new();
+        payload.insert(
+            "from_name".to_string(),
+            Value::new_string("planner".to_string()),
+        );
+        payload.insert(
+            "from_role".to_string(),
+            Value::new_string("planner".to_string()),
+        );
+        payload.insert(
+            "to_name".to_string(),
+            Value::new_string("worker".to_string()),
+        );
+        payload.insert(
+            "to_role".to_string(),
+            Value::new_string("worker".to_string()),
+        );
+        payload.insert(
+            "task_id".to_string(),
+            Value::new_string("tool-evt-1".to_string()),
+        );
+        payload.insert(
+            "state".to_string(),
+            Value::new_string("blocked".to_string()),
+        );
+        payload.insert(
+            "goal".to_string(),
+            Value::new_string("invoke blocked frame".to_string()),
+        );
+        payload.insert(
+            "summary".to_string(),
+            Value::new_string("blocked test".to_string()),
+        );
+        payload.insert(
+            "next_action".to_string(),
+            Value::new_string("resolve-blockers".to_string()),
+        );
+        payload.insert(
+            "blockers".to_string(),
+            Value::new_list(vec![Value::new_string("missing_token".to_string())]),
+        );
+
+        let mut runtime = Runtime::new_silent(bytecode);
+        runtime.tool_invoke_frame(Value::new_map(payload)).unwrap();
+
+        let globals = runtime.get_globals();
+        assert_eq!(
+            globals.get("tool_blocked_seen"),
+            Some(&Value::new_string("ok".to_string()))
+        );
+    }
+
+    #[test]
+    fn tool_invoke_frame_emits_accepted_event() {
+        let mut bytecode = Bytecode::new();
+        let ok_const = bytecode.add_constant(Constant::String("ok".to_string()));
+        bytecode.event_handlers.insert(
+            "tool.accepted".to_string(),
+            EventHandler {
+                event: "tool.accepted".to_string(),
+                instructions: vec![
+                    Instruction::LoadConst(ok_const),
+                    Instruction::StoreGlobal("tool_accepted_seen".to_string()),
+                    Instruction::Halt,
+                ],
+            },
+        );
+
+        let mut payload = HashMap::new();
+        payload.insert(
+            "from_name".to_string(),
+            Value::new_string("planner".to_string()),
+        );
+        payload.insert(
+            "from_role".to_string(),
+            Value::new_string("planner".to_string()),
+        );
+        payload.insert(
+            "to_name".to_string(),
+            Value::new_string("worker".to_string()),
+        );
+        payload.insert(
+            "to_role".to_string(),
+            Value::new_string("worker".to_string()),
+        );
+        payload.insert(
+            "task_id".to_string(),
+            Value::new_string("tool-evt-2".to_string()),
+        );
+        payload.insert(
+            "state".to_string(),
+            Value::new_string("proposed".to_string()),
+        );
+        payload.insert(
+            "goal".to_string(),
+            Value::new_string("invoke accepted frame".to_string()),
+        );
+        payload.insert(
+            "summary".to_string(),
+            Value::new_string("accepted test".to_string()),
+        );
+        payload.insert(
+            "next_action".to_string(),
+            Value::new_string("execute".to_string()),
+        );
+
+        let mut runtime = Runtime::new_silent(bytecode);
+        runtime.tool_invoke_frame(Value::new_map(payload)).unwrap();
+
+        let globals = runtime.get_globals();
+        assert_eq!(
+            globals.get("tool_accepted_seen"),
+            Some(&Value::new_string("ok".to_string()))
+        );
     }
 }

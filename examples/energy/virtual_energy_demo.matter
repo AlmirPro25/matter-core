@@ -1,0 +1,15 @@
+# Virtual Energy + Tool Calling demo
+print "== Matter Virtual Energy Engine + Tool Calling =="
+
+energy.set_mode("adaptive")
+energy.configure("battery_aware", true)
+energy.configure("prefer_cache", true)
+
+let tools = tool.list()
+print tools
+
+let call_result = tool.call("agent.backend", "summarize latest report")
+print call_result
+
+let score = energy.score("tool")
+print score

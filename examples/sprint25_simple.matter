@@ -1,0 +1,15 @@
+// Sprint 25 Simple Test
+// Tests: arithmetic, variables, if/else, print
+// No functions - simpler test
+
+let x = 10;
+let y = 20;
+let z = x + y;
+
+if z > 25 {
+    print(z);
+} else {
+    print(0);
+}
+
+// Expected output: 30

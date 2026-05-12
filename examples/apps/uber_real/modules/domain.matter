@@ -1,0 +1,37 @@
+fn make_driver(id, name, car, lat, lng, rating) {
+    return {
+        "id": id,
+        "name": name,
+        "car": car,
+        "lat": lat,
+        "lng": lng,
+        "rating": rating,
+        "online": true,
+        "active_ride_id": 0
+    }
+}
+
+fn make_rider(id, name, priority, payment_score) {
+    return {
+        "id": id,
+        "name": name,
+        "priority": priority,
+        "payment_score": payment_score
+    }
+}
+
+fn make_ride(id, rider_id, origin_lat, origin_lng, dest_lat, dest_lng, distance_km, surge, driver_id, fare) {
+    return {
+        "id": id,
+        "rider_id": rider_id,
+        "origin_lat": origin_lat,
+        "origin_lng": origin_lng,
+        "dest_lat": dest_lat,
+        "dest_lng": dest_lng,
+        "distance_km": distance_km,
+        "surge": surge,
+        "driver_id": driver_id,
+        "fare": fare,
+        "status": "assigned"
+    }
+}

@@ -1,10 +1,10 @@
-/// Visual Backend for Matter Core
-/// Integração com PVM/PXL como backend visual desacoplado
-///
-/// Arquitetura:
-/// - Matter Core permanece linguagem geral
-/// - PVM/PXL é um backend/plugin visual
-/// - Visual é um target, não uma dependência core
+//! Visual Backend for Matter Core
+//! Integração com PVM/PXL como backend visual desacoplado
+//!
+//! Arquitetura:
+//! - Matter Core permanece linguagem geral
+//! - PVM/PXL é um backend/plugin visual
+//! - Visual é um target, não uma dependência core
 
 use matter_backend::{Backend, Value};
 use std::collections::HashMap;
@@ -236,20 +236,20 @@ impl TraceVisualBackend {
     }
 
     pub fn load_state(&mut self, path: &str) -> Result<(), VisualError> {
-        let content =
-            fs::read_to_string(path).map_err(|error| VisualError::RuntimeError(error.to_string()))?;
+        let content = fs::read_to_string(path)
+            .map_err(|error| VisualError::RuntimeError(error.to_string()))?;
         apply_visual_state_document(self, &content)
     }
 
     pub fn load_events(&self, path: &str) -> Result<Value, VisualError> {
-        let content =
-            fs::read_to_string(path).map_err(|error| VisualError::RuntimeError(error.to_string()))?;
+        let content = fs::read_to_string(path)
+            .map_err(|error| VisualError::RuntimeError(error.to_string()))?;
         parse_visual_event_document(&content)
     }
 
     pub fn dispatch_events(&mut self, path: &str) -> Result<Value, VisualError> {
-        let content =
-            fs::read_to_string(path).map_err(|error| VisualError::RuntimeError(error.to_string()))?;
+        let content = fs::read_to_string(path)
+            .map_err(|error| VisualError::RuntimeError(error.to_string()))?;
         apply_visual_event_document(self, &content)
     }
 
@@ -262,10 +262,13 @@ impl TraceVisualBackend {
         let dispatch = self.dispatch_events(event_path)?;
         let loop_state = self.tick(delta_ms)?;
 
-        Ok(Value::Map(HashMap::from([
+        Ok(Value::new_map(HashMap::from([
             ("dispatch".to_string(), dispatch),
             ("loop".to_string(), loop_state),
-            ("snapshot".to_string(), Value::String(self.pxl_snapshot())),
+            (
+                "snapshot".to_string(),
+                Value::new_string(self.pxl_snapshot()),
+            ),
         ])))
     }
 
@@ -288,11 +291,14 @@ impl TraceVisualBackend {
         let dispatch = self.dispatch_events(event_path)?;
         let loop_state = self.run_loop(frames, delta_ms)?;
 
-        Ok(Value::Map(HashMap::from([
+        Ok(Value::new_map(HashMap::from([
             ("dispatch".to_string(), dispatch),
             ("loop".to_string(), loop_state),
             ("frames".to_string(), Value::Int(frames)),
-            ("snapshot".to_string(), Value::String(self.pxl_snapshot())),
+            (
+                "snapshot".to_string(),
+                Value::new_string(self.pxl_snapshot()),
+            ),
         ])))
     }
 
@@ -390,7 +396,7 @@ impl VisualRuntime for TraceVisualBackend {
                 .entry(region_name)
                 .or_default()
                 .entry("scene".to_string())
-                .or_insert_with(|| Value::String(scene.clone()));
+                .or_insert_with(|| Value::new_string(scene.clone()));
         }
         Ok(())
     }
@@ -405,7 +411,12 @@ impl VisualRuntime for TraceVisualBackend {
 
     fn set_property(&mut self, target: &str, key: &str, value: Value) -> Result<(), VisualError> {
         if self.stdout_enabled {
-            println!("[VISUAL] set {} {} = {}", target, key, value.to_display_string());
+            println!(
+                "[VISUAL] set {} {} = {}",
+                target,
+                key,
+                value.to_display_string()
+            );
         }
         self.properties
             .entry(target.to_string())
@@ -422,31 +433,40 @@ impl Backend for TraceVisualBackend {
                 if args.len() != 1 {
                     return Err(format!("visual.run expects 1 argument, got {}", args.len()));
                 }
-                let name = args[0].as_string()
+                let name = args[0]
+                    .as_string()
                     .map_err(|_| "visual.run expects string argument".to_string())?;
-                self.run_app(&name)
-                    .map_err(|e| e.to_string())?;
+                self.run_app(&name).map_err(|e| e.to_string())?;
                 Ok(Value::Unit)
             }
             "load" => {
                 if args.len() != 1 {
-                    return Err(format!("visual.load expects 1 argument, got {}", args.len()));
+                    return Err(format!(
+                        "visual.load expects 1 argument, got {}",
+                        args.len()
+                    ));
                 }
-                let path = args[0].as_string()
+                let path = args[0]
+                    .as_string()
                     .map_err(|_| "visual.load expects string argument".to_string())?;
-                self.load_pvmbc(&path)
-                    .map_err(|e| e.to_string())?;
+                self.load_pvmbc(&path).map_err(|e| e.to_string())?;
                 Ok(Value::Unit)
             }
             "surface" => {
                 if args.len() != 3 {
-                    return Err(format!("visual.surface expects 3 arguments, got {}", args.len()));
+                    return Err(format!(
+                        "visual.surface expects 3 arguments, got {}",
+                        args.len()
+                    ));
                 }
-                let name = args[0].as_string()
+                let name = args[0]
+                    .as_string()
                     .map_err(|_| "visual.surface expects string name".to_string())?;
-                let width = args[1].as_int()
+                let width = args[1]
+                    .as_int()
                     .map_err(|_| "visual.surface expects int width".to_string())?;
-                let height = args[2].as_int()
+                let height = args[2]
+                    .as_int()
                     .map_err(|_| "visual.surface expects int height".to_string())?;
                 self.create_surface(&name, width, height)
                     .map_err(|e| e.to_string())?;
@@ -454,7 +474,10 @@ impl Backend for TraceVisualBackend {
             }
             "scene" => {
                 if args.len() != 1 {
-                    return Err(format!("visual.scene expects 1 argument, got {}", args.len()));
+                    return Err(format!(
+                        "visual.scene expects 1 argument, got {}",
+                        args.len()
+                    ));
                 }
                 let name = args[0]
                     .as_string()
@@ -467,7 +490,10 @@ impl Backend for TraceVisualBackend {
             }
             "layout" => {
                 if args.len() != 3 {
-                    return Err(format!("visual.layout expects 3 arguments, got {}", args.len()));
+                    return Err(format!(
+                        "visual.layout expects 3 arguments, got {}",
+                        args.len()
+                    ));
                 }
                 let scene = args[0]
                     .as_string()
@@ -493,11 +519,7 @@ impl Backend for TraceVisualBackend {
                 if !self.scenes.iter().any(|known_scene| known_scene == &scene) {
                     self.scenes.push(scene.clone());
                 }
-                if let Some(layout) = self
-                    .layouts
-                    .iter_mut()
-                    .find(|layout| layout.scene == scene)
-                {
+                if let Some(layout) = self.layouts.iter_mut().find(|layout| layout.scene == scene) {
                     layout.kind = kind;
                     layout.gap = gap;
                 } else {
@@ -507,7 +529,10 @@ impl Backend for TraceVisualBackend {
             }
             "component" => {
                 if args.len() != 2 {
-                    return Err(format!("visual.component expects 2 arguments, got {}", args.len()));
+                    return Err(format!(
+                        "visual.component expects 2 arguments, got {}",
+                        args.len()
+                    ));
                 }
                 let name = args[0]
                     .as_string()
@@ -526,18 +551,17 @@ impl Backend for TraceVisualBackend {
                     .ok_or_else(|| "visual.component defaults require int h".to_string())?
                     .as_int()
                     .map_err(|_| "visual.component defaults h must be int".to_string())?;
-                self.components.insert(
-                    name.clone(),
-                    VisualComponentSpec {
-                        name,
-                        defaults,
-                    },
-                );
+                self.components
+                    .insert(name.clone(), VisualComponentSpec { name, defaults });
                 Ok(Value::Unit)
             }
             "mount" | "use" => {
                 if args.len() != 4 {
-                    return Err(format!("visual.{} expects 4 arguments, got {}", method, args.len()));
+                    return Err(format!(
+                        "visual.{} expects 4 arguments, got {}",
+                        method,
+                        args.len()
+                    ));
                 }
                 let component_name = args[0]
                     .as_string()
@@ -555,7 +579,9 @@ impl Backend for TraceVisualBackend {
                     .components
                     .get(&component_name)
                     .cloned()
-                    .ok_or_else(|| format!("visual.{} unknown component '{}'", method, component_name))?;
+                    .ok_or_else(|| {
+                        format!("visual.{} unknown component '{}'", method, component_name)
+                    })?;
                 let w = component_int(&component, "w")?;
                 let h = component_int(&component, "h")?;
                 let region = VisualRegionSpec {
@@ -570,11 +596,12 @@ impl Backend for TraceVisualBackend {
                     energy: component_int_opt(&component, "energy")?.map(|value| value as f64),
                 };
                 self.create_region(region).map_err(|e| e.to_string())?;
-                self.set_property(&name, "component", Value::String(component_name))
+                self.set_property(&name, "component", Value::new_string(component_name))
                     .map_err(|e| e.to_string())?;
                 for (key, value) in component.defaults {
                     if !component_region_key(&key) {
-                        self.set_property(&name, &key, value).map_err(|e| e.to_string())?;
+                        self.set_property(&name, &key, value)
+                            .map_err(|e| e.to_string())?;
                     }
                 }
                 Ok(Value::Unit)
@@ -582,15 +609,20 @@ impl Backend for TraceVisualBackend {
             "region" => {
                 // Forma simples: visual.region(name, x, y, w, h)
                 if args.len() == 5 {
-                    let name = args[0].as_string()
+                    let name = args[0]
+                        .as_string()
                         .map_err(|_| "visual.region expects string name".to_string())?;
-                    let x = args[1].as_int()
+                    let x = args[1]
+                        .as_int()
                         .map_err(|_| "visual.region expects int x".to_string())?;
-                    let y = args[2].as_int()
+                    let y = args[2]
+                        .as_int()
                         .map_err(|_| "visual.region expects int y".to_string())?;
-                    let w = args[3].as_int()
+                    let w = args[3]
+                        .as_int()
                         .map_err(|_| "visual.region expects int w".to_string())?;
-                    let h = args[4].as_int()
+                    let h = args[4]
+                        .as_int()
                         .map_err(|_| "visual.region expects int h".to_string())?;
 
                     let region = VisualRegionSpec {
@@ -605,37 +637,39 @@ impl Backend for TraceVisualBackend {
                         energy: None,
                     };
 
-                    self.create_region(region)
-                        .map_err(|e| e.to_string())?;
+                    self.create_region(region).map_err(|e| e.to_string())?;
                     Ok(Value::Unit)
                 }
                 // Forma com map (futuro): visual.region(name, {x: 100, y: 200, ...})
                 else if args.len() == 2 {
-                    let name = args[0].as_string()
+                    let name = args[0]
+                        .as_string()
                         .map_err(|_| "visual.region expects string name".to_string())?;
 
                     // Extrair propriedades do map
                     if let Value::Map(ref props) = args[1] {
-                        let x = props.get("x")
+                        let x = props
+                            .get("x")
                             .and_then(|v| v.as_int().ok())
                             .ok_or_else(|| "visual.region map requires 'x' property".to_string())?;
-                        let y = props.get("y")
+                        let y = props
+                            .get("y")
                             .and_then(|v| v.as_int().ok())
                             .ok_or_else(|| "visual.region map requires 'y' property".to_string())?;
-                        let w = props.get("w")
+                        let w = props
+                            .get("w")
                             .and_then(|v| v.as_int().ok())
                             .ok_or_else(|| "visual.region map requires 'w' property".to_string())?;
-                        let h = props.get("h")
+                        let h = props
+                            .get("h")
                             .and_then(|v| v.as_int().ok())
                             .ok_or_else(|| "visual.region map requires 'h' property".to_string())?;
 
-                        let semantic = props.get("semantic")
-                            .and_then(|v| v.as_string().ok());
-                        let behavior = props.get("behavior")
-                            .and_then(|v| v.as_string().ok());
-                        let material = props.get("material")
-                            .and_then(|v| v.as_string().ok());
-                        let energy = props.get("energy")
+                        let semantic = props.get("semantic").and_then(|v| v.as_string().ok());
+                        let behavior = props.get("behavior").and_then(|v| v.as_string().ok());
+                        let material = props.get("material").and_then(|v| v.as_string().ok());
+                        let energy = props
+                            .get("energy")
                             .and_then(|v| v.as_int().ok())
                             .map(|i| i as f64);
 
@@ -651,33 +685,43 @@ impl Backend for TraceVisualBackend {
                             energy,
                         };
 
-                        self.create_region(region)
-                            .map_err(|e| e.to_string())?;
+                        self.create_region(region).map_err(|e| e.to_string())?;
                         Ok(Value::Unit)
                     } else {
                         Err("visual.region expects map as second argument".to_string())
                     }
                 } else {
-                    Err(format!("visual.region expects 2 or 5 arguments, got {}", args.len()))
+                    Err(format!(
+                        "visual.region expects 2 or 5 arguments, got {}",
+                        args.len()
+                    ))
                 }
             }
             "pulse" => {
                 if args.len() != 1 {
-                    return Err(format!("visual.pulse expects 1 argument, got {}", args.len()));
+                    return Err(format!(
+                        "visual.pulse expects 1 argument, got {}",
+                        args.len()
+                    ));
                 }
-                let target = args[0].as_string()
+                let target = args[0]
+                    .as_string()
                     .map_err(|_| "visual.pulse expects string argument".to_string())?;
-                self.pulse(&target)
-                    .map_err(|e| e.to_string())?;
+                self.pulse(&target).map_err(|e| e.to_string())?;
                 Ok(Value::Unit)
             }
             "set" => {
                 if args.len() != 3 {
-                    return Err(format!("visual.set expects 3 arguments, got {}", args.len()));
+                    return Err(format!(
+                        "visual.set expects 3 arguments, got {}",
+                        args.len()
+                    ));
                 }
-                let target = args[0].as_string()
+                let target = args[0]
+                    .as_string()
                     .map_err(|_| "visual.set expects string target".to_string())?;
-                let key = args[1].as_string()
+                let key = args[1]
+                    .as_string()
                     .map_err(|_| "visual.set expects string key".to_string())?;
                 let value = args[2].clone();
                 self.set_property(&target, &key, value)
@@ -686,7 +730,10 @@ impl Backend for TraceVisualBackend {
             }
             "state" => {
                 if args.len() != 2 {
-                    return Err(format!("visual.state expects 2 arguments, got {}", args.len()));
+                    return Err(format!(
+                        "visual.state expects 2 arguments, got {}",
+                        args.len()
+                    ));
                 }
                 let target = args[0]
                     .as_string()
@@ -694,13 +741,16 @@ impl Backend for TraceVisualBackend {
                 let state = args[1]
                     .as_string()
                     .map_err(|_| "visual.state expects string state".to_string())?;
-                self.set_property(&target, "state", Value::String(state))
+                self.set_property(&target, "state", Value::new_string(state))
                     .map_err(|e| e.to_string())?;
                 Ok(Value::Unit)
             }
             "layer" => {
                 if args.len() != 2 {
-                    return Err(format!("visual.layer expects 2 arguments, got {}", args.len()));
+                    return Err(format!(
+                        "visual.layer expects 2 arguments, got {}",
+                        args.len()
+                    ));
                 }
                 let target = args[0]
                     .as_string()
@@ -714,7 +764,10 @@ impl Backend for TraceVisualBackend {
             }
             "camera" => {
                 if args.len() != 3 {
-                    return Err(format!("visual.camera expects 3 arguments, got {}", args.len()));
+                    return Err(format!(
+                        "visual.camera expects 3 arguments, got {}",
+                        args.len()
+                    ));
                 }
                 let x = args[0]
                     .as_int()
@@ -733,7 +786,10 @@ impl Backend for TraceVisualBackend {
             }
             "input" => {
                 if args.len() != 3 {
-                    return Err(format!("visual.input expects 3 arguments, got {}", args.len()));
+                    return Err(format!(
+                        "visual.input expects 3 arguments, got {}",
+                        args.len()
+                    ));
                 }
                 let key = args[0]
                     .as_string()
@@ -749,7 +805,10 @@ impl Backend for TraceVisualBackend {
             }
             "motion" => {
                 if args.len() != 3 {
-                    return Err(format!("visual.motion expects 3 arguments, got {}", args.len()));
+                    return Err(format!(
+                        "visual.motion expects 3 arguments, got {}",
+                        args.len()
+                    ));
                 }
                 let target = args[0]
                     .as_string()
@@ -763,7 +822,7 @@ impl Backend for TraceVisualBackend {
                 if speed <= 0 {
                     return Err("visual.motion speed must be greater than 0".to_string());
                 }
-                self.set_property(&target, "motion", Value::String(kind))
+                self.set_property(&target, "motion", Value::new_string(kind))
                     .map_err(|e| e.to_string())?;
                 self.set_property(&target, "motionSpeed", Value::Int(speed))
                     .map_err(|e| e.to_string())?;
@@ -771,7 +830,10 @@ impl Backend for TraceVisualBackend {
             }
             "sprite" => {
                 if args.len() != 3 {
-                    return Err(format!("visual.sprite expects 3 arguments, got {}", args.len()));
+                    return Err(format!(
+                        "visual.sprite expects 3 arguments, got {}",
+                        args.len()
+                    ));
                 }
                 let target = args[0]
                     .as_string()
@@ -782,15 +844,18 @@ impl Backend for TraceVisualBackend {
                 let fit = args[2]
                     .as_string()
                     .map_err(|_| "visual.sprite expects string fit".to_string())?;
-                self.set_property(&target, "sprite", Value::String(source))
+                self.set_property(&target, "sprite", Value::new_string(source))
                     .map_err(|e| e.to_string())?;
-                self.set_property(&target, "spriteFit", Value::String(fit))
+                self.set_property(&target, "spriteFit", Value::new_string(fit))
                     .map_err(|e| e.to_string())?;
                 Ok(Value::Unit)
             }
             "text" => {
                 if args.len() != 2 {
-                    return Err(format!("visual.text expects 2 arguments, got {}", args.len()));
+                    return Err(format!(
+                        "visual.text expects 2 arguments, got {}",
+                        args.len()
+                    ));
                 }
                 let target = args[0]
                     .as_string()
@@ -798,13 +863,16 @@ impl Backend for TraceVisualBackend {
                 let text = args[1]
                     .as_string()
                     .map_err(|_| "visual.text expects string text".to_string())?;
-                self.set_property(&target, "text", Value::String(text))
+                self.set_property(&target, "text", Value::new_string(text))
                     .map_err(|e| e.to_string())?;
                 Ok(Value::Unit)
             }
             "visible" => {
                 if args.len() != 2 {
-                    return Err(format!("visual.visible expects 2 arguments, got {}", args.len()));
+                    return Err(format!(
+                        "visual.visible expects 2 arguments, got {}",
+                        args.len()
+                    ));
                 }
                 let target = args[0]
                     .as_string()
@@ -818,7 +886,10 @@ impl Backend for TraceVisualBackend {
             }
             "theme" => {
                 if args.len() != 2 {
-                    return Err(format!("visual.theme expects 2 arguments, got {}", args.len()));
+                    return Err(format!(
+                        "visual.theme expects 2 arguments, got {}",
+                        args.len()
+                    ));
                 }
                 let key = args[0]
                     .as_string()
@@ -831,33 +902,45 @@ impl Backend for TraceVisualBackend {
             }
             "snapshot" => {
                 if !args.is_empty() {
-                    return Err(format!("visual.snapshot expects 0 arguments, got {}", args.len()));
+                    return Err(format!(
+                        "visual.snapshot expects 0 arguments, got {}",
+                        args.len()
+                    ));
                 }
-                Ok(Value::String(self.pxl_snapshot()))
+                Ok(Value::new_string(self.pxl_snapshot()))
             }
             "save_state" => {
                 if args.len() != 1 {
-                    return Err(format!("visual.save_state expects 1 argument, got {}", args.len()));
+                    return Err(format!(
+                        "visual.save_state expects 1 argument, got {}",
+                        args.len()
+                    ));
                 }
                 let path = args[0]
                     .as_string()
                     .map_err(|_| "visual.save_state expects string path".to_string())?;
                 self.save_state(&path).map_err(|e| e.to_string())?;
-                Ok(Value::String(path))
+                Ok(Value::new_string(path))
             }
             "load_state" => {
                 if args.len() != 1 {
-                    return Err(format!("visual.load_state expects 1 argument, got {}", args.len()));
+                    return Err(format!(
+                        "visual.load_state expects 1 argument, got {}",
+                        args.len()
+                    ));
                 }
                 let path = args[0]
                     .as_string()
                     .map_err(|_| "visual.load_state expects string path".to_string())?;
                 self.load_state(&path).map_err(|e| e.to_string())?;
-                Ok(Value::String(path))
+                Ok(Value::new_string(path))
             }
             "load_events" => {
                 if args.len() != 1 {
-                    return Err(format!("visual.load_events expects 1 argument, got {}", args.len()));
+                    return Err(format!(
+                        "visual.load_events expects 1 argument, got {}",
+                        args.len()
+                    ));
                 }
                 let path = args[0]
                     .as_string()
@@ -878,7 +961,10 @@ impl Backend for TraceVisualBackend {
             }
             "app_step" => {
                 if args.len() != 2 {
-                    return Err(format!("visual.app_step expects 2 arguments, got {}", args.len()));
+                    return Err(format!(
+                        "visual.app_step expects 2 arguments, got {}",
+                        args.len()
+                    ));
                 }
                 let event_path = args[0]
                     .as_string()
@@ -886,11 +972,15 @@ impl Backend for TraceVisualBackend {
                 let delta_ms = args[1]
                     .as_int()
                     .map_err(|_| "visual.app_step expects int delta".to_string())?;
-                self.app_step(&event_path, delta_ms).map_err(|e| e.to_string())
+                self.app_step(&event_path, delta_ms)
+                    .map_err(|e| e.to_string())
             }
             "app_run" => {
                 if args.len() != 3 {
-                    return Err(format!("visual.app_run expects 3 arguments, got {}", args.len()));
+                    return Err(format!(
+                        "visual.app_run expects 3 arguments, got {}",
+                        args.len()
+                    ));
                 }
                 let event_path = args[0]
                     .as_string()
@@ -906,7 +996,10 @@ impl Backend for TraceVisualBackend {
             }
             "tick" => {
                 if args.len() != 1 {
-                    return Err(format!("visual.tick expects 1 argument, got {}", args.len()));
+                    return Err(format!(
+                        "visual.tick expects 1 argument, got {}",
+                        args.len()
+                    ));
                 }
                 let delta_ms = args[0]
                     .as_int()
@@ -915,7 +1008,10 @@ impl Backend for TraceVisualBackend {
             }
             "loop" => {
                 if args.len() != 2 {
-                    return Err(format!("visual.loop expects 2 arguments, got {}", args.len()));
+                    return Err(format!(
+                        "visual.loop expects 2 arguments, got {}",
+                        args.len()
+                    ));
                 }
                 let frames = args[0]
                     .as_int()
@@ -927,7 +1023,10 @@ impl Backend for TraceVisualBackend {
             }
             "editor" => {
                 if args.len() != 1 {
-                    return Err(format!("visual.editor expects 1 argument, got {}", args.len()));
+                    return Err(format!(
+                        "visual.editor expects 1 argument, got {}",
+                        args.len()
+                    ));
                 }
                 self.editor_enabled = args[0]
                     .as_bool()
@@ -936,37 +1035,49 @@ impl Backend for TraceVisualBackend {
             }
             "export" => {
                 if args.len() != 1 {
-                    return Err(format!("visual.export expects 1 argument, got {}", args.len()));
+                    return Err(format!(
+                        "visual.export expects 1 argument, got {}",
+                        args.len()
+                    ));
                 }
                 let path = args[0]
                     .as_string()
                     .map_err(|_| "visual.export expects string path".to_string())?;
                 self.export_pxl(&path).map_err(|e| e.to_string())?;
-                Ok(Value::String(path))
+                Ok(Value::new_string(path))
             }
             "preview" => {
                 if args.len() != 1 {
-                    return Err(format!("visual.preview expects 1 argument, got {}", args.len()));
+                    return Err(format!(
+                        "visual.preview expects 1 argument, got {}",
+                        args.len()
+                    ));
                 }
                 let path = args[0]
                     .as_string()
                     .map_err(|_| "visual.preview expects string path".to_string())?;
                 self.export_preview(&path).map_err(|e| e.to_string())?;
-                Ok(Value::String(path))
+                Ok(Value::new_string(path))
             }
             "canvas" => {
                 if args.len() != 1 {
-                    return Err(format!("visual.canvas expects 1 argument, got {}", args.len()));
+                    return Err(format!(
+                        "visual.canvas expects 1 argument, got {}",
+                        args.len()
+                    ));
                 }
                 let path = args[0]
                     .as_string()
                     .map_err(|_| "visual.canvas expects string path".to_string())?;
                 self.export_canvas(&path).map_err(|e| e.to_string())?;
-                Ok(Value::String(path))
+                Ok(Value::new_string(path))
             }
             "web" => {
                 if args.len() != 2 {
-                    return Err(format!("visual.web expects 2 arguments, got {}", args.len()));
+                    return Err(format!(
+                        "visual.web expects 2 arguments, got {}",
+                        args.len()
+                    ));
                 }
                 let dir = args[0]
                     .as_string()
@@ -976,11 +1087,14 @@ impl Backend for TraceVisualBackend {
                     .map_err(|_| "visual.web expects string app name".to_string())?;
                 self.export_web_runtime(&dir, &app_name)
                     .map_err(|e| e.to_string())?;
-                Ok(Value::String(dir))
+                Ok(Value::new_string(dir))
             }
             "verify_web" => {
                 if args.len() != 1 {
-                    return Err(format!("visual.verify_web expects 1 argument, got {}", args.len()));
+                    return Err(format!(
+                        "visual.verify_web expects 1 argument, got {}",
+                        args.len()
+                    ));
                 }
                 let dir = args[0]
                     .as_string()
@@ -1025,9 +1139,12 @@ fn component_string(component: &VisualComponentSpec, key: &str) -> Result<Option
         .defaults
         .get(key)
         .map(|value| {
-            value
-                .as_string()
-                .map_err(|_| format!("visual.component '{}' {} must be string", component.name, key))
+            value.as_string().map_err(|_| {
+                format!(
+                    "visual.component '{}' {} must be string",
+                    component.name, key
+                )
+            })
         })
         .transpose()
 }
@@ -1040,7 +1157,7 @@ fn component_region_key(key: &str) -> bool {
 }
 
 fn loop_state_value(loop_state: &VisualLoopState) -> Value {
-    Value::Map(HashMap::from([
+    Value::new_map(HashMap::from([
         ("frame".to_string(), Value::Int(loop_state.frame)),
         ("timeMs".to_string(), Value::Int(loop_state.time_ms)),
         ("running".to_string(), Value::Bool(loop_state.running)),
@@ -1082,7 +1199,7 @@ fn render_web_package_lock(app_name: &str, files: &[(&str, &str)]) -> String {
             format!(
                 "{{\"path\":\"{}\",\"bytes\":{},\"fingerprint\":\"{}\"}}",
                 json_escape(path),
-                content.as_bytes().len(),
+                content.len(),
                 stable_fingerprint(content.as_bytes())
             )
         })
@@ -1108,12 +1225,14 @@ fn verify_web_package_lock(root: &Path) -> Result<Value, VisualError> {
     let lock_path = root.join("matter-lock.json");
     let content = fs::read_to_string(&lock_path)
         .map_err(|error| VisualError::RuntimeError(error.to_string()))?;
-    let document: serde_json::Value =
-        serde_json::from_str(&content).map_err(|error| VisualError::RuntimeError(error.to_string()))?;
+    let document: serde_json::Value = serde_json::from_str(&content)
+        .map_err(|error| VisualError::RuntimeError(error.to_string()))?;
     let format = document
         .get("format")
         .and_then(|value| value.as_str())
-        .ok_or_else(|| VisualError::InvalidArgument("matter-lock.json missing format".to_string()))?;
+        .ok_or_else(|| {
+            VisualError::InvalidArgument("matter-lock.json missing format".to_string())
+        })?;
     if format != "MATTER_LOCK" {
         return Err(VisualError::InvalidArgument(format!(
             "matter-lock.json format must be MATTER_LOCK, got {}",
@@ -1138,7 +1257,9 @@ fn verify_web_package_lock(root: &Path) -> Result<Value, VisualError> {
         let path = file
             .get("path")
             .and_then(|value| value.as_str())
-            .ok_or_else(|| VisualError::InvalidArgument("matter-lock.json file missing path".to_string()))?;
+            .ok_or_else(|| {
+                VisualError::InvalidArgument("matter-lock.json file missing path".to_string())
+            })?;
         let expected_bytes = file
             .get("bytes")
             .and_then(|value| value.as_u64())
@@ -1148,26 +1269,27 @@ fn verify_web_package_lock(root: &Path) -> Result<Value, VisualError> {
             .and_then(|value| value.as_str())
             .unwrap_or("");
         let file_path = root.join(path);
-        let bytes = fs::read(&file_path).map_err(|error| VisualError::RuntimeError(error.to_string()))?;
+        let bytes =
+            fs::read(&file_path).map_err(|error| VisualError::RuntimeError(error.to_string()))?;
         let actual_bytes = bytes.len() as i64;
         let actual_fingerprint = stable_fingerprint(&bytes);
         let file_ok = actual_bytes == expected_bytes && actual_fingerprint == expected_fingerprint;
         ok = ok && file_ok;
-        verified_files.push(Value::Map(HashMap::from([
-            ("path".to_string(), Value::String(path.to_string())),
+        verified_files.push(Value::new_map(HashMap::from([
+            ("path".to_string(), Value::new_string(path.to_string())),
             ("ok".to_string(), Value::Bool(file_ok)),
             ("bytes".to_string(), Value::Int(actual_bytes)),
             (
                 "fingerprint".to_string(),
-                Value::String(actual_fingerprint),
+                Value::new_string(actual_fingerprint),
             ),
         ])));
     }
 
-    Ok(Value::Map(HashMap::from([
+    Ok(Value::new_map(HashMap::from([
         ("ok".to_string(), Value::Bool(ok)),
-        ("package".to_string(), Value::String(package)),
-        ("files".to_string(), Value::List(verified_files)),
+        ("package".to_string(), Value::new_string(package)),
+        ("files".to_string(), Value::new_list(verified_files)),
     ])))
 }
 
@@ -1177,8 +1299,6 @@ fn package_slug(value: &str) -> String {
         .map(|ch| {
             if ch.is_ascii_alphanumeric() {
                 ch.to_ascii_lowercase()
-            } else if ch == '-' || ch == '_' || ch.is_whitespace() {
-                '-'
             } else {
                 '-'
             }
@@ -1234,8 +1354,8 @@ fn apply_visual_state_document(
     backend: &mut TraceVisualBackend,
     content: &str,
 ) -> Result<(), VisualError> {
-    let document: serde_json::Value =
-        serde_json::from_str(content).map_err(|error| VisualError::RuntimeError(error.to_string()))?;
+    let document: serde_json::Value = serde_json::from_str(content)
+        .map_err(|error| VisualError::RuntimeError(error.to_string()))?;
     let format = document
         .get("format")
         .and_then(|value| value.as_str())
@@ -1257,12 +1377,16 @@ fn apply_visual_state_document(
     let regions = document
         .get("regions")
         .and_then(|value| value.as_array())
-        .ok_or_else(|| VisualError::InvalidArgument("visual state regions must be an array".to_string()))?;
+        .ok_or_else(|| {
+            VisualError::InvalidArgument("visual state regions must be an array".to_string())
+        })?;
     for region_state in regions {
         let name = region_state
             .get("name")
             .and_then(|value| value.as_str())
-            .ok_or_else(|| VisualError::InvalidArgument("visual state region missing name".to_string()))?;
+            .ok_or_else(|| {
+                VisualError::InvalidArgument("visual state region missing name".to_string())
+            })?;
         if let Some(region) = backend.regions.get_mut(name) {
             if let Some(x) = region_state.get("x").and_then(|value| value.as_i64()) {
                 region.x = x;
@@ -1277,7 +1401,10 @@ fn apply_visual_state_document(
                 region.h = h;
             }
         }
-        if let Some(properties) = region_state.get("properties").and_then(|value| value.as_object()) {
+        if let Some(properties) = region_state
+            .get("properties")
+            .and_then(|value| value.as_object())
+        {
             let entry = backend.properties.entry(name.to_string()).or_default();
             for (key, value) in properties {
                 entry.insert(key.clone(), json_value_to_backend_value(value));
@@ -1293,11 +1420,11 @@ fn json_value_to_backend_value(value: &serde_json::Value) -> Value {
         serde_json::Value::Null => Value::Unit,
         serde_json::Value::Bool(value) => Value::Bool(*value),
         serde_json::Value::Number(value) => Value::Int(value.as_i64().unwrap_or_default()),
-        serde_json::Value::String(value) => Value::String(value.clone()),
+        serde_json::Value::String(value) => Value::new_string(value.clone()),
         serde_json::Value::Array(values) => {
-            Value::List(values.iter().map(json_value_to_backend_value).collect())
+            Value::new_list(values.iter().map(json_value_to_backend_value).collect())
         }
-        serde_json::Value::Object(values) => Value::Map(
+        serde_json::Value::Object(values) => Value::new_map(
             values
                 .iter()
                 .map(|(key, value)| (key.clone(), json_value_to_backend_value(value)))
@@ -1307,12 +1434,14 @@ fn json_value_to_backend_value(value: &serde_json::Value) -> Value {
 }
 
 fn parse_visual_event_document(content: &str) -> Result<Value, VisualError> {
-    let document: serde_json::Value =
-        serde_json::from_str(content).map_err(|error| VisualError::RuntimeError(error.to_string()))?;
+    let document: serde_json::Value = serde_json::from_str(content)
+        .map_err(|error| VisualError::RuntimeError(error.to_string()))?;
     let format = document
         .get("format")
         .and_then(|value| value.as_str())
-        .ok_or_else(|| VisualError::InvalidArgument("visual event document missing format".to_string()))?;
+        .ok_or_else(|| {
+            VisualError::InvalidArgument("visual event document missing format".to_string())
+        })?;
     if format != "PXL_TRACE" && format != "PXL_EVENT_QUEUE" {
         return Err(VisualError::InvalidArgument(format!(
             "visual event format must be PXL_TRACE or PXL_EVENT_QUEUE, got {}",
@@ -1322,9 +1451,13 @@ fn parse_visual_event_document(content: &str) -> Result<Value, VisualError> {
     let events = document
         .get("events")
         .and_then(|value| value.as_array())
-        .ok_or_else(|| VisualError::InvalidArgument("visual event document events must be an array".to_string()))?;
+        .ok_or_else(|| {
+            VisualError::InvalidArgument(
+                "visual event document events must be an array".to_string(),
+            )
+        })?;
 
-    Ok(Value::List(
+    Ok(Value::new_list(
         events.iter().map(json_value_to_backend_value).collect(),
     ))
 }
@@ -1333,12 +1466,14 @@ fn apply_visual_event_document(
     backend: &mut TraceVisualBackend,
     content: &str,
 ) -> Result<Value, VisualError> {
-    let document: serde_json::Value =
-        serde_json::from_str(content).map_err(|error| VisualError::RuntimeError(error.to_string()))?;
+    let document: serde_json::Value = serde_json::from_str(content)
+        .map_err(|error| VisualError::RuntimeError(error.to_string()))?;
     let format = document
         .get("format")
         .and_then(|value| value.as_str())
-        .ok_or_else(|| VisualError::InvalidArgument("visual event document missing format".to_string()))?;
+        .ok_or_else(|| {
+            VisualError::InvalidArgument("visual event document missing format".to_string())
+        })?;
     if format != "PXL_TRACE" && format != "PXL_EVENT_QUEUE" {
         return Err(VisualError::InvalidArgument(format!(
             "visual event format must be PXL_TRACE or PXL_EVENT_QUEUE, got {}",
@@ -1348,7 +1483,11 @@ fn apply_visual_event_document(
     let events = document
         .get("events")
         .and_then(|value| value.as_array())
-        .ok_or_else(|| VisualError::InvalidArgument("visual event document events must be an array".to_string()))?;
+        .ok_or_else(|| {
+            VisualError::InvalidArgument(
+                "visual event document events must be an array".to_string(),
+            )
+        })?;
 
     let mut selected = String::new();
     let mut active_scene = backend.current_scene.clone().unwrap_or_default();
@@ -1373,9 +1512,12 @@ fn apply_visual_event_document(
         if let Some(target) = event_object.get("target").and_then(|value| value.as_str()) {
             selected = target.to_string();
             let entry = backend.properties.entry(target.to_string()).or_default();
-            entry.insert("state".to_string(), Value::String("active".to_string()));
+            entry.insert("state".to_string(), Value::new_string("active".to_string()));
             entry.insert("selected".to_string(), Value::Bool(true));
-            entry.insert("lastEvent".to_string(), Value::String(event_name.clone()));
+            entry.insert(
+                "lastEvent".to_string(),
+                Value::new_string(event_name.clone()),
+            );
 
             if event_name == "editor_move"
                 || event_object
@@ -1396,14 +1538,14 @@ fn apply_visual_event_document(
         }
     }
 
-    Ok(Value::Map(HashMap::from([
+    Ok(Value::new_map(HashMap::from([
         ("processed".to_string(), Value::Int(events.len() as i64)),
         ("moved".to_string(), Value::Int(moved)),
-        ("selected".to_string(), Value::String(selected)),
-        ("activeScene".to_string(), Value::String(active_scene)),
+        ("selected".to_string(), Value::new_string(selected)),
+        ("activeScene".to_string(), Value::new_string(active_scene)),
         (
             "events".to_string(),
-            Value::List(events.iter().map(json_value_to_backend_value).collect()),
+            Value::new_list(events.iter().map(json_value_to_backend_value).collect()),
         ),
     ])))
 }
@@ -1462,10 +1604,12 @@ fn render_pxl_document(backend: &TraceVisualBackend) -> String {
         backend.scenes.clone()
     };
     let scene_json = string_array_json(&scenes);
-    let active_scene = backend
-        .current_scene
-        .clone()
-        .unwrap_or_else(|| scenes.first().cloned().unwrap_or_else(|| "main".to_string()));
+    let active_scene = backend.current_scene.clone().unwrap_or_else(|| {
+        scenes
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "main".to_string())
+    });
 
     let camera_json = backend
         .camera
@@ -1602,6 +1746,7 @@ fn value_map_json(values: &HashMap<String, Value>) -> String {
 fn value_json(value: &Value) -> String {
     match value {
         Value::Int(value) => value.to_string(),
+        Value::Float(value) => value.to_string(),
         Value::Bool(value) => value.to_string(),
         Value::String(value) => format!("\"{}\"", json_escape(value)),
         Value::Unit => "null".to_string(),
@@ -1612,8 +1757,11 @@ fn value_json(value: &Value) -> String {
         ),
         Value::Map(values) => value_map_json(values),
         Value::Struct { type_name, fields } => {
-            let mut values = fields.clone();
-            values.insert("__type".to_string(), Value::String(type_name.clone()));
+            let mut values = (**fields).clone();
+            values.insert(
+                "__type".to_string(),
+                Value::new_string((**type_name).clone()),
+            );
             value_map_json(&values)
         }
     }
@@ -1663,16 +1811,28 @@ fn render_pxl_canvas(backend: &TraceVisualBackend) -> String {
         "function pointerPosition(event){const rect=canvas.getBoundingClientRect();return {x:((event.clientX-rect.left)*(canvas.width/rect.width))/(scale*zoomScale)+camera.x,y:((event.clientY-rect.top)*(canvas.height/rect.height))/(scale*zoomScale)+camera.y};}let dragging=null;editorButton.addEventListener('click',()=>{editorEnabled=!editorEnabled;updateEditorButton();recordEvent({type:'editor',enabled:editorEnabled,event:'editor_toggle'});});canvas.addEventListener('pointerdown',(event)=>{if(!editorEnabled)return;const region=hit(event.clientX,event.clientY);if(!region)return;const point=pointerPosition(event);dragging={name:region.name,dx:point.x-region.x,dy:point.y-region.y};selected=region.name;canvas.setPointerCapture(event.pointerId);event.preventDefault();});canvas.addEventListener('pointermove',(event)=>{if(!dragging)return;const point=pointerPosition(event);regionOverrides[dragging.name]={x:Math.round(point.x-dragging.dx),y:Math.round(point.y-dragging.dy)};saveEditorPositions();event.preventDefault();});canvas.addEventListener('pointerup',(event)=>{if(!dragging)return;const moved=regionOverrides[dragging.name];recordEvent({type:'editor_move',target:dragging.name,x:moved.x,y:moved.y,event:'editor_move'});dragging=null;event.preventDefault();});canvas.addEventListener('click',(event)=>{if(dragging)return;const region=hit(event.clientX,event.clientY);",
     );
     html = html.replace(
-        "selected=region.name;recordEvent({type:'pointer'",
-        "selected=region.name;savePersistedState();recordEvent({type:'pointer'",
+        "selected=region.name;recordEvent({type:'pointer',target:region.name,layer:layerValue(region),state:regionState(region),event:eventName(region)});",
+        "selected=region.name;savePersistedState();recordEvent({type:'click',payload:{target:region.name,layer:layerValue(region),state:regionState(region),event:eventName(region)}});",
     );
     html = html.replace(
-        "selected=binding.target;recordEvent({type:'keyboard'",
-        "selected=binding.target;savePersistedState();recordEvent({type:'keyboard'",
+        "if(!region)return;selected=region.name;savePersistedState();recordEvent({type:'click',payload:{target:region.name,layer:layerValue(region),state:regionState(region),event:eventName(region)}});",
+        "if(!region){recordEvent({type:'click',payload:{target:'canvas',layer:0,state:'empty',event:'canvas'}});return;}selected=region.name;savePersistedState();recordEvent({type:'click',payload:{target:region.name,layer:layerValue(region),state:regionState(region),event:eventName(region)}});",
+    );
+    html = html.replace(
+        "selected=binding.target;recordEvent({type:'keyboard',key:binding.key,target:binding.target,event:binding.event});",
+        "selected=binding.target;savePersistedState();recordEvent({type:'key',payload:{key:binding.key,target:binding.target,event:binding.event}});",
     );
     html = html.replace(
         "events.push(event);const line=document.createElement('div');",
         "events.push(event);saveEventQueue();const line=document.createElement('div');",
+    );
+    html = html.replace(
+        "function recordEvent(entry){const event={time:new Date().toISOString(),...entry};events.push(event);saveEventQueue();const line=document.createElement('div');line.textContent=Object.entries(event).filter(([key])=>key!=='time').map(([key,value])=>key+'='+value).join(' ');log.appendChild(line);log.scrollTop=log.scrollHeight;}",
+        "function syncEventToMatter(event){try{const encoded=encodeURIComponent(JSON.stringify(event));fetch('/events?e='+encoded,{method:'GET',keepalive:true}).catch(()=>{});}catch(_error){}}function recordEvent(entry){const event={type:entry.type||'input',timestamp:Date.now(),source:'canvas',payload:entry.payload||entry};events.push(event);saveEventQueue();syncEventToMatter(event);const line=document.createElement('div');line.textContent='type='+event.type+' source='+event.source+' payload='+(event.payload&&event.payload.target?event.payload.target:'-');log.appendChild(line);log.scrollTop=log.scrollHeight;}",
+    );
+    html = html.replace(
+        "traceButton.addEventListener('click',downloadTrace);requestAnimationFrame(draw);",
+        "traceButton.addEventListener('click',downloadTrace);function triggerVmAction(name){fetch('/actions?name='+encodeURIComponent(name),{method:'GET',keepalive:true}).catch(()=>{});}function renderVmActions(components){const actionComponents=components.filter((c)=>Array.isArray(c.actions)&&c.actions.length>0);const rows=actionComponents.map((c)=>{const label=(c&&c.props&&c.props.label)?c.props.label:c.name;const actions=c.actions.map((a)=>'<button type=\"button\" data-action=\"'+a+'\">'+a+'</button>').join('');return '<div><span>'+label+'</span><span>'+actions+'</span></div>';}).join('');const staticInputs=(pxl.inputs||[]).map((input)=>'<div><kbd>'+input.key+'</kbd><span>'+input.target+' / '+input.event+'</span></div>').join('');bindings.innerHTML=(staticInputs||'<div>No input bindings</div>')+(rows?rows:'');bindings.querySelectorAll('[data-action]').forEach((node)=>{node.addEventListener('click',()=>triggerVmAction(node.getAttribute('data-action')||''));});}function applyVmStateToPxl(counter,color){theme.accent=color;theme.selected=color;(pxl.regions||[]).forEach((region)=>{region.properties=region.properties||{};const semantic=region.properties.semantic||region.semantic;if(semantic==='counter'){const label=(region.properties.label||(region.properties.text||region.name).split(':')[0]||'counter');region.properties.label=label;region.properties.text=label+': '+counter;region.properties.state=counter>0?'active':'idle';}if(region.name==='canvas'||semantic==='interactive_canvas'){region.properties.text='Clique no canvas ('+counter+')';region.properties.state='active';}});}function pollVmState(){fetch('/state/vm',{cache:'no-store'}).then((res)=>res.json()).then((state)=>{if(!state||!state.ok)return;const visual=state.visual||{};const pub=state.public||{};const counter=Number(visual.counter||0);const color=visual.color||'#2563eb';const components=Array.isArray(pub.components)?pub.components:[];const summary=components.map((c)=>{const value=(c&&c.props&&c.props.value!==undefined)?c.props.value:c.value;return c.name+':'+value;}).join(' ');const schema=pub.schemaVersion||1;applyVmStateToPxl(counter,color);meta.textContent=surface.name+' '+surface.width+'x'+surface.height+' clicks='+counter+' color='+color+' schema=v'+schema+(summary?(' '+summary):'');canvas.style.borderColor=color;canvas.style.boxShadow='0 16px 38px '+(color==='#dc2626'?'rgba(220,38,38,.30)':'rgba(37,99,235,.24)');renderVmActions(components);if(log&&log.firstElementChild){log.firstElementChild.textContent='vm '+(summary||('clickCounter='+counter));}}).catch(()=>{});}setInterval(pollVmState,300);pollVmState();requestAnimationFrame(draw);",
     );
     html
 }
@@ -1742,13 +1902,13 @@ fn preview_scale(width: i64, height: i64) -> f64 {
 fn region_label(region: &VisualRegionSpec, properties: Option<&HashMap<String, Value>>) -> String {
     if let Some(properties) = properties {
         if let Some(Value::String(state)) = properties.get("state") {
-            return format!("state: {}", state);
+            return format!("state: {}", **state);
         }
         if let Some(Value::String(semantic)) = properties.get("semantic") {
-            return semantic.clone();
+            return (**semantic).clone();
         }
         if let Some(Value::String(material)) = properties.get("material") {
-            return material.clone();
+            return (**material).clone();
         }
     }
     region
@@ -1761,7 +1921,7 @@ fn region_label(region: &VisualRegionSpec, properties: Option<&HashMap<String, V
 
 fn region_state(properties: Option<&HashMap<String, Value>>) -> Option<String> {
     properties.and_then(|properties| match properties.get("state") {
-        Some(Value::String(state)) => Some(state.clone()),
+        Some(Value::String(state)) => Some((**state).clone()),
         _ => None,
     })
 }
@@ -1769,16 +1929,13 @@ fn region_state(properties: Option<&HashMap<String, Value>>) -> Option<String> {
 fn region_event(region: &VisualRegionSpec, properties: Option<&HashMap<String, Value>>) -> String {
     if let Some(properties) = properties {
         if let Some(Value::String(event)) = properties.get("event") {
-            return event.clone();
+            return (**event).clone();
         }
         if let Some(Value::String(behavior)) = properties.get("behavior") {
-            return behavior.clone();
+            return (**behavior).clone();
         }
     }
-    region
-        .behavior
-        .clone()
-        .unwrap_or_else(|| "tap".to_string())
+    region.behavior.clone().unwrap_or_else(|| "tap".to_string())
 }
 
 fn region_class(is_pulsing: bool, state: Option<&str>) -> String {
@@ -1838,6 +1995,12 @@ impl PvmVisualBackend {
     }
 }
 
+impl Default for PvmVisualBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 // Quando o PVM estiver pronto, implementaremos:
 // impl VisualRuntime for PvmVisualBackend { ... }
 // impl Backend for PvmVisualBackend { ... }
@@ -1849,7 +2012,7 @@ mod tests {
     #[test]
     fn test_trace_visual_run() {
         let mut backend = TraceVisualBackend::new();
-        let result = backend.call("run", vec![Value::String("pizzaria".to_string())]);
+        let result = backend.call("run", vec![Value::new_string("pizzaria".to_string())]);
         assert!(result.is_ok());
     }
 
@@ -1859,7 +2022,7 @@ mod tests {
         let result = backend.call(
             "surface",
             vec![
-                Value::String("main".to_string()),
+                Value::new_string("main".to_string()),
                 Value::Int(1080),
                 Value::Int(1920),
             ],
@@ -1873,7 +2036,7 @@ mod tests {
         let result = backend.call(
             "region",
             vec![
-                Value::String("checkout".to_string()),
+                Value::new_string("checkout".to_string()),
                 Value::Int(100),
                 Value::Int(200),
                 Value::Int(300),
@@ -1886,7 +2049,7 @@ mod tests {
     #[test]
     fn test_trace_visual_pulse() {
         let mut backend = TraceVisualBackend::new();
-        let result = backend.call("pulse", vec![Value::String("checkout".to_string())]);
+        let result = backend.call("pulse", vec![Value::new_string("checkout".to_string())]);
         assert!(result.is_ok());
     }
 
@@ -1896,8 +2059,8 @@ mod tests {
         let result = backend.call(
             "set",
             vec![
-                Value::String("checkout".to_string()),
-                Value::String("energy".to_string()),
+                Value::new_string("checkout".to_string()),
+                Value::new_string("energy".to_string()),
                 Value::Int(80),
             ],
         );
@@ -1914,7 +2077,7 @@ mod tests {
                 assert_eq!(state.get("timeMs"), Some(&Value::Int(16)));
                 assert_eq!(state.get("running"), Some(&Value::Bool(true)));
             }
-            _ => panic!("visual.tick must return loop state map"),
+            _ => assert!(false, "visual.tick must return loop state map"),
         }
 
         let result = backend
@@ -1926,10 +2089,14 @@ mod tests {
                 assert_eq!(state.get("timeMs"), Some(&Value::Int(64)));
                 assert_eq!(state.get("running"), Some(&Value::Bool(true)));
             }
-            _ => panic!("visual.loop must return loop state map"),
+            _ => assert!(false, "visual.loop must return loop state map"),
         }
 
-        let snapshot = backend.call("snapshot", vec![]).unwrap().as_string().unwrap();
+        let snapshot = backend
+            .call("snapshot", vec![])
+            .unwrap()
+            .as_string()
+            .unwrap();
         assert!(snapshot.contains("\"loop\":{\"frame\":4,\"timeMs\":64,\"running\":true}"));
     }
 
@@ -1938,7 +2105,11 @@ mod tests {
         let mut backend = TraceVisualBackend::new();
         let result = backend.call("editor", vec![Value::Bool(true)]).unwrap();
         assert_eq!(result, Value::Bool(true));
-        let snapshot = backend.call("snapshot", vec![]).unwrap().as_string().unwrap();
+        let snapshot = backend
+            .call("snapshot", vec![])
+            .unwrap()
+            .as_string()
+            .unwrap();
         assert!(snapshot.contains("\"editor\":{\"enabled\":true}"));
     }
 
@@ -1950,13 +2121,22 @@ mod tests {
         props.insert("y".to_string(), Value::Int(200));
         props.insert("w".to_string(), Value::Int(300));
         props.insert("h".to_string(), Value::Int(80));
-        props.insert("semantic".to_string(), Value::String("action_button".to_string()));
-        props.insert("behavior".to_string(), Value::String("pulse".to_string()));
+        props.insert(
+            "semantic".to_string(),
+            Value::new_string("action_button".to_string()),
+        );
+        props.insert(
+            "behavior".to_string(),
+            Value::new_string("pulse".to_string()),
+        );
         props.insert("energy".to_string(), Value::Int(1));
 
         let result = backend.call(
             "region",
-            vec![Value::String("checkout".to_string()), Value::Map(props)],
+            vec![
+                Value::new_string("checkout".to_string()),
+                Value::new_map(props),
+            ],
         );
         assert!(result.is_ok());
     }
@@ -1968,7 +2148,7 @@ mod tests {
             .call(
                 "surface",
                 vec![
-                    Value::String("main".to_string()),
+                    Value::new_string("main".to_string()),
                     Value::Int(800),
                     Value::Int(600),
                 ],
@@ -1978,7 +2158,7 @@ mod tests {
             .call(
                 "region",
                 vec![
-                    Value::String("button".to_string()),
+                    Value::new_string("button".to_string()),
                     Value::Int(10),
                     Value::Int(20),
                     Value::Int(120),
@@ -1990,17 +2170,21 @@ mod tests {
             .call(
                 "set",
                 vec![
-                    Value::String("button".to_string()),
-                    Value::String("material".to_string()),
-                    Value::String("glass".to_string()),
+                    Value::new_string("button".to_string()),
+                    Value::new_string("material".to_string()),
+                    Value::new_string("glass".to_string()),
                 ],
             )
             .unwrap();
         backend
-            .call("pulse", vec![Value::String("button".to_string())])
+            .call("pulse", vec![Value::new_string("button".to_string())])
             .unwrap();
 
-        let snapshot = backend.call("snapshot", vec![]).unwrap().as_string().unwrap();
+        let snapshot = backend
+            .call("snapshot", vec![])
+            .unwrap()
+            .as_string()
+            .unwrap();
         assert!(snapshot.contains("\"format\":\"PXL\""));
         assert!(snapshot.contains("\"surfaces\""));
         assert!(snapshot.contains("\"regions\""));
@@ -2016,7 +2200,7 @@ mod tests {
             .call(
                 "surface",
                 vec![
-                    Value::String("main".to_string()),
+                    Value::new_string("main".to_string()),
                     Value::Int(320),
                     Value::Int(240),
                 ],
@@ -2024,10 +2208,13 @@ mod tests {
             .unwrap();
 
         let result = backend
-            .call("export", vec![Value::String(path.display().to_string())])
+            .call(
+                "export",
+                vec![Value::new_string(path.display().to_string())],
+            )
             .unwrap();
 
-        assert_eq!(result, Value::String(path.display().to_string()));
+        assert_eq!(result, Value::new_string(path.display().to_string()));
         let exported = fs::read_to_string(&path).unwrap();
         assert!(exported.contains("\"format\":\"PXL\""));
         assert!(exported.contains("\"main\""));
@@ -2043,27 +2230,25 @@ mod tests {
             .call(
                 "surface",
                 vec![
-                    Value::String("main".to_string()),
+                    Value::new_string("main".to_string()),
                     Value::Int(640),
                     Value::Int(360),
                 ],
             )
             .unwrap();
-        backend
-            .call("editor", vec![Value::Bool(true)])
-            .unwrap();
+        backend.call("editor", vec![Value::Bool(true)]).unwrap();
 
         let result = backend
             .call(
                 "web",
                 vec![
-                    Value::String(dir.display().to_string()),
-                    Value::String("Matter PXL Demo".to_string()),
+                    Value::new_string(dir.display().to_string()),
+                    Value::new_string("Matter PXL Demo".to_string()),
                 ],
             )
             .unwrap();
 
-        assert_eq!(result, Value::String(dir.display().to_string()));
+        assert_eq!(result, Value::new_string(dir.display().to_string()));
         let index = fs::read_to_string(dir.join("index.html")).unwrap();
         let pxl = fs::read_to_string(dir.join("pxl.json")).unwrap();
         let manifest = fs::read_to_string(dir.join("manifest.json")).unwrap();
@@ -2089,21 +2274,24 @@ mod tests {
         assert!(lock.contains("\"fingerprint\""));
 
         let verification = backend
-            .call("verify_web", vec![Value::String(dir.display().to_string())])
+            .call(
+                "verify_web",
+                vec![Value::new_string(dir.display().to_string())],
+            )
             .unwrap();
         match verification {
             Value::Map(result) => {
                 assert_eq!(result.get("ok"), Some(&Value::Bool(true)));
                 assert_eq!(
                     result.get("package"),
-                    Some(&Value::String("matter-pxl-demo".to_string()))
+                    Some(&Value::new_string("matter-pxl-demo".to_string()))
                 );
                 match result.get("files") {
                     Some(Value::List(files)) => assert_eq!(files.len(), 4),
-                    _ => panic!("visual.verify_web must return verified files"),
+                    _ => assert!(false, "visual.verify_web must return verified files"),
                 }
             }
-            _ => panic!("visual.verify_web must return a map"),
+            _ => assert!(false, "visual.verify_web must return a map"),
         }
         let _ = fs::remove_dir_all(dir);
     }
@@ -2116,7 +2304,7 @@ mod tests {
             .call(
                 "surface",
                 vec![
-                    Value::String("main".to_string()),
+                    Value::new_string("main".to_string()),
                     Value::Int(800),
                     Value::Int(600),
                 ],
@@ -2126,22 +2314,22 @@ mod tests {
             .call(
                 "component",
                 vec![
-                    Value::String("action_button".to_string()),
-                    Value::Map({
+                    Value::new_string("action_button".to_string()),
+                    Value::new_map({
                         let mut defaults = std::collections::HashMap::new();
                         defaults.insert("w".to_string(), Value::Int(260));
                         defaults.insert("h".to_string(), Value::Int(80));
                         defaults.insert(
                             "semantic".to_string(),
-                            Value::String("primary_action".to_string()),
+                            Value::new_string("primary_action".to_string()),
                         );
                         defaults.insert(
                             "text".to_string(),
-                            Value::String("Component button".to_string()),
+                            Value::new_string("Component button".to_string()),
                         );
                         defaults.insert(
                             "event".to_string(),
-                            Value::String("component_tap".to_string()),
+                            Value::new_string("component_tap".to_string()),
                         );
                         defaults
                     }),
@@ -2152,8 +2340,8 @@ mod tests {
             .call(
                 "mount",
                 vec![
-                    Value::String("action_button".to_string()),
-                    Value::String("checkout".to_string()),
+                    Value::new_string("action_button".to_string()),
+                    Value::new_string("checkout".to_string()),
                     Value::Int(120),
                     Value::Int(220),
                 ],
@@ -2163,18 +2351,21 @@ mod tests {
             .call(
                 "set",
                 vec![
-                    Value::String("checkout".to_string()),
-                    Value::String("semantic".to_string()),
-                    Value::String("primary_action".to_string()),
+                    Value::new_string("checkout".to_string()),
+                    Value::new_string("semantic".to_string()),
+                    Value::new_string("primary_action".to_string()),
                 ],
             )
             .unwrap();
 
         let result = backend
-            .call("preview", vec![Value::String(path.display().to_string())])
+            .call(
+                "preview",
+                vec![Value::new_string(path.display().to_string())],
+            )
             .unwrap();
 
-        assert_eq!(result, Value::String(path.display().to_string()));
+        assert_eq!(result, Value::new_string(path.display().to_string()));
         let html = fs::read_to_string(&path).unwrap();
         assert!(html.contains("<!doctype html>"));
         assert!(html.contains("PXL Preview"));
@@ -2192,7 +2383,7 @@ mod tests {
             .call(
                 "surface",
                 vec![
-                    Value::String("main".to_string()),
+                    Value::new_string("main".to_string()),
                     Value::Int(800),
                     Value::Int(600),
                 ],
@@ -2202,7 +2393,7 @@ mod tests {
             .call(
                 "region",
                 vec![
-                    Value::String("checkout".to_string()),
+                    Value::new_string("checkout".to_string()),
                     Value::Int(120),
                     Value::Int(220),
                     Value::Int(260),
@@ -2214,18 +2405,25 @@ mod tests {
             .call(
                 "state",
                 vec![
-                    Value::String("checkout".to_string()),
-                    Value::String("active".to_string()),
+                    Value::new_string("checkout".to_string()),
+                    Value::new_string("active".to_string()),
                 ],
             )
             .unwrap();
 
-        let snapshot = backend.call("snapshot", vec![]).unwrap().as_string().unwrap();
+        let snapshot = backend
+            .call("snapshot", vec![])
+            .unwrap()
+            .as_string()
+            .unwrap();
         assert!(snapshot.contains("\"state\":\"active\""));
 
         let path = std::env::temp_dir().join("matter_visual_state_preview_test.html");
         backend
-            .call("preview", vec![Value::String(path.display().to_string())])
+            .call(
+                "preview",
+                vec![Value::new_string(path.display().to_string())],
+            )
             .unwrap();
         let html = fs::read_to_string(&path).unwrap();
         assert!(html.contains("state-active"));
@@ -2238,13 +2436,13 @@ mod tests {
         let path = std::env::temp_dir().join("matter_visual_state_test.json");
         let mut backend = TraceVisualBackend::new();
         backend
-            .call("scene", vec![Value::String("settings".to_string())])
+            .call("scene", vec![Value::new_string("settings".to_string())])
             .unwrap();
         backend
             .call(
                 "region",
                 vec![
-                    Value::String("panel".to_string()),
+                    Value::new_string("panel".to_string()),
                     Value::Int(20),
                     Value::Int(30),
                     Value::Int(300),
@@ -2256,22 +2454,25 @@ mod tests {
             .call(
                 "state",
                 vec![
-                    Value::String("panel".to_string()),
-                    Value::String("active".to_string()),
+                    Value::new_string("panel".to_string()),
+                    Value::new_string("active".to_string()),
                 ],
             )
             .unwrap();
         backend
             .call(
                 "visible",
-                vec![Value::String("panel".to_string()), Value::Bool(false)],
+                vec![Value::new_string("panel".to_string()), Value::Bool(false)],
             )
             .unwrap();
 
         let result = backend
-            .call("save_state", vec![Value::String(path.display().to_string())])
+            .call(
+                "save_state",
+                vec![Value::new_string(path.display().to_string())],
+            )
             .unwrap();
-        assert_eq!(result, Value::String(path.display().to_string()));
+        assert_eq!(result, Value::new_string(path.display().to_string()));
         let saved = fs::read_to_string(&path).unwrap();
         assert!(saved.contains("\"format\":\"PXL_STATE\""));
         assert!(saved.contains("\"activeScene\":\"settings\""));
@@ -2282,7 +2483,7 @@ mod tests {
             .call(
                 "region",
                 vec![
-                    Value::String("panel".to_string()),
+                    Value::new_string("panel".to_string()),
                     Value::Int(1),
                     Value::Int(1),
                     Value::Int(10),
@@ -2291,9 +2492,16 @@ mod tests {
             )
             .unwrap();
         restored
-            .call("load_state", vec![Value::String(path.display().to_string())])
+            .call(
+                "load_state",
+                vec![Value::new_string(path.display().to_string())],
+            )
             .unwrap();
-        let snapshot = restored.call("snapshot", vec![]).unwrap().as_string().unwrap();
+        let snapshot = restored
+            .call("snapshot", vec![])
+            .unwrap()
+            .as_string()
+            .unwrap();
         assert!(snapshot.contains("\"activeScene\":\"settings\""));
         assert!(snapshot.contains("\"x\":20"));
         assert!(snapshot.contains("\"w\":300"));
@@ -2313,26 +2521,28 @@ mod tests {
 
         let mut backend = TraceVisualBackend::new();
         let events = backend
-            .call("load_events", vec![Value::String(path.display().to_string())])
+            .call(
+                "load_events",
+                vec![Value::new_string(path.display().to_string())],
+            )
             .unwrap();
-        let events = match events {
-            Value::List(events) => events,
-            _ => panic!("visual.load_events must return a list"),
+        let Value::List(events) = events else {
+            unreachable!("visual.load_events must return a list");
         };
         assert_eq!(events.len(), 2);
         match &events[0] {
             Value::Map(event) => {
                 assert_eq!(
                     event.get("type"),
-                    Some(&Value::String("pointer".to_string()))
+                    Some(&Value::new_string("pointer".to_string()))
                 );
                 assert_eq!(
                     event.get("target"),
-                    Some(&Value::String("checkout".to_string()))
+                    Some(&Value::new_string("checkout".to_string()))
                 );
                 assert_eq!(event.get("layer"), Some(&Value::Int(4)));
             }
-            _ => panic!("visual.load_events event must be a map"),
+            _ => assert!(false, "visual.load_events event must be a map"),
         }
         let _ = fs::remove_file(path);
     }
@@ -2351,7 +2561,7 @@ mod tests {
             .call(
                 "region",
                 vec![
-                    Value::String("button".to_string()),
+                    Value::new_string("button".to_string()),
                     Value::Int(10),
                     Value::Int(20),
                     Value::Int(120),
@@ -2362,7 +2572,7 @@ mod tests {
         let result = backend
             .call(
                 "dispatch_events",
-                vec![Value::String(path.display().to_string())],
+                vec![Value::new_string(path.display().to_string())],
             )
             .unwrap();
         match result {
@@ -2371,17 +2581,21 @@ mod tests {
                 assert_eq!(result.get("moved"), Some(&Value::Int(1)));
                 assert_eq!(
                     result.get("selected"),
-                    Some(&Value::String("button".to_string()))
+                    Some(&Value::new_string("button".to_string()))
                 );
                 assert_eq!(
                     result.get("activeScene"),
-                    Some(&Value::String("checkout".to_string()))
+                    Some(&Value::new_string("checkout".to_string()))
                 );
             }
-            _ => panic!("visual.dispatch_events must return a map"),
+            _ => assert!(false, "visual.dispatch_events must return a map"),
         }
 
-        let snapshot = backend.call("snapshot", vec![]).unwrap().as_string().unwrap();
+        let snapshot = backend
+            .call("snapshot", vec![])
+            .unwrap()
+            .as_string()
+            .unwrap();
         assert!(snapshot.contains("\"activeScene\":\"checkout\""));
         assert!(snapshot.contains("\"name\":\"button\",\"x\":42,\"y\":64"));
         assert!(snapshot.contains("\"state\":\"active\""));
@@ -2404,7 +2618,7 @@ mod tests {
             .call(
                 "region",
                 vec![
-                    Value::String("play".to_string()),
+                    Value::new_string("play".to_string()),
                     Value::Int(12),
                     Value::Int(18),
                     Value::Int(140),
@@ -2415,7 +2629,10 @@ mod tests {
         let result = backend
             .call(
                 "app_step",
-                vec![Value::String(path.display().to_string()), Value::Int(33)],
+                vec![
+                    Value::new_string(path.display().to_string()),
+                    Value::Int(33),
+                ],
             )
             .unwrap();
 
@@ -2426,10 +2643,10 @@ mod tests {
                         assert_eq!(dispatch.get("processed"), Some(&Value::Int(1)));
                         assert_eq!(
                             dispatch.get("selected"),
-                            Some(&Value::String("play".to_string()))
+                            Some(&Value::new_string("play".to_string()))
                         );
                     }
-                    _ => panic!("visual.app_step must return dispatch map"),
+                    _ => assert!(false, "visual.app_step must return dispatch map"),
                 }
                 match result.get("loop") {
                     Some(Value::Map(loop_state)) => {
@@ -2437,17 +2654,18 @@ mod tests {
                         assert_eq!(loop_state.get("timeMs"), Some(&Value::Int(33)));
                         assert_eq!(loop_state.get("running"), Some(&Value::Bool(true)));
                     }
-                    _ => panic!("visual.app_step must return loop map"),
+                    _ => assert!(false, "visual.app_step must return loop map"),
                 }
                 match result.get("snapshot") {
                     Some(Value::String(snapshot)) => {
                         assert!(snapshot.contains("\"lastEvent\":\"play_tap\""));
-                        assert!(snapshot.contains("\"loop\":{\"frame\":1,\"timeMs\":33,\"running\":true}"));
+                        assert!(snapshot
+                            .contains("\"loop\":{\"frame\":1,\"timeMs\":33,\"running\":true}"));
                     }
-                    _ => panic!("visual.app_step must return snapshot"),
+                    _ => assert!(false, "visual.app_step must return snapshot"),
                 }
             }
-            _ => panic!("visual.app_step must return a map"),
+            _ => assert!(false, "visual.app_step must return a map"),
         }
 
         let _ = fs::remove_file(path);
@@ -2467,7 +2685,7 @@ mod tests {
             .call(
                 "region",
                 vec![
-                    Value::String("ship".to_string()),
+                    Value::new_string("ship".to_string()),
                     Value::Int(32),
                     Value::Int(48),
                     Value::Int(88),
@@ -2479,7 +2697,7 @@ mod tests {
             .call(
                 "app_run",
                 vec![
-                    Value::String(path.display().to_string()),
+                    Value::new_string(path.display().to_string()),
                     Value::Int(4),
                     Value::Int(16),
                 ],
@@ -2494,10 +2712,10 @@ mod tests {
                         assert_eq!(dispatch.get("processed"), Some(&Value::Int(2)));
                         assert_eq!(
                             dispatch.get("activeScene"),
-                            Some(&Value::String("game".to_string()))
+                            Some(&Value::new_string("game".to_string()))
                         );
                     }
-                    _ => panic!("visual.app_run must return dispatch map"),
+                    _ => assert!(false, "visual.app_run must return dispatch map"),
                 }
                 match result.get("loop") {
                     Some(Value::Map(loop_state)) => {
@@ -2505,18 +2723,19 @@ mod tests {
                         assert_eq!(loop_state.get("timeMs"), Some(&Value::Int(64)));
                         assert_eq!(loop_state.get("running"), Some(&Value::Bool(true)));
                     }
-                    _ => panic!("visual.app_run must return loop map"),
+                    _ => assert!(false, "visual.app_run must return loop map"),
                 }
                 match result.get("snapshot") {
                     Some(Value::String(snapshot)) => {
                         assert!(snapshot.contains("\"activeScene\":\"game\""));
                         assert!(snapshot.contains("\"lastEvent\":\"boost\""));
-                        assert!(snapshot.contains("\"loop\":{\"frame\":4,\"timeMs\":64,\"running\":true}"));
+                        assert!(snapshot
+                            .contains("\"loop\":{\"frame\":4,\"timeMs\":64,\"running\":true}"));
                     }
-                    _ => panic!("visual.app_run must return snapshot"),
+                    _ => assert!(false, "visual.app_run must return snapshot"),
                 }
             }
-            _ => panic!("visual.app_run must return a map"),
+            _ => assert!(false, "visual.app_run must return a map"),
         }
 
         let _ = fs::remove_file(path);
@@ -2530,21 +2749,21 @@ mod tests {
             .call(
                 "surface",
                 vec![
-                    Value::String("main".to_string()),
+                    Value::new_string("main".to_string()),
                     Value::Int(960),
                     Value::Int(540),
                 ],
             )
             .unwrap();
         backend
-            .call("scene", vec![Value::String("home".to_string())])
+            .call("scene", vec![Value::new_string("home".to_string())])
             .unwrap();
         backend
             .call(
                 "layout",
                 vec![
-                    Value::String("home".to_string()),
-                    Value::String("grid".to_string()),
+                    Value::new_string("home".to_string()),
+                    Value::new_string("grid".to_string()),
                     Value::Int(12),
                 ],
             )
@@ -2553,22 +2772,22 @@ mod tests {
             .call(
                 "component",
                 vec![
-                    Value::String("action_button".to_string()),
-                    Value::Map({
+                    Value::new_string("action_button".to_string()),
+                    Value::new_map({
                         let mut defaults = std::collections::HashMap::new();
                         defaults.insert("w".to_string(), Value::Int(260));
                         defaults.insert("h".to_string(), Value::Int(80));
                         defaults.insert(
                             "semantic".to_string(),
-                            Value::String("primary_action".to_string()),
+                            Value::new_string("primary_action".to_string()),
                         );
                         defaults.insert(
                             "text".to_string(),
-                            Value::String("Component button".to_string()),
+                            Value::new_string("Component button".to_string()),
                         );
                         defaults.insert(
                             "event".to_string(),
-                            Value::String("component_tap".to_string()),
+                            Value::new_string("component_tap".to_string()),
                         );
                         defaults
                     }),
@@ -2579,8 +2798,8 @@ mod tests {
             .call(
                 "mount",
                 vec![
-                    Value::String("action_button".to_string()),
-                    Value::String("checkout".to_string()),
+                    Value::new_string("action_button".to_string()),
+                    Value::new_string("checkout".to_string()),
                     Value::Int(120),
                     Value::Int(220),
                 ],
@@ -2590,9 +2809,9 @@ mod tests {
             .call(
                 "set",
                 vec![
-                    Value::String("checkout".to_string()),
-                    Value::String("event".to_string()),
-                    Value::String("checkout_tap".to_string()),
+                    Value::new_string("checkout".to_string()),
+                    Value::new_string("event".to_string()),
+                    Value::new_string("checkout_tap".to_string()),
                 ],
             )
             .unwrap();
@@ -2600,30 +2819,33 @@ mod tests {
             .call(
                 "state",
                 vec![
-                    Value::String("checkout".to_string()),
-                    Value::String("active".to_string()),
+                    Value::new_string("checkout".to_string()),
+                    Value::new_string("active".to_string()),
                 ],
             )
             .unwrap();
         backend
-            .call("pulse", vec![Value::String("checkout".to_string())])
+            .call("pulse", vec![Value::new_string("checkout".to_string())])
             .unwrap();
         backend
             .call(
                 "layer",
-                vec![Value::String("checkout".to_string()), Value::Int(4)],
+                vec![Value::new_string("checkout".to_string()), Value::Int(4)],
             )
             .unwrap();
         backend
-            .call("camera", vec![Value::Int(20), Value::Int(40), Value::Int(125)])
+            .call(
+                "camera",
+                vec![Value::Int(20), Value::Int(40), Value::Int(125)],
+            )
             .unwrap();
         backend
             .call(
                 "input",
                 vec![
-                    Value::String("Enter".to_string()),
-                    Value::String("checkout".to_string()),
-                    Value::String("checkout_submit".to_string()),
+                    Value::new_string("Enter".to_string()),
+                    Value::new_string("checkout".to_string()),
+                    Value::new_string("checkout_submit".to_string()),
                 ],
             )
             .unwrap();
@@ -2631,8 +2853,8 @@ mod tests {
             .call(
                 "theme",
                 vec![
-                    Value::String("accent".to_string()),
-                    Value::String("#0f766e".to_string()),
+                    Value::new_string("accent".to_string()),
+                    Value::new_string("#0f766e".to_string()),
                 ],
             )
             .unwrap();
@@ -2640,8 +2862,8 @@ mod tests {
             .call(
                 "motion",
                 vec![
-                    Value::String("checkout".to_string()),
-                    Value::String("breathe".to_string()),
+                    Value::new_string("checkout".to_string()),
+                    Value::new_string("breathe".to_string()),
                     Value::Int(1200),
                 ],
             )
@@ -2650,9 +2872,9 @@ mod tests {
             .call(
                 "sprite",
                 vec![
-                    Value::String("checkout".to_string()),
-                    Value::String("assets/checkout.png".to_string()),
-                    Value::String("contain".to_string()),
+                    Value::new_string("checkout".to_string()),
+                    Value::new_string("assets/checkout.png".to_string()),
+                    Value::new_string("contain".to_string()),
                 ],
             )
             .unwrap();
@@ -2660,8 +2882,8 @@ mod tests {
             .call(
                 "text",
                 vec![
-                    Value::String("checkout".to_string()),
-                    Value::String("Buy now".to_string()),
+                    Value::new_string("checkout".to_string()),
+                    Value::new_string("Buy now".to_string()),
                 ],
             )
             .unwrap();
@@ -2669,8 +2891,8 @@ mod tests {
             .call(
                 "set",
                 vec![
-                    Value::String("checkout".to_string()),
-                    Value::String("textSize".to_string()),
+                    Value::new_string("checkout".to_string()),
+                    Value::new_string("textSize".to_string()),
                     Value::Int(16),
                 ],
             )
@@ -2678,7 +2900,10 @@ mod tests {
         backend
             .call(
                 "visible",
-                vec![Value::String("checkout".to_string()), Value::Bool(false)],
+                vec![
+                    Value::new_string("checkout".to_string()),
+                    Value::Bool(false),
+                ],
             )
             .unwrap();
         backend
@@ -2687,10 +2912,13 @@ mod tests {
         backend.call("editor", vec![Value::Bool(true)]).unwrap();
 
         let result = backend
-            .call("canvas", vec![Value::String(path.display().to_string())])
+            .call(
+                "canvas",
+                vec![Value::new_string(path.display().to_string())],
+            )
             .unwrap();
 
-        assert_eq!(result, Value::String(path.display().to_string()));
+        assert_eq!(result, Value::new_string(path.display().to_string()));
         let html = fs::read_to_string(&path).unwrap();
         assert!(html.contains("PXL Canvas Engine"));
         assert!(html.contains("<canvas id=\"pxl-canvas\""));
@@ -2725,6 +2953,8 @@ mod tests {
         assert!(html.contains("PXL_EVENT_QUEUE"));
         assert!(html.contains("eventQueueKey"));
         assert!(html.contains("saveEventQueue"));
+        assert!(html.contains("/events?e="));
+        assert!(html.contains("syncEventToMatter"));
         assert!(html.contains("PXL_BROWSER_STATE"));
         assert!(html.contains("loadPersistedState"));
         assert!(html.contains("savePersistedState"));

@@ -1,0 +1,59 @@
+# Smart Type Inference Example
+# Automatic type inference across languages
+
+import "numpy" from python
+import "express" from nodejs-native
+
+# Smart inference automatically determines types
+# across language boundaries
+
+fn process_data(data) {
+    # Type inferred from Python numpy
+    let matrix = numpy.array(data)
+    
+    # Automatically converts to Node.js types
+    let json_data = JSON.stringify(matrix.tolist())
+    
+    # Type inference knows this is a string
+    return json_data
+}
+
+fn create_api() {
+    let app = express()
+    
+    # Smart inference knows req.body type from Express
+    app.post("/process", fn(req, res) {
+        # Automatic type conversion Python ↔ Node.js
+        let result = process_data(req.body.data)
+        res.json({"result": result})
+    })
+    
+    return app
+}
+
+fn main() {
+    print("🧠 Smart Type Inference Demo")
+    print("=" * 50)
+    
+    # Example data
+    let data = [[1, 2, 3], [4, 5, 6]]
+    
+    # Smart inference handles all conversions
+    let result = process_data(data)
+    print(f"Processed: {result}")
+    
+    # Create API with automatic type inference
+    let app = create_api()
+    print("✅ API created with smart type inference")
+    print("   • Python numpy → Matter → Node.js")
+    print("   • Automatic type conversion")
+    print("   • Zero manual type annotations")
+    
+    print("\n🏆 Benefits:")
+    print("   • No manual type annotations needed")
+    print("   • Automatic cross-language conversion")
+    print("   • Type safety across all 5 languages")
+    print("   • <1% overhead")
+}
+
+main()

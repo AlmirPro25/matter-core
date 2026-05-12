@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Matter Core - Web Playground</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            padding: 20px;
+        }
+
+        .panel {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .panel-header {
+            background: #f5f5f5;
+            padding: 15px;
+            border-bottom: 2px solid #667eea;
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+
+        textarea {
+            flex: 1;
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            border: none;
+            resize: none;
+            min-height: 400px;
+        }
+
+        .output {
+            flex: 1;
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            overflow-y: auto;
+            min-height: 400px;
+            white-space: pre-wrap;
+        }
+
+        .controls {
+            padding: 20px;
+            background: #f5f5f5;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 12px 30px;
+            font-size: 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: bold;
+        }
+
+        .btn-run {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-run:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-compile {
+            background: #48bb78;
+            color: white;
+        }
+
+        .btn-compile:hover {
+            background: #38a169;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(72, 187, 120, 0.4);
+        }
+
+        .btn-clear {
+            background: #f56565;
+            color: white;
+        }
+
+        .btn-clear:hover {
+            background: #e53e3e;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(245, 101, 101, 0.4);
+        }
+
+        .btn-examples {
+            background: #ed8936;
+            color: white;
+        }
+
+        .btn-examples:hover {
+            background: #dd6b20;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(237, 137, 54, 0.4);
+        }
+
+        .success {
+            color: #48bb78;
+        }
+
+        .error {
+            color: #f56565;
+        }
+
+        .info {
+            color: #4299e1;
+        }
+
+        footer {
+            text-align: center;
+            padding: 20px;
+            background: #f5f5f5;
+            color: #666;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🚀 Matter Core</h1>
+            <p class="subtitle">Web Playground - Powered by WebAssembly</p>
+        </header>
+
+        <div class="main-content">
+            <div class="panel">
+                <div class="panel-header">📝 Matter Code</div>
+                <textarea id="code-input" placeholder="Write your Matter code here...">// Welcome to Matter Core Web Playground!
+
+let x = 10
+let y = 20
+let sum = x + y
+
+print "Sum:"
+print sum
+
+fn fibonacci(n) {
+    if n <= 1 {
+        return n
+    }
+    return fibonacci(n - 1) + fibonacci(n - 2)
+}
+
+print "Fibonacci(10):"
+print fibonacci(10)</textarea>
+            </div>
+
+            <div class="panel">
+                <div class="panel-header">📊 Output</div>
+                <div id="output" class="output">Ready to execute Matter code...</div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button class="btn-run" onclick="runCode()">▶️ Run</button>
+            <button class="btn-compile" onclick="compileCode()">🔧 Compile</button>
+            <button class="btn-clear" onclick="clearOutput()">🗑️ Clear</button>
+            <button class="btn-examples" onclick="loadExample()">📚 Examples</button>
+        </div>
+
+        <footer>
+            <p>Matter Core v0.8.0 | Built with ❤️ and WebAssembly</p>
+        </footer>
+    </div>
+
+    <script type="module">
+        import init, { MatterWasm } from './pkg/matter_wasm.js';
+
+        let runtime;
+
+        async function initWasm() {
+            await init();
+            runtime = new MatterWasm();
+            console.log('Matter WASM initialized!');
+            appendOutput('✅ Matter Core WASM loaded successfully!\n', 'success');
+        }
+
+        function appendOutput(text, className = '') {
+            const output = document.getElementById('output');
+            const span = document.createElement('span');
+            span.textContent = text;
+            if (className) {
+                span.className = className;
+            }
+            output.appendChild(span);
+            output.scrollTop = output.scrollHeight;
+        }
+
+        function clearOutputElement() {
+            document.getElementById('output').innerHTML = '';
+        }
+
+        window.runCode = function() {
+            const code = document.getElementById('code-input').value;
+            clearOutputElement();
+            appendOutput('🚀 Executing Matter code...\n\n', 'info');
+
+            try {
+                const result = runtime.execute(code);
+                
+                if (result.success) {
+                    appendOutput('✅ Execution successful!\n\n', 'success');
+                    if (result.output) {
+                        appendOutput('Output:\n', 'info');
+                        appendOutput(result.output + '\n');
+                    }
+                } else {
+                    appendOutput('❌ Execution failed!\n\n', 'error');
+                    appendOutput('Error:\n', 'error');
+                    appendOutput(result.error + '\n', 'error');
+                }
+            } catch (e) {
+                appendOutput('❌ Fatal error!\n\n', 'error');
+                appendOutput(e.toString() + '\n', 'error');
+            }
+        };
+
+        window.compileCode = function() {
+            const code = document.getElementById('code-input').value;
+            clearOutputElement();
+            appendOutput('🔧 Compiling Matter code...\n\n', 'info');
+
+            try {
+                const result = runtime.compile(code);
+                
+                if (result.success) {
+                    appendOutput('✅ Compilation successful!\n\n', 'success');
+                    appendOutput('Bytecode:\n', 'info');
+                    appendOutput(result.output + '\n');
+                } else {
+                    appendOutput('❌ Compilation failed!\n\n', 'error');
+                    appendOutput('Error:\n', 'error');
+                    appendOutput(result.error + '\n', 'error');
+                }
+            } catch (e) {
+                appendOutput('❌ Fatal error!\n\n', 'error');
+                appendOutput(e.toString() + '\n', 'error');
+            }
+        };
+
+        window.clearOutput = function() {
+            clearOutputElement();
+            appendOutput('Output cleared.\n', 'info');
+        };
+
+        window.loadExample = function() {
+            const examples = [
+                {
+                    name: "Hello World",
+                    code: `// Hello World Example
+let message = "Hello, Matter!"
+print message`
+                },
+                {
+                    name: "Fibonacci",
+                    code: `// Fibonacci Example
+fn fibonacci(n) {
+    if n <= 1 {
+        return n
+    }
+    return fibonacci(n - 1) + fibonacci(n - 2)
+}
+
+let result = fibonacci(10)
+print "Fibonacci(10):"
+print result`
+                },
+                {
+                    name: "Factorial",
+                    code: `// Factorial Example
+fn factorial(n) {
+    if n <= 1 {
+        return 1
+    }
+    return n * factorial(n - 1)
+}
+
+let result = factorial(10)
+print "Factorial(10):"
+print result`
+                },
+                {
+                    name: "Loops",
+                    code: `// Loop Example
+let sum = 0
+let i = 1
+
+while i <= 10 {
+    set sum = sum + i
+    set i = i + 1
+}
+
+print "Sum of 1 to 10:"
+print sum`
+                }
+            ];
+
+            const example = examples[Math.floor(Math.random() * examples.length)];
+            document.getElementById('code-input').value = example.code;
+            clearOutputElement();
+            appendOutput(`📚 Loaded example: ${example.name}\n`, 'info');
+        };
+
+        // Initialize on page load
+        initWasm();
+    </script>
+</body>
+</html>

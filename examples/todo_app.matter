@@ -1,0 +1,63 @@
+# Todo App - Demonstração de aplicação completa com estado
+
+print "=== Matter Todo App ==="
+print ""
+
+# Funções de gerenciamento
+fn add_todo(title) {
+    print "Added todo:"
+    print title
+}
+
+fn mark_done(id) {
+    print "Todo marked as done:"
+    print id
+}
+
+fn list_todos() {
+    print "Listing todos..."
+    let has_todos = store.has("last_todo")
+    print "Has todos:"
+    print has_todos
+}
+
+# Event handlers
+on boot {
+    print "[BOOT] Todo app initialized"
+    agent.say("Welcome to Matter Todo App!")
+    store.set("app_version", "1.0.0")
+}
+
+on add_task {
+    print "[ADD] New task added"
+    add_todo("Sample task")
+    agent.say("Task created successfully!")
+}
+
+on complete_task {
+    print "[COMPLETE] Task marked as done"
+    mark_done(1)
+}
+
+on list_tasks {
+    print "[LIST] Listing all tasks"
+    list_todos()
+}
+
+# Demonstração
+print "Commands available:"
+print "  matter emit todo_app.matter add_task"
+print "  matter emit todo_app.matter complete_task"
+print "  matter emit todo_app.matter list_tasks"
+print ""
+
+# Adicionar alguns todos de exemplo
+add_todo("Learn Matter Core")
+add_todo("Build an app")
+add_todo("Deploy to production")
+
+print ""
+print "Sample todos created!"
+print ""
+
+print "Todo app ready!"

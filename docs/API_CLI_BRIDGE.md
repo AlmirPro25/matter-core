@@ -88,6 +88,52 @@ Response:
 {"ok":true,"name":"matter-cli","version":"0.1.0","bytecode":"MBC1","stdin":true,"json_commands":["capabilities-json","package-json","project-deps-json","project-check-json","project-verify-json","project-run-json","project-imports-json","project-lock-json","project-fingerprint-json","project-source-json","project-compile-json","project-build-json","project-run-build-json","project-emit-build-json","eval-json","tokens-json","imports-json","check-json","run-json","emit-json","compile-json","inspect-json","run-bytecode-json","emit-bytecode-json"],"source_commands":["run","eval","emit","check","compile"],"bytecode_commands":["run-bytecode","emit-bytecode","inspect"],"language_features":["variables","functions","recursion","if","while","loop","for","break","continue","events","lists","maps","structs","backend_calls","imports","stdlib","persistence","network","concurrency","packages"]}
 ```
 
+## CI Decision Contract
+
+Matter CLI now exposes a dedicated CI decision contract for stable automation around
+`ciDecision`, `ciDecisionReason`, and `ciDecisionCode`.
+
+### Catalog endpoint
+
+```powershell
+.\target\release\matter-cli.exe tool-ci-catalog-json
+```
+
+Returns:
+- `catalog` / `version`
+- `catalog_hash`
+- `items` (reason -> code)
+- `reason_metadata` (`deprecation`, `replacement_reason`, `since_version`, `last_updated`)
+
+### Verify endpoint
+
+```powershell
+.\target\release\matter-cli.exe tool-ci-verify-json strict_degraded 150
+```
+
+Returns:
+- `ok`
+- `reason`
+- `inputCode`
+- `expectedCode`
+- `match`
+
+### Contract bundle endpoint
+
+```powershell
+.\target\release\matter-cli.exe tool-ci-contract-json
+```
+
+Returns a single bundle with:
+- catalog and hash
+- compatibility matrix
+- integration guidance for CI gates
+
+Recommended CI flow:
+1. Fetch `tool-ci-contract-json` once and pin `catalog_hash`.
+2. Parse `tool-pipeline-demo-json` output (`ciDecision`, `ciDecisionReason`, `ciDecisionCode`).
+3. Gate by `ciDecision` and alert on unexpected reason/code drift.
+
 ## Local imports
 
 Matter files can import other local Matter files:

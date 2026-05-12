@@ -1,0 +1,137 @@
+# Uber Real Prod - Orchestrator Simulation
+# Simula operacao por ciclos: fila, despacho, SLA e rebalanco.
+
+fn abs_i(x) {
+    if x < 0 {
+        return 0 - x
+    }
+    return x
+}
+
+fn dist(a_lat, a_lng, b_lat, b_lng) {
+    return abs_i(a_lat - b_lat) + abs_i(a_lng - b_lng)
+}
+
+fn choose_idx(drivers, o_lat, o_lng) {
+    let best_idx = 0
+    let best = 999999
+    let i = 0
+    while i < drivers.len() {
+        let d = drivers[i]
+        if d["online"] {
+            if d["active"] == 0 {
+                let score = dist(d["lat"], d["lng"], o_lat, o_lng)
+                if score < best {
+                    set best = score
+                    set best_idx = i
+                }
+            }
+        }
+        set i = i + 1
+    }
+    return best_idx
+}
+
+fn step_towards(v, target) {
+    if v < target {
+        return v + 1
+    }
+    if v > target {
+        return v - 1
+    }
+    return v
+}
+
+let drivers = []
+drivers.push({ "id": 1, "online": true, "active": 0, "lat": 5, "lng": 5 })
+drivers.push({ "id": 2, "online": true, "active": 0, "lat": 18, "lng": 18 })
+drivers.push({ "id": 3, "online": true, "active": 0, "lat": 12, "lng": 6 })
+
+let queue = []
+queue.push({ "id": 1, "o_lat": 13, "o_lng": 10, "km": 12, "wait": 0 })
+queue.push({ "id": 2, "o_lat": 11, "o_lng": 9, "km": 7, "wait": 0 })
+queue.push({ "id": 3, "o_lat": 25, "o_lng": 23, "km": 9, "wait": 0 })
+queue.push({ "id": 4, "o_lat": 10, "o_lng": 11, "km": 3, "wait": 0 })
+
+let rides = []
+let completed = 0
+let sla_breach = 0
+let revenue = 0
+let ticks = 0
+
+while ticks < 4 {
+    # Incrementa espera da fila e conta violacao SLA (>2 ciclos)
+    let q = 0
+    while q < queue.len() {
+        let r = queue[q]
+        set r["wait"] = r["wait"] + 1
+        if r["wait"] > 2 {
+            set sla_breach = sla_breach + 1
+        }
+        set queue[q] = r
+        set q = q + 1
+    }
+
+    # Despacha ate 2 corridas por ciclo
+    let dispatch_count = 0
+    while dispatch_count < 2 {
+        if queue.len() == 0 {
+            break
+        }
+
+        let req = queue[0]
+        let idx = choose_idx(drivers, req["o_lat"], req["o_lng"])
+        let d = drivers[idx]
+
+        set d["active"] = 1
+        set d["lat"] = req["o_lat"]
+        set d["lng"] = req["o_lng"]
+        set drivers[idx] = d
+
+        let fare = 8 + (req["km"] * 4)
+        rides.push({ "req_id": req["id"], "driver_id": d["id"], "fare": fare, "status": "completed" })
+        set completed = completed + 1
+        set revenue = revenue + fare
+
+        # libera motorista no mesmo ciclo (simulacao simplificada)
+        set d["active"] = 0
+        set drivers[idx] = d
+
+        # remove primeiro item da fila
+        let new_queue = []
+        let k = 1
+        while k < queue.len() {
+            new_queue.push(queue[k])
+            set k = k + 1
+        }
+        set queue = new_queue
+        set dispatch_count = dispatch_count + 1
+    }
+
+    # Rebalanco para hotspot central
+    let i = 0
+    while i < drivers.len() {
+        let current = drivers[i]
+        if current["active"] == 0 {
+            set current["lat"] = step_towards(current["lat"], 12)
+            set current["lng"] = step_towards(current["lng"], 10)
+            set drivers[i] = current
+        }
+        set i = i + 1
+    }
+
+    set ticks = ticks + 1
+}
+
+print "=== ORCHESTRATOR SIM ==="
+print "TICKS"
+print ticks
+print "COMPLETED"
+print completed
+print "QUEUE_LEFT"
+print queue.len()
+print "SLA_BREACH"
+print sla_breach
+print "REVENUE"
+print revenue
+print "========================"

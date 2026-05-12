@@ -1,0 +1,152 @@
+# Demonstração da Standard Library expandida
+# Mostra todos os backends: math, string, list, time, random, json
+
+print "=== MATH BACKEND ==="
+
+let a = 10
+let b = 3
+
+print "abs(-5) = "
+print math.abs(-5)
+
+print "min(10, 3) = "
+print math.min(a, b)
+
+print "max(10, 3) = "
+print math.max(a, b)
+
+print "pow(2, 8) = "
+print math.pow(2, 8)
+
+print "sqrt(16) = "
+print math.sqrt(16)
+
+print "mod(10, 3) = "
+print math.mod(a, b)
+
+print "clamp(15, 0, 10) = "
+print math.clamp(15, 0, 10)
+
+print ""
+print "=== STRING BACKEND ==="
+
+let text = "Hello World"
+
+print "len('Hello World') = "
+print string.len(text)
+
+print "upper('Hello World') = "
+print string.upper(text)
+
+print "lower('Hello World') = "
+print string.lower(text)
+
+print "trim('  spaces  ') = "
+print string.trim("  spaces  ")
+
+print "contains('Hello World', 'World') = "
+print string.contains(text, "World")
+
+print "replace('Hello World', 'World', 'Matter') = "
+print string.replace(text, "World", "Matter")
+
+print ""
+print "=== LIST BACKEND ==="
+
+let numbers = [3, 1, 4, 1, 5, 9, 2, 6]
+
+print "Original list: [3, 1, 4, 1, 5, 9, 2, 6]"
+
+print "sort() = "
+print list.sort(numbers)
+
+print "reverse() = "
+print list.reverse(numbers)
+
+print "sum() = "
+print list.sum(numbers)
+
+print "min() = "
+print list.min(numbers)
+
+print "max() = "
+print list.max(numbers)
+
+print ""
+print "=== TIME BACKEND ==="
+
+print "Current timestamp (ms): "
+let start = time.now()
+print start
+
+print "Sleeping 100ms..."
+time.sleep(100)
+
+let end = time.now()
+print "Elapsed time: "
+print end - start
+print "ms"
+
+print ""
+print "=== RANDOM BACKEND ==="
+
+print "Random int [0, 100): "
+print random.int(100)
+
+print "Random int [10, 20): "
+print random.int(10, 20)
+
+print "Random bool: "
+print random.bool()
+
+let choices = ["apple", "banana", "cherry"]
+print "Random choice from ['apple', 'banana', 'cherry']: "
+print random.choice(choices)
+
+print ""
+print "=== JSON BACKEND ==="
+
+let data = {
+    name: "Matter",
+    version: 1,
+    active: true
+}
+
+print "Original map:"
+print data
+
+print "JSON stringify:"
+let json_str = json.stringify(data)
+print json_str
+
+print "JSON parse:"
+let parsed = json.parse(json_str)
+print parsed
+
+print ""
+print "=== COMBINED EXAMPLE ==="
+
+# Criar lista de números aleatórios
+let random_numbers = []
+let i = 0
+while i < 5 {
+    let num = random.int(1, 100)
+    set random_numbers = list.push(random_numbers, num)
+    set i = i + 1
+}
+
+print "Random numbers: "
+print random_numbers
+
+print "Sorted: "
+print list.sort(random_numbers)
+
+print "Sum: "
+print list.sum(random_numbers)
+
+print "Average: "
+let avg = list.sum(random_numbers) / list.len(random_numbers)
+print avg
+
+print ""
+print "=== DONE ==="

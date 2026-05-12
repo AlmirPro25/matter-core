@@ -1,0 +1,31 @@
+feat: Add 6 showcase examples demonstrating real-world use cases
+
+Sprint 5: Showcase Examples
+
+Novos Exemplos:
+- calculator.matter: Operações matemáticas e funções
+- fibonacci.matter: Implementações recursiva e iterativa
+- data_processing.matter: Manipulação de listas e estatísticas
+- event_driven_app.matter: Demonstração do sistema de eventos
+- backend_integration.matter: Showcase de todos os 10 backends
+- todo_app.matter: Aplicação todo completa
+
+Documentação:
+- examples/README.md: Guia completo com 31 exemplos
+- SPRINT_5_SHOWCASE_EXAMPLES.md: Documentação do sprint
+
+Bug Fixes:
+- Corrigido erro de compilação no CLI (project_run_build_json)
+
+Testes:
+- Todos os 28 testes passando (100%)
+- Todos os novos exemplos testados manualmente
+- Zero regressões
+
+Impacto:
+- 31 exemplos totais (25 existentes + 6 novos)
+- 100% de cobertura dos backends
+- Documentação completa
+- Casos de uso reais demonstrados
+
+Versão: v0.2.0 → v0.2.1

@@ -1,0 +1,79 @@
+import "modules/domain.matter"
+import "modules/matching.matter"
+import "modules/pricing.matter"
+import "modules/lifecycle.matter"
+import "modules/dispatch.matter"
+import "modules/analytics.matter"
+
+let drivers = []
+let rides = []
+let next_ride_id = 1
+
+# Seed de motoristas
+drivers.push(make_driver(1, "Carlos", "Corolla", 10, 10, 49))
+drivers.push(make_driver(2, "Ana", "Civic", 14, 12, 47))
+drivers.push(make_driver(3, "Bruno", "Onix", 20, 18, 45))
+
+# Rider e contexto da corrida
+let rider = make_rider(101, "Joao", 1, 95)
+let rider_lat = 12
+let rider_lng = 11
+let destination_lat = 25
+let destination_lng = 20
+let distance_km = 16
+
+let demand = 28
+let supply = 20
+let surge = surge_multiplier(demand, supply)
+let fare = estimate_fare(distance_km, surge)
+
+let chosen_idx = choose_driver_index(drivers, rider_lat, rider_lng)
+let chosen_driver = drivers[chosen_idx]
+
+let ride = make_ride(
+    next_ride_id,
+    rider["id"],
+    rider_lat,
+    rider_lng,
+    destination_lat,
+    destination_lng,
+    distance_km,
+    surge,
+    chosen_driver["id"],
+    fare
+)
+set next_ride_id = next_ride_id + 1
+
+let busy_driver = mark_driver_busy(chosen_driver, ride["id"])
+set drivers[chosen_idx] = busy_driver
+let dispatch_result = create_dispatch_result(ride, busy_driver)
+
+let started_ride = start_ride(dispatch_result["ride"])
+let completed_ride = complete_ride(started_ride)
+rides.push(completed_ride)
+
+let released_driver = mark_driver_free(drivers[chosen_idx])
+set drivers[chosen_idx] = released_driver
+
+let metrics = platform_metrics(drivers, rides)
+
+print "=== UBER REAL ARCHITECTURE ==="
+print "Rider"
+print rider["name"]
+print "Driver"
+print busy_driver["name"]
+print "Car"
+print busy_driver["car"]
+print "Surge"
+print surge
+print "Fare"
+print fare
+print "Ride Status"
+print completed_ride["status"]
+print "Revenue"
+print metrics["revenue"]
+print "Drivers Online"
+print metrics["drivers_online"]
+print "Rides Completed"
+print metrics["rides_completed"]
+print "=============================="

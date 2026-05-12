@@ -1,0 +1,42 @@
+# Channel Communication Example
+
+## Criar canal
+let ch = channel()
+
+## Producer task
+spawn fn() {
+    print "Producer: Starting..."
+    
+    let i = 0
+    while i < 10 {
+        print "Producer: Sending " + string.concat("", i)
+        send(ch, i)
+        time.sleep(50)
+        set i = i + 1
+    }
+    
+    print "Producer: Closing channel"
+    close(ch)
+}
+
+## Consumer task
+spawn fn() {
+    print "Consumer: Starting..."
+    
+    loop {
+        let value = recv(ch)
+        
+        if value == unit {
+            print "Consumer: Channel closed"
+            break
+        }
+        
+        print "Consumer: Received " + string.concat("", value)
+    }
+    
+    print "Consumer: Done"
+}
+
+## Esperar um pouco para tasks completarem
+time.sleep(1000)
+print "Main: All done"

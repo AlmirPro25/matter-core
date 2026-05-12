@@ -1,0 +1,108 @@
+# Exemplo de aplicação visual interativa
+# Demonstra integração completa: estado + eventos + visual
+
+# Estado da aplicação
+let screen = "menu"
+let score = 0
+let energy = 100
+
+# Inicialização
+on boot {
+    # Criar superfície principal
+    visual.surface("main", 1080, 1920)
+    
+    # Criar regiões da interface
+    visual.region("header", 0, 0, 1080, 100)
+    visual.region("menu_start", 100, 300, 880, 120)
+    visual.region("menu_settings", 100, 450, 880, 120)
+    visual.region("menu_exit", 100, 600, 880, 120)
+    visual.region("score_display", 50, 50, 300, 80)
+    visual.region("energy_bar", 400, 50, 600, 40)
+    
+    # Configurar propriedades visuais
+    visual.set("header", "material", "glass")
+    visual.set("menu_start", "behavior", "pulse")
+    visual.set("menu_start", "energy", 100)
+    visual.set("energy_bar", "material", "energy")
+    
+    # Animar entrada
+    visual.pulse("header")
+    visual.pulse("menu_start")
+    
+    print "Interface visual inicializada"
+    agent.say("Bem-vindo ao Matter Visual!")
+}
+
+# Interação com menu
+on tap {
+    if screen == "menu" {
+        # Animar botão tocado
+        visual.pulse("menu_start")
+        
+        # Atualizar estado
+        set screen = "game"
+        set score = 0
+        set energy = 100
+        
+        # Feedback visual
+        visual.set("menu_start", "energy", 80)
+        
+        print "Jogo iniciado"
+        agent.say("Iniciando jogo...")
+    }
+}
+
+# Atualização de jogo
+on update {
+    if screen == "game" {
+        # Atualizar pontuação
+        set score = score + 10
+        
+        # Consumir energia
+        set energy = energy - 1
+        
+        # Atualizar visual
+        visual.set("energy_bar", "energy", energy)
+        
+        # Verificar game over
+        if energy <= 0 {
+            set screen = "gameover"
+            visual.pulse("score_display")
+            agent.say("Game Over!")
+            print "Game Over - Score final: "
+            print score
+        }
+    }
+}
+
+# Pausa
+on pause {
+    if screen == "game" {
+        set screen = "paused"
+        visual.set("energy_bar", "material", "frozen")
+        print "Jogo pausado"
+    }
+}
+
+# Retomar
+on resume {
+    if screen == "paused" {
+        set screen = "game"
+        visual.set("energy_bar", "material", "energy")
+        visual.pulse("energy_bar")
+        print "Jogo retomado"
+    }
+}
+
+# Encerramento
+on shutdown {
+    # Salvar estado
+    store.set("last_score", score)
+    store.set("last_energy", energy)
+    
+    # Feedback visual
+    visual.pulse("header")
+    
+    print "Estado salvo"
+    agent.say("Até logo!")
+}

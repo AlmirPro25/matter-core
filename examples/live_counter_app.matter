@@ -1,0 +1,11 @@
+app "Matter Live Counter" {
+    screen "main" {
+        counter "clicks"
+        button "theme.apply"
+        button "counter.reset"
+
+        canvas on click {
+            clicks = clicks + 1
+        }
+    }
+}

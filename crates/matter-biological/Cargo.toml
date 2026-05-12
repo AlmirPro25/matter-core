@@ -1,0 +1,21 @@
+[package]
+name = "matter-biological"
+version = "0.1.0"
+edition = "2021"
+authors = ["Matter Team <team@matter-lang.org>"]
+description = "Biological computing interface for Matter"
+license = "MIT"
+repository = "https://github.com/matter-lang/matter"
+
+[dependencies]
+matter-core = { path = "../.." }
+matter-types = { path = "../matter-types" }
+bio = "1.4"
+petgraph = "0.6"
+rayon = "1.7"
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "1.0"
+
+[dev-dependencies]
+criterion = "0.5"
+proptest = "1.0"

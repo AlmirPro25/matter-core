@@ -1,7 +1,14 @@
 # Rust
 /target
+target_*/
+tmp_*/
 **/*.rs.bk
 *.pdb
+*.exe
+*.obj
+*.dll
+*.lib
+*.exp
 
 # IDE
 .vscode/
@@ -17,3 +24,9 @@ Thumbs.db
 # Matter bytecode
 *.mbc
 .matter_store.json
+.matter_live_events.json
+
+# Local tools and generated metadata
+.kiro/
+.tools/
+.rustup_local/

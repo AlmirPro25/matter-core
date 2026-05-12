@@ -1,0 +1,19 @@
+[package]
+name = "matter-hotreload"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+matter-lexer.workspace = true
+matter-parser.workspace = true
+matter-ast.workspace = true
+matter-bytecode.workspace = true
+matter-vm.workspace = true
+matter-runtime.workspace = true
+notify = "6.1"
+crossbeam-channel = "0.5"
+
+[dev-dependencies]
+tempfile = "3"

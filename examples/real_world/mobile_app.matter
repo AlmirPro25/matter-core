@@ -1,0 +1,467 @@
+// ============================================
+// MATTER IN ACTION: MOBILE APP
+// Real-world mobile application with Matter
+// ============================================
+
+// ============================================
+// 1. TODO APP
+// ============================================
+
+struct Todo {
+    id: int,
+    title: string,
+    completed: bool,
+    created_at: int
+}
+
+let todos = [];
+let next_id = 1;
+
+// Add todo
+fn add_todo(title: string) -> unit {
+    let todo = Todo {
+        id: next_id,
+        title: title,
+        completed: false,
+        created_at: time.now()
+    };
+    
+    todos.push(todo);
+    next_id = next_id + 1;
+    
+    // Save to database
+    db.query("INSERT INTO todos VALUES (?, ?, ?, ?)",
+        todo.id, todo.title, todo.completed, todo.created_at);
+    
+    // Update UI
+    visual.pulse("todo_list");
+    
+    print "Todo added: " + title;
+    // Efeitos inferidos: io, db, time
+}
+
+// Toggle todo
+fn toggle_todo(id: int) -> unit {
+    for todo in todos {
+        if todo.id == id {
+            todo.completed = !todo.completed;
+            
+            // Update database
+            db.query("UPDATE todos SET completed = ? WHERE id = ?",
+                todo.completed, id);
+            
+            // Update UI
+            visual.pulse("todo_" + id);
+            
+            print "Todo toggled: " + id;
+            break;
+        }
+    }
+    // Efeitos inferidos: io, db
+}
+
+// Delete todo
+fn delete_todo(id: int) -> unit {
+    todos = todos.filter(fn(todo) { return todo.id != id; });
+    
+    // Delete from database
+    db.query("DELETE FROM todos WHERE id = ?", id);
+    
+    // Update UI
+    visual.pulse("todo_list");
+    
+    print "Todo deleted: " + id;
+    // Efeitos inferidos: io, db
+}
+
+// ============================================
+// 2. SOCIAL MEDIA APP
+// ============================================
+
+struct Post {
+    id: int,
+    user_id: int,
+    content: string,
+    likes: int,
+    created_at: int
+}
+
+// Load feed
+fn load_feed() -> [Post] {
+    print "Loading feed...";
+    
+    // Get posts from API
+    let response = net.get("https://api.social.com/feed");
+    let posts = json.parse(response.body);
+    
+    // Cache locally
+    for post in posts {
+        db.query("INSERT OR REPLACE INTO posts VALUES (?, ?, ?, ?, ?)",
+            post.id, post.user_id, post.content, post.likes, post.created_at);
+    }
+    
+    // Update UI
+    visual.pulse("feed");
+    
+    print "Feed loaded: " + posts.length() + " posts";
+    
+    return posts;
+    // Efeitos inferidos: io, network, db
+}
+
+// Like post
+fn like_post(post_id: int) -> unit {
+    print "Liking post: " + post_id;
+    
+    // Optimistic update
+    visual.pulse("post_" + post_id);
+    
+    // Send to API
+    let response = net.post("https://api.social.com/posts/" + post_id + "/like", {});
+    
+    if response.status == 200 {
+        // Update local database
+        db.query("UPDATE posts SET likes = likes + 1 WHERE id = ?", post_id);
+        print "Post liked!";
+    } else {
+        // Revert UI
+        visual.pulse("post_" + post_id);
+        print "Failed to like post";
+    }
+    // Efeitos inferidos: io, network, db
+}
+
+// Create post
+fn create_post(content: string) -> unit {
+    print "Creating post...";
+    
+    // Send to API
+    let response = net.post("https://api.social.com/posts", {
+        content: content,
+        created_at: time.now()
+    });
+    
+    if response.status == 201 {
+        let post = json.parse(response.body);
+        
+        // Add to local database
+        db.query("INSERT INTO posts VALUES (?, ?, ?, ?, ?)",
+            post.id, post.user_id, post.content, post.likes, post.created_at);
+        
+        // Reload feed
+        load_feed();
+        
+        print "Post created!";
+    } else {
+        print "Failed to create post";
+    }
+    // Efeitos inferidos: io, network, db, time
+}
+
+// ============================================
+// 3. E-COMMERCE APP
+// ============================================
+
+struct Product {
+    id: int,
+    name: string,
+    price: float,
+    image: string
+}
+
+struct CartItem {
+    product: Product,
+    quantity: int
+}
+
+let cart = [];
+
+// Add to cart
+fn add_to_cart(product: Product, quantity: int) -> unit {
+    print "Adding to cart: " + product.name;
+    
+    // Check if already in cart
+    let found = false;
+    for item in cart {
+        if item.product.id == product.id {
+            item.quantity = item.quantity + quantity;
+            found = true;
+            break;
+        }
+    }
+    
+    if !found {
+        cart.push(CartItem {
+            product: product,
+            quantity: quantity
+        });
+    }
+    
+    // Save to local storage
+    db.query("INSERT OR REPLACE INTO cart VALUES (?, ?)",
+        product.id, quantity);
+    
+    // Update UI
+    visual.pulse("cart_badge");
+    
+    print "Cart updated!";
+    // Efeitos inferidos: io, db
+}
+
+// Checkout
+fn checkout() -> unit {
+    print "Processing checkout...";
+    
+    // Calculate total
+    let total = 0.0;
+    for item in cart {
+        total = total + (item.product.price * item.quantity);
+    }
+    
+    print "Total: $" + total;
+    
+    // Process payment
+    let payment = net.post("https://payment.com/charge", {
+        amount: total,
+        items: cart
+    });
+    
+    if payment.status == 200 {
+        print "Payment successful!";
+        
+        // Clear cart
+        cart = [];
+        db.query("DELETE FROM cart");
+        
+        // Show success
+        visual.pulse("checkout_success");
+    } else {
+        print "Payment failed!";
+        visual.pulse("checkout_error");
+    }
+    // Efeitos inferidos: io, network, db
+}
+
+// ============================================
+// 4. WEATHER APP
+// ============================================
+
+struct Weather {
+    temperature: float,
+    condition: string,
+    humidity: int,
+    wind_speed: float
+}
+
+// Get weather
+fn get_weather(city: string) -> Weather {
+    print "Getting weather for: " + city;
+    
+    // Check cache (5 minutes)
+    let cached = db.query("SELECT * FROM weather_cache WHERE city = ? AND updated_at > ?",
+        city, time.now() - 300000);
+    
+    if cached != null {
+        print "Using cached weather";
+        return Weather {
+            temperature: cached.temperature,
+            condition: cached.condition,
+            humidity: cached.humidity,
+            wind_speed: cached.wind_speed
+        };
+    }
+    
+    // Fetch from API
+    let response = net.get("https://api.weather.com/current?city=" + city);
+    let data = json.parse(response.body);
+    
+    // Cache result
+    db.query("INSERT OR REPLACE INTO weather_cache VALUES (?, ?, ?, ?, ?, ?)",
+        city, data.temperature, data.condition, data.humidity, data.wind_speed, time.now());
+    
+    // Update UI
+    visual.pulse("weather_display");
+    
+    print "Weather updated!";
+    
+    return Weather {
+        temperature: data.temperature,
+        condition: data.condition,
+        humidity: data.humidity,
+        wind_speed: data.wind_speed
+    };
+    // Efeitos inferidos: io, network, db, time
+}
+
+// ============================================
+// 5. CHAT APP
+// ============================================
+
+struct Message {
+    id: int,
+    sender_id: int,
+    content: string,
+    timestamp: int
+}
+
+let messages = [];
+
+// Send message
+fn send_message(content: string) -> unit {
+    print "Sending message...";
+    
+    // Create message
+    let message = Message {
+        id: random.int(1000, 9999),
+        sender_id: current_user_id,
+        content: content,
+        timestamp: time.now()
+    };
+    
+    // Add to local list
+    messages.push(message);
+    
+    // Update UI immediately (optimistic)
+    visual.pulse("chat_messages");
+    
+    // Send to server
+    websocket.send(json.stringify(message));
+    
+    // Save to local database
+    db.query("INSERT INTO messages VALUES (?, ?, ?, ?)",
+        message.id, message.sender_id, message.content, message.timestamp);
+    
+    print "Message sent!";
+    // Efeitos inferidos: io, random, time, network, db
+}
+
+// Receive message
+fn on_message_received(data: string) -> unit {
+    let message = json.parse(data);
+    
+    print "Message received from: " + message.sender_id;
+    
+    // Add to list
+    messages.push(message);
+    
+    // Save to database
+    db.query("INSERT INTO messages VALUES (?, ?, ?, ?)",
+        message.id, message.sender_id, message.content, message.timestamp);
+    
+    // Update UI
+    visual.pulse("chat_messages");
+    
+    // Show notification
+    visual.pulse("notification");
+    // Efeitos inferidos: io, db
+}
+
+// ============================================
+// 6. FITNESS TRACKER
+// ============================================
+
+struct Workout {
+    id: int,
+    type: string,
+    duration: int,
+    calories: int,
+    date: int
+}
+
+// Log workout
+fn log_workout(type: string, duration: int) -> unit {
+    print "Logging workout: " + type;
+    
+    // Calculate calories (simplified)
+    let calories = duration * 5;
+    
+    let workout = Workout {
+        id: random.int(1000, 9999),
+        type: type,
+        duration: duration,
+        calories: calories,
+        date: time.now()
+    };
+    
+    // Save locally
+    db.query("INSERT INTO workouts VALUES (?, ?, ?, ?, ?)",
+        workout.id, workout.type, workout.duration, workout.calories, workout.date);
+    
+    // Sync to cloud
+    net.post("https://api.fitness.com/workouts", workout);
+    
+    // Update UI
+    visual.pulse("workout_stats");
+    
+    print "Workout logged!";
+    // Efeitos inferidos: io, random, time, db, network
+}
+
+// Get stats
+fn get_stats() -> map {
+    print "Getting workout stats...";
+    
+    let today = time.now();
+    let week_ago = today - (7 * 86400000);
+    
+    let workouts = db.query("SELECT * FROM workouts WHERE date > ?", week_ago);
+    
+    let total_duration = 0;
+    let total_calories = 0;
+    
+    for workout in workouts {
+        total_duration = total_duration + workout.duration;
+        total_calories = total_calories + workout.calories;
+    }
+    
+    return {
+        workouts: workouts.length(),
+        duration: total_duration,
+        calories: total_calories
+    };
+    // Efeitos inferidos: io, time, db
+}
+
+// ============================================
+// 7. MAIN APP
+// ============================================
+
+fn main() -> unit {
+    print "=== MATTER MOBILE APP ===";
+    print "";
+    
+    // Initialize
+    visual.run("mobile_app");
+    visual.surface("main", 1080, 1920);
+    
+    // Setup event handlers
+    on tap("add_todo_button") {
+        let title = visual.get_input("todo_input");
+        add_todo(title);
+    }
+    
+    on tap("refresh_feed") {
+        load_feed();
+    }
+    
+    on tap("checkout_button") {
+        checkout();
+    }
+    
+    on tap("send_message") {
+        let content = visual.get_input("message_input");
+        send_message(content);
+    }
+    
+    // Connect to websocket
+    websocket.connect("wss://api.social.com/ws", fn(data) {
+        on_message_received(data);
+    });
+    
+    print "App initialized!";
+    
+    // Keep running
+    loop {
+        time.sleep(100);
+    }
+}

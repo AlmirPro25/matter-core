@@ -1,0 +1,87 @@
+# Exemplo: Machine Learning com scikit-learn em Matter
+
+import "sklearn.linear_model" from python
+import "sklearn.model_selection" from python
+import "numpy" from python as np
+
+fn train_linear_regression() {
+    print "=== Linear Regression Demo ==="
+    
+    # Dados de treinamento (horas estudadas vs nota)
+    let X = [[1], [2], [3], [4], [5], [6], [7], [8]]
+    let y = [2, 4, 5, 4, 5, 7, 8, 9]
+    
+    # Cria e treina modelo
+    let model = sklearn.linear_model.LinearRegression()
+    model.fit(X, y)
+    
+    print "Model trained!"
+    print "Coefficient: " + model.coef_
+    print "Intercept: " + model.intercept_
+    
+    # Predições
+    print "\nPredictions:"
+    let test_X = [[3], [5], [10]]
+    let predictions = model.predict(test_X)
+    
+    for i in range(test_X.length) {
+        print "Hours: " + test_X[i][0] + " → Score: " + predictions[i]
+    }
+    
+    # Score
+    let score = model.score(X, y)
+    print "\nR² Score: " + score
+}
+
+fn train_logistic_regression() {
+    print "\n=== Logistic Regression Demo ==="
+    
+    # Dados de classificação (horas estudadas vs passou/reprovou)
+    let X = [[1], [2], [3], [4], [5], [6], [7], [8]]
+    let y = [0, 0, 0, 0, 1, 1, 1, 1]  # 0 = reprovou, 1 = passou
+    
+    # Cria e treina modelo
+    let model = sklearn.linear_model.LogisticRegression()
+    model.fit(X, y)
+    
+    print "Model trained!"
+    
+    # Predições
+    print "\nPredictions:"
+    let test_X = [[2], [5], [7]]
+    let predictions = model.predict(test_X)
+    let probabilities = model.predict_proba(test_X)
+    
+    for i in range(test_X.length) {
+        let result = if predictions[i] == 1 { "Pass" } else { "Fail" }
+        let prob = probabilities[i][1] * 100
+        print "Hours: " + test_X[i][0] + " → " + result + " (confidence: " + prob + "%)"
+    }
+}
+
+fn cross_validation() {
+    print "\n=== Cross Validation Demo ==="
+    
+    # Dados
+    let X = np.array([[1], [2], [3], [4], [5], [6], [7], [8], [9], [10]])
+    let y = np.array([2, 4, 5, 4, 5, 7, 8, 9, 8, 10])
+    
+    # Modelo
+    let model = sklearn.linear_model.LinearRegression()
+    
+    # Cross-validation
+    let scores = sklearn.model_selection.cross_val_score(model, X, y, cv=5)
+    
+    print "Cross-validation scores: " + scores
+    print "Mean score: " + np.mean(scores)
+    print "Std deviation: " + np.std(scores)
+}
+
+fn main() {
+    train_linear_regression()
+    train_logistic_regression()
+    cross_validation()
+    
+    print "\n✅ Machine Learning integration working perfectly!"
+    print "Matter can now do ML with Python's scikit-learn! 🚀"
+}

@@ -9,3 +9,4 @@ matter-bytecode = { workspace = true }
 matter-backend = { workspace = true }
 matter-visual = { workspace = true }
 matter-stdlib = { workspace = true }
+matter-energy = { workspace = true }

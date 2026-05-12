@@ -1,0 +1,59 @@
+# Exemplo: Web Server com Go (Gin Framework)
+
+import "github.com/gin-gonic/gin" from go
+
+fn main() {
+    print "=== Go Gin Web Server Example ==="
+    
+    # Cria router Gin
+    let router = gin.Default()
+    
+    # Rota principal
+    router.GET("/", fn(c) {
+        c.JSON(200, {
+            "message": "Hello from Matter + Go!",
+            "framework": "Gin",
+            "language": "Go",
+            "polyglot": true
+        })
+    })
+    
+    # Rota de API
+    router.GET("/api/users", fn(c) {
+        let users = [
+            {"id": 1, "name": "Alice", "email": "alice@example.com"},
+            {"id": 2, "name": "Bob", "email": "bob@example.com"},
+            {"id": 3, "name": "Charlie", "email": "charlie@example.com"}
+        ]
+        c.JSON(200, users)
+    })
+    
+    # Rota com parâmetro
+    router.GET("/api/users/:id", fn(c) {
+        let id = c.Param("id")
+        c.JSON(200, {
+            "id": id,
+            "name": "User " + id,
+            "message": "User details"
+        })
+    })
+    
+    # Rota POST
+    router.POST("/api/users", fn(c) {
+        let user = c.BindJSON()
+        c.JSON(201, {
+            "message": "User created",
+            "user": user
+        })
+    })
+    
+    # Inicia servidor
+    print "🚀 Server running on http://localhost:8080"
+    print "\nTry:"
+    print "  curl http://localhost:8080/"
+    print "  curl http://localhost:8080/api/users"
+    print "  curl http://localhost:8080/api/users/1"
+    print "  curl -X POST http://localhost:8080/api/users -d '{\"name\":\"Dave\"}'"
+    
+    router.Run(":8080")
+}

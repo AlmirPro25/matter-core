@@ -1,0 +1,120 @@
+# 🐍 JOGO DA COBRINHA EM MATTER 🐍
+# Um jogo de texto simples e divertido!
+
+print "╔════════════════════════════════════════╗"
+print "║   🐍 BEM-VINDO AO JOGO DA COBRINHA 🐍  ║"
+print "╚════════════════════════════════════════╝"
+print ""
+
+# Configurações do jogo
+let largura = 20
+let altura = 10
+let tamanho_cobra = 3
+let posicao_x = 10
+let posicao_y = 5
+let comida_x = 15
+let comida_y = 5
+let pontos = 0
+let direcao = 1
+
+print "Iniciando o jogo..."
+print ""
+
+# Função para desenhar o tabuleiro
+fn desenhar_tabuleiro(cobra_x, cobra_y, comida_x, comida_y, pontos) {
+    print "╔════════════════════════════════════════╗"
+    
+    let y = 0
+    while y < 10 {
+        let linha = "║ "
+        let x = 0
+        while x < 20 {
+            if x == cobra_x {
+                if y == cobra_y {
+                    print "║ 🐍 COBRA AQUI! 🐍                      ║"
+                }
+            }
+            if x == comida_x {
+                if y == comida_y {
+                    print "║ 🍎 COMIDA AQUI! 🍎                     ║"
+                }
+            }
+            set x = x + 1
+        }
+        set y = y + 1
+    }
+    
+    print "╚════════════════════════════════════════╝"
+    return 0
+}
+
+# Função para mostrar status
+fn mostrar_status(pontos, cobra_x, cobra_y) {
+    print ""
+    print "═══════════════════════════════════════════"
+    print "📊 STATUS DO JOGO"
+    print "═══════════════════════════════════════════"
+    print "🏆 Pontos: "
+    print pontos
+    print "📍 Posição X: "
+    print cobra_x
+    print "📍 Posição Y: "
+    print cobra_y
+    print "═══════════════════════════════════════════"
+    print ""
+    return 0
+}
+
+# Simulação do jogo (modo demonstração)
+print "🎮 MODO DEMONSTRAÇÃO - A cobra vai se mover automaticamente!"
+print ""
+
+let frame = 0
+while frame < 15 {
+    print "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    print "FRAME: "
+    print frame
+    print "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    
+    # Mover a cobra para a direita
+    set posicao_x = posicao_x + 1
+    
+    # Verificar se comeu a comida
+    if posicao_x == comida_x {
+        if posicao_y == comida_y {
+            print "🎉 VOCÊ COMEU A COMIDA! +10 PONTOS! 🎉"
+            set pontos = pontos + 10
+            set comida_x = 5
+            set comida_y = 3
+        }
+    }
+    
+    # Verificar colisão com parede
+    if posicao_x >= largura {
+        print "💥 BATEU NA PAREDE! VOLTANDO... 💥"
+        set posicao_x = 0
+    }
+    
+    # Desenhar tabuleiro
+    let resultado = desenhar_tabuleiro(posicao_x, posicao_y, comida_x, comida_y, pontos)
+    
+    # Mostrar status
+    let status = mostrar_status(pontos, posicao_x, posicao_y)
+    
+    set frame = frame + 1
+}
+
+print ""
+print "╔════════════════════════════════════════╗"
+print "║         🏁 FIM DO JOGO! 🏁             ║"
+print "╚════════════════════════════════════════╝"
+print ""
+print "📊 PONTUAÇÃO FINAL: "
+print pontos
+print ""
+print "Obrigado por jogar! 🐍✨"
+print ""
+print "💡 DICA: Este é um jogo de demonstração."
+print "   Em uma versão futura, você poderá"
+print "   controlar a cobra com o teclado!"
+print ""

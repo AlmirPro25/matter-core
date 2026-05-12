@@ -1,0 +1,11 @@
+[package]
+name = "matter-bridge-rust"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+matter-backend = { path = "../matter-backend" }
+matter-polyglot = { path = "../matter-polyglot" }
+libloading = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

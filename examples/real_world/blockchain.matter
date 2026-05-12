@@ -1,0 +1,548 @@
+// ============================================
+// MATTER IN ACTION: BLOCKCHAIN & CRYPTO
+// Real-world blockchain with Matter
+// ============================================
+
+// ============================================
+// 1. SIMPLE BLOCKCHAIN
+// ============================================
+
+struct Block {
+    index: int,
+    timestamp: int,
+    data: string,
+    previous_hash: string,
+    hash: string,
+    nonce: int
+}
+
+let blockchain = [];
+let difficulty = 4;  // Number of leading zeros
+
+// Create genesis block
+fn create_genesis_block() -> Block {
+    let block = Block {
+        index: 0,
+        timestamp: time.now(),
+        data: "Genesis Block",
+        previous_hash: "0",
+        hash: "",
+        nonce: 0
+    };
+    
+    block.hash = calculate_hash(block);
+    
+    return block;
+    // Efeitos inferidos: time
+}
+
+// Calculate block hash
+fn calculate_hash(block: Block) -> string {
+    let data = block.index + 
+               block.timestamp + 
+               block.data + 
+               block.previous_hash + 
+               block.nonce;
+    
+    return sha256(data);
+}
+
+// Mine block (Proof of Work)
+fn mine_block(block: Block) -> Block {
+    print "Mining block " + block.index + "...";
+    
+    let target = "0".repeat(difficulty);
+    let start_time = time.now();
+    
+    loop {
+        block.hash = calculate_hash(block);
+        
+        if block.hash.starts_with(target) {
+            let elapsed = time.now() - start_time;
+            print "Block mined! Nonce: " + block.nonce + " (took " + elapsed + "ms)";
+            break;
+        }
+        
+        block.nonce = block.nonce + 1;
+    }
+    
+    return block;
+    // Efeitos inferidos: io, time
+}
+
+// Add block to chain
+fn add_block(data: string) -> unit {
+    let previous_block = blockchain[blockchain.length() - 1];
+    
+    let block = Block {
+        index: previous_block.index + 1,
+        timestamp: time.now(),
+        data: data,
+        previous_hash: previous_block.hash,
+        hash: "",
+        nonce: 0
+    };
+    
+    // Mine the block
+    block = mine_block(block);
+    
+    // Add to chain
+    blockchain.push(block);
+    
+    // Save to database
+    db.query("INSERT INTO blocks VALUES (?, ?, ?, ?, ?, ?)",
+        block.index, block.timestamp, block.data, 
+        block.previous_hash, block.hash, block.nonce);
+    
+    print "Block added to chain!";
+    // Efeitos inferidos: io, time, db
+}
+
+// Validate blockchain
+fn validate_chain() -> bool {
+    for i in range(1, blockchain.length()) {
+        let current = blockchain[i];
+        let previous = blockchain[i - 1];
+        
+        // Check hash
+        if current.hash != calculate_hash(current) {
+            print "Invalid hash at block " + i;
+            return false;
+        }
+        
+        // Check previous hash
+        if current.previous_hash != previous.hash {
+            print "Invalid previous hash at block " + i;
+            return false;
+        }
+    }
+    
+    print "Blockchain is valid!";
+    return true;
+    // Efeitos inferidos: io
+}
+
+// ============================================
+// 2. CRYPTOCURRENCY
+// ============================================
+
+struct Transaction {
+    from: string,
+    to: string,
+    amount: float,
+    timestamp: int,
+    signature: string
+}
+
+struct Wallet {
+    address: string,
+    balance: float,
+    private_key: string,
+    public_key: string
+}
+
+let wallets = {};
+let pending_transactions = [];
+
+// Create wallet
+fn create_wallet() -> Wallet {
+    let private_key = generate_private_key();
+    let public_key = derive_public_key(private_key);
+    let address = hash_public_key(public_key);
+    
+    let wallet = Wallet {
+        address: address,
+        balance: 0.0,
+        private_key: private_key,
+        public_key: public_key
+    };
+    
+    wallets[address] = wallet;
+    
+    // Save to database
+    db.query("INSERT INTO wallets VALUES (?, ?, ?)",
+        address, wallet.balance, wallet.public_key);
+    
+    print "Wallet created: " + address;
+    
+    return wallet;
+    // Efeitos inferidos: io, db
+}
+
+// Create transaction
+fn create_transaction(from: string, to: string, amount: float) -> Transaction {
+    let wallet = wallets[from];
+    
+    if wallet.balance < amount {
+        print "Insufficient balance!";
+        return null;
+    }
+    
+    let tx = Transaction {
+        from: from,
+        to: to,
+        amount: amount,
+        timestamp: time.now(),
+        signature: ""
+    };
+    
+    // Sign transaction
+    tx.signature = sign_transaction(tx, wallet.private_key);
+    
+    // Add to pending
+    pending_transactions.push(tx);
+    
+    print "Transaction created: " + from + " -> " + to + " (" + amount + ")";
+    
+    return tx;
+    // Efeitos inferidos: io, time
+}
+
+// Process transactions (mining)
+fn process_transactions() -> unit {
+    if pending_transactions.length() == 0 {
+        print "No pending transactions";
+        return;
+    }
+    
+    print "Processing " + pending_transactions.length() + " transactions...";
+    
+    // Create block with transactions
+    let data = json.stringify(pending_transactions);
+    add_block(data);
+    
+    // Update balances
+    for tx in pending_transactions {
+        wallets[tx.from].balance = wallets[tx.from].balance - tx.amount;
+        wallets[tx.to].balance = wallets[tx.to].balance + tx.amount;
+        
+        // Update database
+        db.query("UPDATE wallets SET balance = ? WHERE address = ?",
+            wallets[tx.from].balance, tx.from);
+        db.query("UPDATE wallets SET balance = ? WHERE address = ?",
+            wallets[tx.to].balance, tx.to);
+    }
+    
+    // Clear pending
+    pending_transactions = [];
+    
+    print "Transactions processed!";
+    // Efeitos inferidos: io, time, db
+}
+
+// ============================================
+// 3. SMART CONTRACTS
+// ============================================
+
+struct Contract {
+    address: string,
+    code: string,
+    state: map,
+    owner: string
+}
+
+let contracts = {};
+
+// Deploy contract
+fn deploy_contract(code: string, owner: string) -> string {
+    let address = "0x" + random.int(100000, 999999);
+    
+    let contract = Contract {
+        address: address,
+        code: code,
+        state: {},
+        owner: owner
+    };
+    
+    contracts[address] = contract;
+    
+    // Save to database
+    db.query("INSERT INTO contracts VALUES (?, ?, ?, ?)",
+        address, code, json.stringify(contract.state), owner);
+    
+    print "Contract deployed: " + address;
+    
+    return address;
+    // Efeitos inferidos: io, random, db
+}
+
+// Execute contract
+fn execute_contract(address: string, method: string, args: []) -> result {
+    let contract = contracts[address];
+    
+    if contract == null {
+        return error("Contract not found");
+    }
+    
+    print "Executing contract: " + address + "." + method;
+    
+    // Simple contract execution (simplified)
+    if method == "transfer" {
+        let from = args[0];
+        let to = args[1];
+        let amount = args[2];
+        
+        // Check balance
+        if !contract.state.has(from) or contract.state[from] < amount {
+            return error("Insufficient balance");
+        }
+        
+        // Transfer
+        contract.state[from] = contract.state[from] - amount;
+        
+        if !contract.state.has(to) {
+            contract.state[to] = 0.0;
+        }
+        
+        contract.state[to] = contract.state[to] + amount;
+        
+        // Update database
+        db.query("UPDATE contracts SET state = ? WHERE address = ?",
+            json.stringify(contract.state), address);
+        
+        print "Transfer executed: " + from + " -> " + to + " (" + amount + ")";
+        
+        return ok;
+    }
+    
+    return error("Unknown method");
+    // Efeitos inferidos: io, db
+}
+
+// ============================================
+// 4. NFT MARKETPLACE
+// ============================================
+
+struct NFT {
+    id: int,
+    name: string,
+    owner: string,
+    metadata: map,
+    created_at: int
+}
+
+let nfts = {};
+let next_nft_id = 1;
+
+// Mint NFT
+fn mint_nft(name: string, owner: string, metadata: map) -> NFT {
+    let nft = NFT {
+        id: next_nft_id,
+        name: name,
+        owner: owner,
+        metadata: metadata,
+        created_at: time.now()
+    };
+    
+    nfts[next_nft_id] = nft;
+    next_nft_id = next_nft_id + 1;
+    
+    // Save to database
+    db.query("INSERT INTO nfts VALUES (?, ?, ?, ?, ?)",
+        nft.id, nft.name, nft.owner, json.stringify(nft.metadata), nft.created_at);
+    
+    // Add to blockchain
+    add_block("NFT_MINT:" + nft.id + ":" + nft.name);
+    
+    print "NFT minted: #" + nft.id + " - " + nft.name;
+    
+    return nft;
+    // Efeitos inferidos: io, time, db
+}
+
+// Transfer NFT
+fn transfer_nft(nft_id: int, from: string, to: string) -> unit {
+    let nft = nfts[nft_id];
+    
+    if nft == null {
+        print "NFT not found";
+        return;
+    }
+    
+    if nft.owner != from {
+        print "Not the owner";
+        return;
+    }
+    
+    // Transfer
+    nft.owner = to;
+    
+    // Update database
+    db.query("UPDATE nfts SET owner = ? WHERE id = ?", to, nft_id);
+    
+    // Add to blockchain
+    add_block("NFT_TRANSFER:" + nft_id + ":" + from + ":" + to);
+    
+    print "NFT transferred: #" + nft_id + " from " + from + " to " + to;
+    // Efeitos inferidos: io, time, db
+}
+
+// ============================================
+// 5. DECENTRALIZED EXCHANGE (DEX)
+// ============================================
+
+struct Order {
+    id: int,
+    type: string,  // "buy" or "sell"
+    token: string,
+    amount: float,
+    price: float,
+    owner: string,
+    status: string
+}
+
+let orders = [];
+let next_order_id = 1;
+
+// Create order
+fn create_order(type: string, token: string, amount: float, price: float, owner: string) -> Order {
+    let order = Order {
+        id: next_order_id,
+        type: type,
+        token: token,
+        amount: amount,
+        price: price,
+        owner: owner,
+        status: "open"
+    };
+    
+    orders.push(order);
+    next_order_id = next_order_id + 1;
+    
+    // Save to database
+    db.query("INSERT INTO orders VALUES (?, ?, ?, ?, ?, ?, ?)",
+        order.id, order.type, order.token, order.amount, 
+        order.price, order.owner, order.status);
+    
+    // Try to match
+    match_orders();
+    
+    print "Order created: #" + order.id + " - " + type + " " + amount + " " + token;
+    
+    return order;
+    // Efeitos inferidos: io, db
+}
+
+// Match orders
+fn match_orders() -> unit {
+    for buy_order in orders {
+        if buy_order.type != "buy" or buy_order.status != "open" {
+            continue;
+        }
+        
+        for sell_order in orders {
+            if sell_order.type != "sell" or sell_order.status != "open" {
+                continue;
+            }
+            
+            if buy_order.token == sell_order.token and 
+               buy_order.price >= sell_order.price {
+                // Match!
+                let amount = min(buy_order.amount, sell_order.amount);
+                
+                // Execute trade
+                execute_trade(buy_order, sell_order, amount);
+                
+                // Update amounts
+                buy_order.amount = buy_order.amount - amount;
+                sell_order.amount = sell_order.amount - amount;
+                
+                // Update status
+                if buy_order.amount == 0.0 {
+                    buy_order.status = "filled";
+                }
+                if sell_order.amount == 0.0 {
+                    sell_order.status = "filled";
+                }
+                
+                // Update database
+                db.query("UPDATE orders SET amount = ?, status = ? WHERE id = ?",
+                    buy_order.amount, buy_order.status, buy_order.id);
+                db.query("UPDATE orders SET amount = ?, status = ? WHERE id = ?",
+                    sell_order.amount, sell_order.status, sell_order.id);
+            }
+        }
+    }
+    // Efeitos inferidos: io, db
+}
+
+fn execute_trade(buy_order: Order, sell_order: Order, amount: float) -> unit {
+    print "Trade executed: " + amount + " " + buy_order.token + 
+          " @ " + sell_order.price;
+    
+    // Add to blockchain
+    add_block("TRADE:" + buy_order.id + ":" + sell_order.id + ":" + amount);
+    // Efeitos inferidos: io, time, db
+}
+
+// ============================================
+// 6. MAIN
+// ============================================
+
+fn main() -> unit {
+    print "=== MATTER BLOCKCHAIN ===";
+    print "";
+    
+    // Initialize blockchain
+    let genesis = create_genesis_block();
+    blockchain.push(genesis);
+    
+    print "Genesis block created";
+    print "";
+    
+    // Create wallets
+    let alice = create_wallet();
+    let bob = create_wallet();
+    
+    // Give initial balance
+    alice.balance = 100.0;
+    bob.balance = 50.0;
+    
+    print "";
+    print "=== TRANSACTIONS ===";
+    
+    // Create transactions
+    create_transaction(alice.address, bob.address, 10.0);
+    create_transaction(bob.address, alice.address, 5.0);
+    
+    // Process transactions
+    process_transactions();
+    
+    print "";
+    print "=== SMART CONTRACTS ===";
+    
+    // Deploy contract
+    let contract_addr = deploy_contract("token_contract", alice.address);
+    
+    // Execute contract
+    execute_contract(contract_addr, "transfer", [alice.address, bob.address, 20.0]);
+    
+    print "";
+    print "=== NFTs ===";
+    
+    // Mint NFTs
+    mint_nft("Cool Art #1", alice.address, { artist: "Alice", rarity: "rare" });
+    mint_nft("Cool Art #2", bob.address, { artist: "Bob", rarity: "common" });
+    
+    // Transfer NFT
+    transfer_nft(1, alice.address, bob.address);
+    
+    print "";
+    print "=== DEX ===";
+    
+    // Create orders
+    create_order("buy", "ETH", 1.0, 2000.0, alice.address);
+    create_order("sell", "ETH", 0.5, 1900.0, bob.address);
+    
+    print "";
+    print "=== VALIDATION ===";
+    
+    // Validate blockchain
+    validate_chain();
+    
+    print "";
+    print "Blockchain length: " + blockchain.length();
+    print "Total wallets: " + wallets.length();
+    print "Total NFTs: " + nfts.length();
+    print "Total orders: " + orders.length();
+}

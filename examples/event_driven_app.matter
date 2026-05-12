@@ -1,0 +1,39 @@
+# Event-Driven Application - Demonstração do sistema de eventos
+
+print "=== Event-Driven Application ==="
+print ""
+
+# Event handlers
+on boot {
+    print "[BOOT] Application starting..."
+    print "[BOOT] Initializing state..."
+    agent.say("Welcome to Matter Event System!")
+}
+
+on tap {
+    print "[TAP] User interaction detected"
+    print "[TAP] Processing tap event..."
+    agent.say("Tap event handled!")
+}
+
+on shutdown {
+    print "[SHUTDOWN] Saving state..."
+    store.set("last_run", time.now())
+    print "[SHUTDOWN] Application closed gracefully"
+}
+
+on error {
+    print "[ERROR] Error handler triggered"
+    agent.say("An error occurred, but we handled it!")
+}
+
+# Simulação de eventos
+print "Event handlers registered:"
+print "  - boot: Initialize application"
+print "  - tap: Handle user interaction"
+print "  - shutdown: Cleanup and save"
+print "  - error: Error recovery"
+print ""
+
+print "Try: matter emit event_driven_app.matter tap"
+print "Try: matter emit event_driven_app.matter shutdown"

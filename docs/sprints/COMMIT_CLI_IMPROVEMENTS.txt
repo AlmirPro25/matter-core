@@ -1,0 +1,85 @@
+feat: CLI aprimorado com help, version, backends e examples
+
+Sprint 3.8: CLI Improvements - Experiência do Desenvolvedor
+
+NOVOS COMANDOS:
+- help [command]     Sistema de ajuda completo (geral + contextual)
+- version            Informações detalhadas de versão e features
+- backends           Lista todos os backends e seus métodos
+- examples [name]    Gerencia e executa exemplos
+
+MELHORIAS:
+- Sugestões inteligentes para comandos incorretos (Levenshtein)
+- Mensagens de erro mais amigáveis e informativas
+- Formatação visual profissional com bordas Unicode
+- Ajuda contextual para 9 comandos principais
+- Documentação inline de 10 backends (43+ métodos)
+- Catálogo de 11 exemplos com descrições
+
+IMPACTO:
+- Reduz curva de aprendizado significativamente
+- Aumenta produtividade do desenvolvedor
+- Experiência profissional e polida
+- Documentação sempre disponível no terminal
+- Descoberta de funcionalidades facilitada
+
+VALIDAÇÃO:
+- 28 testes passando (100%)
+- Zero regressões
+- Todos os comandos testados manualmente
+- Sugestões funcionando corretamente
+
+ARQUIVOS MODIFICADOS:
+- crates/matter-cli/src/main.rs (+450 linhas)
+  * print_help() - Ajuda geral
+  * print_command_help() - Ajuda contextual
+  * print_version() - Versão detalhada
+  * print_backends() - Lista backends
+  * list_examples() - Lista exemplos
+  * run_example() - Executa exemplo
+  * suggest_command() - Sugestões inteligentes
+  * levenshtein_distance() - Algoritmo de similaridade
+
+ARQUIVOS CRIADOS:
+- CLI_IMPROVEMENTS.md - Documentação completa do sprint
+
+ARQUIVOS ATUALIZADOS:
+- README.md - Status v0.1.8, estatísticas atualizadas
+- PROGRESS.md - Sprint 3.8 completo, métricas atualizadas
+
+EXEMPLOS DE USO:
+```bash
+# Sistema de ajuda
+matter-cli help
+matter-cli help run
+matter-cli help compile
+
+# Informações do sistema
+matter-cli version
+matter-cli backends
+
+# Gerenciamento de exemplos
+matter-cli examples
+matter-cli examples hello
+matter-cli examples visual_basic
+
+# Sugestões inteligentes
+matter-cli runn
+# Did you mean: matter-cli run
+```
+
+ESTATÍSTICAS:
+- Código adicionado: ~450 linhas
+- Novas funções: 8
+- Comandos novos: 4
+- Backends documentados: 10/10 (100%)
+- Comandos documentados: 9/9 (100%)
+- Exemplos catalogados: 11/11 (100%)
+
+PRÓXIMO PASSO:
+Sprint 4: REPL Interativo (matter-cli repl)
+
+---
+Versão: v0.1.8
+Data: 9 de Maio de 2026
+Status: ✅ PRODUÇÃO

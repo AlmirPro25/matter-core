@@ -1,0 +1,15 @@
+// Hello World Real - Primeiro programa Matter funcionando
+fn main() {
+    print("Hello, Matter World!")
+    print("Compilador funcionando!")
+    
+    let x = 42
+    print(x)
+    
+    let result = add(10, 32)
+    print(result)
+}
+
+fn add(a, b) {
+    return a + b
+}

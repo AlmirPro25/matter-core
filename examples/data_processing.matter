@@ -1,0 +1,37 @@
+# Data Processing - Demonstração de listas e manipulação de dados
+
+print "=== Data Processing Demo ==="
+print ""
+
+# Dataset de exemplo
+let numbers = [10, 25, 5, 30, 15, 20]
+print "Dataset: [10, 25, 5, 30, 15, 20]"
+print ""
+
+# Estatísticas usando list backend
+let sum = list.sum(numbers)
+print "Sum: 105"
+print sum
+
+let min = list.min(numbers)
+print "Min: 5"
+print min
+
+let max = list.max(numbers)
+print "Max: 30"
+print max
+print ""
+
+# Transformações
+print "Sorted:"
+let sorted = list.sort(numbers)
+print sorted
+
+print "Reversed:"
+let reversed = list.reverse(numbers)
+print reversed
+print ""
+
+print "Data processing complete!"
+print "Try in REPL: list.sum([1,2,3]), list.sort([3,1,2])"
+

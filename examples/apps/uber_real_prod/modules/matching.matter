@@ -1,0 +1,30 @@
+fn abs_i(x) {
+    if x < 0 {
+        return 0 - x
+    }
+    return x
+}
+
+fn proximity_score(driver, o_lat, o_lng) {
+    return abs_i(driver["lat"] - o_lat) + abs_i(driver["lng"] - o_lng)
+}
+
+fn choose_best_driver_idx(drivers, o_lat, o_lng) {
+    let best_idx = 0
+    let best_score = 999999
+    let i = 0
+
+    while i < drivers.len() {
+        let d = drivers[i]
+        if d["online"] && d["active_ride_id"] == 0 {
+            let score = proximity_score(d, o_lat, o_lng)
+            if score < best_score {
+                set best_score = score
+                set best_idx = i
+            }
+        }
+        set i = i + 1
+    }
+
+    return best_idx
+}

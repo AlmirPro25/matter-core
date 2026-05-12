@@ -1,7 +1,7 @@
 [package]
 name = "matter-core"
 version = "0.1.0"
-entry = "examples/showcase.matter"
+entry = "examples/live_counter_app.matter"
 
 [paths]
 stdlib = "stdlib"

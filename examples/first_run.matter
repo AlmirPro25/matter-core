@@ -1,0 +1,44 @@
+# First Matter run: functions, recursion, lists, branches, and events.
+
+fn fib(n) {
+    if n <= 1 {
+        return n
+    }
+
+    return fib(n - 1) + fib(n - 2)
+}
+
+fn classify(score) {
+    if score >= 90 {
+        return "excellent"
+    }
+
+    if score >= 70 {
+        return "solid"
+    }
+
+    return "needs-work"
+}
+
+on boot {
+    print "event: boot"
+    print "runtime: event handler executed"
+}
+
+let scores = [95, 82, 67]
+
+print "Matter Core"
+print "language -> bytecode -> VM -> output"
+print "fib(8)"
+print fib(8)
+
+print "scores"
+print scores
+
+print "classification"
+print classify(95)
+print classify(82)
+print classify(67)
+
+spawn boot
+

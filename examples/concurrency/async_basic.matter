@@ -1,0 +1,30 @@
+# Basic Async/Await Example
+
+## Simula operação assíncrona
+async fn fetch_data(id) {
+    print "Fetching data " + string.concat("", id)
+    
+    ## Simula delay
+    time.sleep(100)
+    
+    return "Data " + string.concat("", id)
+}
+
+## Função principal assíncrona
+async fn main() {
+    print "Starting async operations..."
+    
+    ## Executar operações assíncronas
+    let data1 = await fetch_data(1)
+    let data2 = await fetch_data(2)
+    let data3 = await fetch_data(3)
+    
+    print data1
+    print data2
+    print data3
+    
+    print "All operations completed!"
+}
+
+## Executar
+await main()

@@ -1,0 +1,106 @@
+# Task Manager
+# Gerenciador de tarefas com CRUD completo
+
+# Estrutura de tarefa
+struct Task {
+    id: int,
+    title: string,
+    completed: bool
+}
+
+# Estado global
+let tasks = []
+let next_id = 1
+
+# Criar nova tarefa
+fn create_task(title) {
+    let task = Task {
+        id: next_id,
+        title: title,
+        completed: false
+    }
+    
+    tasks.push(task)
+    set next_id = next_id + 1
+    
+    print "Task created: " + title
+    return task
+}
+
+# Listar todas as tarefas
+fn list_tasks() {
+    print "=== Task List ==="
+    
+    if tasks.len() == 0 {
+        print "No tasks yet"
+        return ()
+    }
+    
+    for task in tasks {
+        let status = "[ ]"
+        if task.completed {
+            set status = "[X]"
+        }
+        print status + " " + task.id + ". " + task.title
+    }
+    
+    print "================="
+}
+
+# Completar tarefa
+fn complete_task(task_id) {
+    let i = 0
+    while i < tasks.len() {
+        let task = tasks[i]
+        if task.id == task_id {
+            set task.completed = true
+            set tasks[i] = task
+            print "Task " + task_id + " completed!"
+            return ()
+        }
+        set i = i + 1
+    }
+    print "Task not found"
+}
+
+# Remover tarefa
+fn remove_task(task_id) {
+    let new_tasks = []
+    for task in tasks {
+        if task.id != task_id {
+            new_tasks.push(task)
+        }
+    }
+    set tasks = new_tasks
+    print "Task " + task_id + " removed"
+}
+
+# Contar tarefas
+fn count_tasks() {
+    let total = tasks.len()
+    let completed = 0
+    
+    for task in tasks {
+        if task.completed {
+            set completed = completed + 1
+        }
+    }
+    
+    print "Total: " + total + " | Completed: " + completed + " | Pending: " + (total - completed)
+}
+
+# Usar o gerenciador
+create_task("Estudar Matter Core")
+create_task("Implementar feature X")
+create_task("Escrever documentação")
+
+list_tasks()
+
+complete_task(1)
+complete_task(2)
+
+list_tasks()
+count_tasks()
+
+remove_task(3)
+list_tasks()

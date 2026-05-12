@@ -1,0 +1,14 @@
+# Mobile eco mode prefers cache/reuse before expensive tools
+energy.set_mode("eco")
+energy.configure("battery_aware", true)
+energy.configure("prefer_cache", true)
+
+energy.cache("summary:home", "cached-summary-v1")
+let cached = energy.reuse("summary:home")
+print cached
+
+if energy.defer("tool") {
+    print "Skipping tool call on low-energy condition"
+} else {
+    print tool.call("net.fetch", "https://api.example.com/home")
+}

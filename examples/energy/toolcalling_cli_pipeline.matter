@@ -1,0 +1,27 @@
+# Matter Toolcalling Pipeline (Template -> Invoke -> Validate -> Merge)
+#
+# 1) Generate template payload:
+#    matter-cli tool-frame-template-json -o frame_a.json
+#    matter-cli tool-frame-template-json -o frame_b.json
+#
+# 2) Edit frame_b.json to simulate blocked state:
+#    "state": "blocked"
+#    "blockers": ["missing_api_key"]
+#
+# 3) Invoke frames and save wires:
+#    matter-cli tool-frame-invoke-json frame_a.json -o wire_a.txt > invoke_a.json
+#    matter-cli tool-frame-invoke-json frame_b.json -o wire_b.txt > invoke_b.json
+#
+# 4) Optional: extract wire from invoke JSON payloads:
+#    matter-cli tool-wire-extract-json invoke_a.json -o wire_a_copy.txt
+#
+# 5) Validate wires:
+#    matter-cli tool-wire-validate-json wire_a.txt
+#    matter-cli tool-wire-validate-json wire_b.txt
+#
+# 6) Merge wires:
+#    matter-cli tool-wire-merge-json wire_a.txt wire_b.txt prefer_blocked
+#
+# 7) Run inside Matter runtime if desired:
+#    let merged = tool.merge_wire(a.wire, b.wire, "prefer_blocked")
+#    print tool.validate_wire(merged.wire)

@@ -1,0 +1,66 @@
+import "contracts/api_contract.matter"
+import "modules/state.matter"
+import "modules/api.matter"
+import "modules/security.matter"
+import "modules/matching.matter"
+import "modules/pricing.matter"
+import "modules/dispatch.matter"
+import "modules/lifecycle.matter"
+import "modules/realtime.matter"
+import "modules/analytics.matter"
+import "modules/forecast_polyglot.matter"
+
+let drivers = seed_drivers()
+let riders = seed_riders()
+let rides = []
+let next_ride_id = 1
+
+# Entrada API (simulada)
+let req = ride_request(101, 12, 10, 25, 22, 17)
+let rider = find_rider_by_id(riders, req["rider_id"])
+
+if !is_request_safe(rider, req) {
+    print "REQUEST_BLOCKED"
+} else {
+    let demand = demand_forecast_local_fallback(19)
+    let supply = drivers.len()
+    let surge = surge_from_ratio(demand, supply)
+    let fare = fare_estimate(req["distance_km"], surge, rider["priority"])
+
+    let idx = choose_best_driver_idx(drivers, req["origin_lat"], req["origin_lng"])
+    let chosen_driver = drivers[idx]
+    let ride = build_ride(next_ride_id, rider, req, chosen_driver["id"], fare, surge)
+    set next_ride_id = next_ride_id + 1
+
+    let busy_driver = mark_driver_busy(chosen_driver, ride["id"])
+    set drivers[idx] = busy_driver
+
+    emit_ride_created(ride)
+    let started = start_ride(ride)
+    let completed = complete_ride(started)
+    rides.push(completed)
+    emit_ride_completed(completed)
+
+    let free_driver = mark_driver_free(drivers[idx])
+    set drivers[idx] = free_driver
+
+    let api_resp = build_response(completed)
+    let m = compute_metrics(drivers, rides, event_log)
+
+    print "=== UBER REAL PROD ==="
+    print "RIDE_ID"
+    print api_resp["ride_id"]
+    print "DRIVER_ID"
+    print api_resp["driver_id"]
+    print "SURGE"
+    print api_resp["surge"]
+    print "FARE"
+    print api_resp["fare"]
+    print "STATUS"
+    print api_resp["status"]
+    print "EVENTS_TOTAL"
+    print m["events_total"]
+    print "REVENUE"
+    print m["revenue"]
+    print "======================"
+}

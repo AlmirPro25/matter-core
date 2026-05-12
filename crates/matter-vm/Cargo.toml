@@ -6,3 +6,8 @@ edition.workspace = true
 [dependencies]
 matter-bytecode = { workspace = true }
 matter-backend = { workspace = true }
+matter-memory = { workspace = true }
+matter-jit = { workspace = true }
+matter-native = { workspace = true }
+matter-energy = { workspace = true }
+matter-vcpu = { workspace = true }

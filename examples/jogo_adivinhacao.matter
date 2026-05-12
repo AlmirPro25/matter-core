@@ -1,0 +1,128 @@
+# 🎲 JOGO DE ADIVINHAÇÃO EM MATTER 🎲
+# Adivinhe o número secreto!
+
+print "╔════════════════════════════════════════╗"
+print "║  🎲 JOGO DE ADIVINHAÇÃO DE NÚMEROS 🎲  ║"
+print "╚════════════════════════════════════════╝"
+print ""
+
+# Número secreto (entre 1 e 100)
+let numero_secreto = 42
+let tentativas = 0
+let max_tentativas = 7
+
+print "🎯 Eu pensei em um número entre 1 e 100!"
+print "🤔 Você tem 7 tentativas para adivinhar..."
+print ""
+
+# Simulação de tentativas (modo demonstração)
+print "🎮 MODO DEMONSTRAÇÃO - Vou tentar adivinhar!"
+print ""
+
+# Lista de tentativas simuladas
+let tentativa_1 = 50
+let tentativa_2 = 25
+let tentativa_3 = 37
+let tentativa_4 = 43
+let tentativa_5 = 40
+let tentativa_6 = 41
+let tentativa_7 = 42
+
+# Função para verificar tentativa
+fn verificar_tentativa(tentativa, secreto, numero_tentativa) {
+    print "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    print "Tentativa #"
+    print numero_tentativa
+    print "Seu palpite: "
+    print tentativa
+    
+    if tentativa == secreto {
+        print "🎉 PARABÉNS! VOCÊ ACERTOU! 🎉"
+        return 1
+    }
+    
+    if tentativa < secreto {
+        print "📈 Muito baixo! Tente um número MAIOR!"
+    }
+    
+    if tentativa > secreto {
+        print "📉 Muito alto! Tente um número MENOR!"
+    }
+    
+    print ""
+    return 0
+}
+
+# Tentativa 1
+set tentativas = tentativas + 1
+let resultado = verificar_tentativa(tentativa_1, numero_secreto, tentativas)
+
+if resultado == 0 {
+    # Tentativa 2
+    set tentativas = tentativas + 1
+    set resultado = verificar_tentativa(tentativa_2, numero_secreto, tentativas)
+}
+
+if resultado == 0 {
+    # Tentativa 3
+    set tentativas = tentativas + 1
+    set resultado = verificar_tentativa(tentativa_3, numero_secreto, tentativas)
+}
+
+if resultado == 0 {
+    # Tentativa 4
+    set tentativas = tentativas + 1
+    set resultado = verificar_tentativa(tentativa_4, numero_secreto, tentativas)
+}
+
+if resultado == 0 {
+    # Tentativa 5
+    set tentativas = tentativas + 1
+    set resultado = verificar_tentativa(tentativa_5, numero_secreto, tentativas)
+}
+
+if resultado == 0 {
+    # Tentativa 6
+    set tentativas = tentativas + 1
+    set resultado = verificar_tentativa(tentativa_6, numero_secreto, tentativas)
+}
+
+if resultado == 0 {
+    # Tentativa 7
+    set tentativas = tentativas + 1
+    set resultado = verificar_tentativa(tentativa_7, numero_secreto, tentativas)
+}
+
+print "╔════════════════════════════════════════╗"
+print "║         🏁 FIM DO JOGO! 🏁             ║"
+print "╚════════════════════════════════════════╝"
+print ""
+print "📊 Total de tentativas: "
+print tentativas
+print ""
+
+if resultado == 1 {
+    print "🏆 VOCÊ É UM MESTRE DA ADIVINHAÇÃO! 🏆"
+    
+    if tentativas <= 3 {
+        print "⭐⭐⭐ INCRÍVEL! Menos de 3 tentativas!"
+    }
+    
+    if tentativas > 3 {
+        if tentativas <= 5 {
+            print "⭐⭐ MUITO BOM! Entre 4 e 5 tentativas!"
+        }
+    }
+    
+    if tentativas > 5 {
+        print "⭐ BOM! Mas pode melhorar!"
+    }
+} else {
+    print "😢 Não foi dessa vez..."
+    print "O número secreto era: "
+    print numero_secreto
+}
+
+print ""
+print "Obrigado por jogar! 🎲✨"
+print ""

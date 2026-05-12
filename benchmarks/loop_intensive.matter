@@ -1,0 +1,38 @@
+# Loop Intensive Benchmark
+# Testa performance de loops e operações aritméticas
+
+print "=== Loop Intensive Benchmark ==="
+
+let sum = 0
+let i = 0
+
+print "Computing sum of 1 to 10000..."
+
+while i < 10000 {
+    set sum = sum + i
+    set i = i + 1
+}
+
+print "Sum:"
+print sum
+print "Iterations:"
+print i
+
+# Nested loops
+print "Testing nested loops..."
+
+let total = 0
+let x = 0
+
+while x < 100 {
+    let y = 0
+    while y < 100 {
+        set total = total + 1
+        set y = y + 1
+    }
+    set x = x + 1
+}
+
+print "Total iterations:"
+print total
+print "Benchmark complete!"

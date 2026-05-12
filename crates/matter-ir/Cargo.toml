@@ -1,0 +1,11 @@
+[package]
+name = "matter-ir"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+matter-vcpu = { workspace = true }
+matter-photonic-vpu = { workspace = true }
+matter-bus = { workspace = true }

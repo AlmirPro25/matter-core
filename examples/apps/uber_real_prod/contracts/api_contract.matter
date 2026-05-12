@@ -1,0 +1,24 @@
+# Contract snapshots (JSON-like maps) for API boundaries.
+
+let ride_request_contract = {
+    "required": ["rider_id", "origin_lat", "origin_lng", "dest_lat", "dest_lng", "distance_km"],
+    "types": {
+        "rider_id": "int",
+        "origin_lat": "int",
+        "origin_lng": "int",
+        "dest_lat": "int",
+        "dest_lng": "int",
+        "distance_km": "int"
+    }
+}
+
+let ride_response_contract = {
+    "required": ["ride_id", "driver_id", "fare", "surge", "status"],
+    "types": {
+        "ride_id": "int",
+        "driver_id": "int",
+        "fare": "int",
+        "surge": "int",
+        "status": "string"
+    }
+}

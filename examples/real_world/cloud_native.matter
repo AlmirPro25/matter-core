@@ -1,0 +1,592 @@
+// ☁️ CLOUD NATIVE SYSTEM - Matter Core
+// Demonstra Matter sendo usado para aplicações Cloud Native
+
+// ============================================
+// 1. KUBERNETES DEPLOYMENT
+// ============================================
+
+struct Deployment {
+    name: string,
+    replicas: int,
+    image: string,
+    port: int,
+    env: {string: string}
+}
+
+fn deploy_to_kubernetes(deployment: Deployment) -> result {
+    print "Deploying " + deployment.name + " to Kubernetes...";
+    
+    // Create deployment YAML
+    let yaml = "
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: " + deployment.name + "
+spec:
+  replicas: " + deployment.replicas + "
+  selector:
+    matchLabels:
+      app: " + deployment.name + "
+  template:
+    metadata:
+      labels:
+        app: " + deployment.name + "
+    spec:
+      containers:
+      - name: " + deployment.name + "
+        image: " + deployment.image + "
+        ports:
+        - containerPort: " + deployment.port + "
+";
+    
+    // Write to file
+    fs.write("k8s/" + deployment.name + ".yaml", yaml);
+    
+    // Apply to cluster
+    let result = shell.exec("kubectl apply -f k8s/" + deployment.name + ".yaml");
+    
+    if result.exit_code == 0 {
+        print "Deployment successful!";
+        
+        // Wait for rollout
+        shell.exec("kubectl rollout status deployment/" + deployment.name);
+        
+        return ok;
+    } else {
+        print "Deployment failed: " + result.stderr;
+        return error(result.stderr);
+    }
+    // Efeitos inferidos: io, fs, shell
+}
+
+// ============================================
+// 2. DOCKER CONTAINERIZATION
+// ============================================
+
+fn build_docker_image(app_name: string, version: string) -> result {
+    print "Building Docker image: " + app_name + ":" + version;
+    
+    // Create Dockerfile
+    let dockerfile = "
+FROM rust:1.70 as builder
+WORKDIR /app
+COPY . .
+RUN cargo build --release
+
+FROM debian:bullseye-slim
+COPY --from=builder /app/target/release/" + app_name + " /usr/local/bin/
+CMD [\"" + app_name + "\"]
+";
+    
+    fs.write("Dockerfile", dockerfile);
+    
+    // Build image
+    let build_result = shell.exec("docker build -t " + app_name + ":" + version + " .");
+    
+    if build_result.exit_code != 0 {
+        return error("Build failed: " + build_result.stderr);
+    }
+    
+    // Tag for registry
+    shell.exec("docker tag " + app_name + ":" + version + " registry.example.com/" + app_name + ":" + version);
+    
+    // Push to registry
+    let push_result = shell.exec("docker push registry.example.com/" + app_name + ":" + version);
+    
+    if push_result.exit_code == 0 {
+        print "Image pushed successfully!";
+        return ok;
+    } else {
+        return error("Push failed: " + push_result.stderr);
+    }
+    // Efeitos inferidos: io, fs, shell
+}
+
+// ============================================
+// 3. SERVICE MESH (Istio)
+// ============================================
+
+fn configure_service_mesh(service_name: string) -> unit {
+    print "Configuring service mesh for " + service_name;
+    
+    // Virtual Service (traffic routing)
+    let virtual_service = "
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: " + service_name + "
+spec:
+  hosts:
+  - " + service_name + "
+  http:
+  - match:
+    - headers:
+        version:
+          exact: v2
+    route:
+    - destination:
+        host: " + service_name + "
+        subset: v2
+  - route:
+    - destination:
+        host: " + service_name + "
+        subset: v1
+      weight: 90
+    - destination:
+        host: " + service_name + "
+        subset: v2
+      weight: 10
+";
+    
+    fs.write("istio/" + service_name + "-vs.yaml", virtual_service);
+    
+    // Destination Rule (load balancing)
+    let destination_rule = "
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: " + service_name + "
+spec:
+  host: " + service_name + "
+  trafficPolicy:
+    loadBalancer:
+      simple: ROUND_ROBIN
+  subsets:
+  - name: v1
+    labels:
+      version: v1
+  - name: v2
+    labels:
+      version: v2
+";
+    
+    fs.write("istio/" + service_name + "-dr.yaml", destination_rule);
+    
+    // Apply
+    shell.exec("kubectl apply -f istio/" + service_name + "-vs.yaml");
+    shell.exec("kubectl apply -f istio/" + service_name + "-dr.yaml");
+    
+    print "Service mesh configured!";
+    // Efeitos inferidos: io, fs, shell
+}
+
+// ============================================
+// 4. OBSERVABILITY (Prometheus + Grafana)
+// ============================================
+
+struct Metric {
+    name: string,
+    value: float,
+    labels: {string: string},
+    timestamp: int
+}
+
+fn export_metrics() -> unit {
+    with logging, tracing {
+        http.listen(9090, fn(req) {
+            if req.path == "/metrics" {
+                // Collect metrics
+                let metrics = [
+                    Metric {
+                        name: "http_requests_total",
+                        value: request_counter,
+                        labels: {method: "GET", status: "200"},
+                        timestamp: time.now()
+                    },
+                    Metric {
+                        name: "http_request_duration_seconds",
+                        value: avg_duration,
+                        labels: {method: "GET"},
+                        timestamp: time.now()
+                    },
+                    Metric {
+                        name: "memory_usage_bytes",
+                        value: get_memory_usage(),
+                        labels: {},
+                        timestamp: time.now()
+                    }
+                ];
+                
+                // Format as Prometheus
+                let output = "";
+                for metric in metrics {
+                    output = output + "# HELP " + metric.name + "\n";
+                    output = output + "# TYPE " + metric.name + " gauge\n";
+                    output = output + metric.name + "{";
+                    
+                    let first = true;
+                    for key in metric.labels.keys() {
+                        if !first {
+                            output = output + ",";
+                        }
+                        output = output + key + "=\"" + metric.labels[key] + "\"";
+                        first = false;
+                    }
+                    
+                    output = output + "} " + metric.value + " " + metric.timestamp + "\n";
+                }
+                
+                return Response {
+                    status: 200,
+                    body: output,
+                    headers: {"Content-Type": "text/plain"}
+                };
+            }
+        });
+    }
+    // Efeitos inferidos: io, network, time
+}
+
+// ============================================
+// 5. DISTRIBUTED TRACING (Jaeger)
+// ============================================
+
+struct Span {
+    trace_id: string,
+    span_id: string,
+    parent_span_id: string?,
+    operation_name: string,
+    start_time: int,
+    duration: int,
+    tags: {string: string}
+}
+
+fn trace_request(operation: string, f: fn() -> result) -> result {
+    let trace_id = generate_trace_id();
+    let span_id = generate_span_id();
+    let start_time = time.now();
+    
+    print "Starting trace: " + trace_id;
+    
+    // Execute operation
+    let result = f();
+    
+    let duration = time.now() - start_time;
+    
+    // Create span
+    let span = Span {
+        trace_id: trace_id,
+        span_id: span_id,
+        parent_span_id: null,
+        operation_name: operation,
+        start_time: start_time,
+        duration: duration,
+        tags: {
+            "service": "matter-app",
+            "result": if result.is_ok() { "success" } else { "error" }
+        }
+    };
+    
+    // Send to Jaeger
+    net.post("http://jaeger:14268/api/traces", json.stringify(span));
+    
+    return result;
+    // Efeitos inferidos: io, time, random, network
+}
+
+// ============================================
+// 6. AUTO-SCALING (HPA)
+// ============================================
+
+fn configure_autoscaling(deployment: string, min_replicas: int, max_replicas: int, cpu_threshold: int) -> unit {
+    print "Configuring autoscaling for " + deployment;
+    
+    let hpa = "
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: " + deployment + "-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: " + deployment + "
+  minReplicas: " + min_replicas + "
+  maxReplicas: " + max_replicas + "
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: " + cpu_threshold + "
+";
+    
+    fs.write("k8s/" + deployment + "-hpa.yaml", hpa);
+    shell.exec("kubectl apply -f k8s/" + deployment + "-hpa.yaml");
+    
+    print "Autoscaling configured!";
+    // Efeitos inferidos: io, fs, shell
+}
+
+// ============================================
+// 7. CI/CD PIPELINE
+// ============================================
+
+fn run_ci_pipeline() -> result {
+    with logging, tracing, timing {
+        print "=== CI/CD Pipeline ===";
+        
+        // 1. Lint
+        print "Step 1: Linting...";
+        let lint_result = shell.exec("matter lint src/");
+        if lint_result.exit_code != 0 {
+            return error("Lint failed");
+        }
+        
+        // 2. Test
+        print "Step 2: Testing...";
+        let test_result = shell.exec("matter test");
+        if test_result.exit_code != 0 {
+            return error("Tests failed");
+        }
+        
+        // 3. Build
+        print "Step 3: Building...";
+        let build_result = shell.exec("matter build --release");
+        if build_result.exit_code != 0 {
+            return error("Build failed");
+        }
+        
+        // 4. Docker build
+        print "Step 4: Building Docker image...";
+        let version = get_version();
+        let docker_result = build_docker_image("matter-app", version);
+        if docker_result.is_error() {
+            return docker_result;
+        }
+        
+        // 5. Deploy to staging
+        print "Step 5: Deploying to staging...";
+        let deploy_result = deploy_to_kubernetes(Deployment {
+            name: "matter-app-staging",
+            replicas: 2,
+            image: "registry.example.com/matter-app:" + version,
+            port: 8080,
+            env: {
+                "ENV": "staging",
+                "LOG_LEVEL": "debug"
+            }
+        });
+        
+        if deploy_result.is_error() {
+            return deploy_result;
+        }
+        
+        // 6. Integration tests
+        print "Step 6: Running integration tests...";
+        time.sleep(10000);  // Wait for deployment
+        let integration_result = shell.exec("matter test --integration");
+        if integration_result.exit_code != 0 {
+            return error("Integration tests failed");
+        }
+        
+        // 7. Deploy to production
+        print "Step 7: Deploying to production...";
+        let prod_result = deploy_to_kubernetes(Deployment {
+            name: "matter-app-prod",
+            replicas: 5,
+            image: "registry.example.com/matter-app:" + version,
+            port: 8080,
+            env: {
+                "ENV": "production",
+                "LOG_LEVEL": "info"
+            }
+        });
+        
+        if prod_result.is_error() {
+            return prod_result;
+        }
+        
+        print "=== Pipeline Complete! ===";
+        
+        // Notify
+        net.post("https://slack.com/webhook", json.stringify({
+            text: "Deployment successful! Version: " + version
+        }));
+        
+        return ok;
+    }
+    // Efeitos inferidos: io, shell, fs, time, network
+}
+
+// ============================================
+// 8. SECRETS MANAGEMENT (Vault)
+// ============================================
+
+fn get_secret(key: string) -> string? {
+    // Get from Vault
+    let response = net.get("https://vault.example.com/v1/secret/data/" + key, {
+        headers: {
+            "X-Vault-Token": env.get("VAULT_TOKEN")
+        }
+    });
+    
+    if response.status == 200 {
+        let data = json.parse(response.body);
+        return data.data.data.value;
+    } else {
+        print "Failed to get secret: " + key;
+        return null;
+    }
+    // Efeitos inferidos: io, network
+}
+
+fn set_secret(key: string, value: string) -> result {
+    let response = net.post("https://vault.example.com/v1/secret/data/" + key, 
+        json.stringify({data: {value: value}}),
+        {
+            headers: {
+                "X-Vault-Token": env.get("VAULT_TOKEN")
+            }
+        }
+    );
+    
+    if response.status == 200 {
+        print "Secret set: " + key;
+        return ok;
+    } else {
+        return error("Failed to set secret");
+    }
+    // Efeitos inferidos: io, network
+}
+
+// ============================================
+// 9. SERVERLESS (AWS Lambda)
+// ============================================
+
+fn lambda_handler(event: {string: any}) -> {string: any} {
+    with logging, tracing {
+        print "Lambda invoked!";
+        
+        // Parse event
+        let body = json.parse(event.body);
+        
+        // Process
+        let result = process_data(body.data);
+        
+        // Return response
+        return {
+            statusCode: 200,
+            body: json.stringify({
+                result: result,
+                timestamp: time.now()
+            })
+        };
+    }
+    // Efeitos inferidos: io, time
+}
+
+fn deploy_lambda(function_name: string) -> result {
+    print "Deploying Lambda function: " + function_name;
+    
+    // Build
+    shell.exec("matter compile-native src/lambda.matter -o bootstrap");
+    
+    // Zip
+    shell.exec("zip function.zip bootstrap");
+    
+    // Deploy
+    let result = shell.exec("aws lambda update-function-code --function-name " + function_name + " --zip-file fileb://function.zip");
+    
+    if result.exit_code == 0 {
+        print "Lambda deployed!";
+        return ok;
+    } else {
+        return error("Deployment failed");
+    }
+    // Efeitos inferidos: io, shell
+}
+
+// ============================================
+// 10. MULTI-CLOUD (AWS + GCP + Azure)
+// ============================================
+
+fn deploy_multi_cloud(app_name: string, version: string) -> result {
+    with logging, retry {
+        print "Deploying to multiple clouds...";
+        
+        // AWS ECS
+        spawn {
+            print "Deploying to AWS ECS...";
+            shell.exec("aws ecs update-service --cluster prod --service " + app_name + " --force-new-deployment");
+        };
+        
+        // GCP Cloud Run
+        spawn {
+            print "Deploying to GCP Cloud Run...";
+            shell.exec("gcloud run deploy " + app_name + " --image gcr.io/project/" + app_name + ":" + version + " --platform managed");
+        };
+        
+        // Azure Container Instances
+        spawn {
+            print "Deploying to Azure ACI...";
+            shell.exec("az container create --resource-group prod --name " + app_name + " --image registry.example.com/" + app_name + ":" + version);
+        };
+        
+        // Wait for all
+        wait_all();
+        
+        print "Multi-cloud deployment complete!";
+        
+        return ok;
+    }
+    // Efeitos inferidos: io, shell, async
+}
+
+// ============================================
+// MAIN - CLOUD NATIVE DEMO
+// ============================================
+
+fn main() -> unit {
+    print "=== Matter Cloud Native System ===";
+    
+    // 1. Build and deploy
+    let version = "v1.2.3";
+    build_docker_image("matter-app", version);
+    
+    // 2. Deploy to Kubernetes
+    deploy_to_kubernetes(Deployment {
+        name: "matter-app",
+        replicas: 3,
+        image: "registry.example.com/matter-app:" + version,
+        port: 8080,
+        env: {
+            "ENV": "production",
+            "LOG_LEVEL": "info"
+        }
+    });
+    
+    // 3. Configure service mesh
+    configure_service_mesh("matter-app");
+    
+    // 4. Configure autoscaling
+    configure_autoscaling("matter-app", min_replicas: 3, max_replicas: 10, cpu_threshold: 70);
+    
+    // 5. Export metrics
+    spawn {
+        export_metrics();
+    };
+    
+    // 6. Run CI/CD pipeline
+    spawn {
+        on schedule("0 0 * * *") {  // Daily
+            run_ci_pipeline();
+        }
+    };
+    
+    print "Cloud native system running!";
+    // Efeitos inferidos: io, fs, shell, network, time, async
+}
+
+// ============================================
+// FEATURES EM AÇÃO
+// ============================================
+
+// ✅ Effect Inference - Efeitos inferidos automaticamente
+// ✅ Effect Handlers - logging, tracing, retry, timing
+// ✅ Gradual Typing - Tipos opcionais
+// ✅ Hot Reload - Modifique código → Atualização instantânea
+// ✅ 3 Backends - Bytecode (dev), LLVM (prod), Native (lambda)
+
+// MATTER - CLOUD NATIVE FIRST! ☁️🚀

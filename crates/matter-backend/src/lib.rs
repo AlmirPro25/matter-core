@@ -1,6 +1,10 @@
-/// Backend contracts for Matter
-/// Define interfaces para backends (visual, agent, terminal, etc)
+//! Backend contracts for Matter
+//! Define interfaces para backends (visual, agent, terminal, etc)
 
+use matter_agent_protocol::{
+    AgentFrame, AgentHandoffPacket, AgentId, AgentRole, AgentSession, MergeStrategy, TaskState,
+};
+use matter_memory::Rc;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
@@ -9,55 +13,109 @@ use std::net::TcpStream;
 use std::path::PathBuf;
 use std::time::Duration;
 
+/// Value type with reference-counted heap allocations
+///
+/// Stack values (Int, Bool, Unit) are stored directly for performance.
+/// Heap values (String, List, Map, Function, Struct) use Rc for:
+/// - Cheap cloning (O(1) atomic increment)
+/// - Shared ownership
+/// - Automatic deallocation
+/// - Cycle detection ready
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
+    // Stack values - cheap to copy
     Int(i64),
+    Float(f64),
     Bool(bool),
-    String(String),
     Unit,
-    Function(String),
-    // Sprint 4: Data Model
-    List(Vec<Value>),
-    Map(HashMap<String, Value>),
+
+    // Heap values - use Rc for shared ownership
+    String(Rc<String>),
+    Function(Rc<String>),
+    List(Rc<Vec<Value>>),
+    Map(Rc<HashMap<String, Value>>),
     Struct {
-        type_name: String,
-        fields: HashMap<String, Value>,
+        type_name: Rc<String>,
+        fields: Rc<HashMap<String, Value>>,
     },
 }
 
 impl Value {
+    /// Create a new String value
+    pub fn new_string(s: String) -> Self {
+        Value::String(Rc::new(s))
+    }
+
+    /// Create a new Function value
+    pub fn new_function(name: String) -> Self {
+        Value::Function(Rc::new(name))
+    }
+
+    /// Create a new List value
+    pub fn new_list(elements: Vec<Value>) -> Self {
+        Value::List(Rc::new(elements))
+    }
+
+    /// Create a new Map value
+    pub fn new_map(entries: HashMap<String, Value>) -> Self {
+        Value::Map(Rc::new(entries))
+    }
+
+    /// Create a new Struct value
+    pub fn new_struct(type_name: String, fields: HashMap<String, Value>) -> Self {
+        Value::Struct {
+            type_name: Rc::new(type_name),
+            fields: Rc::new(fields),
+        }
+    }
+
     pub fn as_int(&self) -> Result<i64, String> {
         match self {
             Value::Int(n) => Ok(*n),
-            _ => Err("Expected int".to_string()),
+            Value::Float(f) => Ok(*f as i64),
+            _ => Err(type_error("int", self)),
         }
     }
-    
+
+    pub fn as_float(&self) -> Result<f64, String> {
+        match self {
+            Value::Float(f) => Ok(*f),
+            Value::Int(n) => Ok(*n as f64),
+            _ => Err(type_error("float", self)),
+        }
+    }
+
     pub fn as_bool(&self) -> Result<bool, String> {
         match self {
             Value::Bool(b) => Ok(*b),
-            _ => Err("Expected bool".to_string()),
+            _ => Err(type_error("bool", self)),
         }
     }
-    
+
     pub fn as_string(&self) -> Result<String, String> {
         match self {
-            Value::String(s) => Ok(s.clone()),
-            _ => Err("Expected string".to_string()),
+            Value::String(s) => Ok((**s).clone()),
+            _ => Err(type_error("string", self)),
         }
     }
-    
+
     pub fn to_display_string(&self) -> String {
         match self {
             Value::Int(n) => n.to_string(),
+            Value::Float(f) => {
+                let s = f.to_string();
+                if s.contains('.') {
+                    s
+                } else {
+                    format!("{}.0", s)
+                }
+            }
             Value::Bool(b) => b.to_string(),
-            Value::String(s) => s.clone(),
+            Value::String(s) => (**s).clone(),
             Value::Unit => "()".to_string(),
-            Value::Function(name) => format!("<fn {}>", name),
+            Value::Function(name) => format!("<fn {}>", **name),
             Value::List(elements) => {
-                let items: Vec<String> = elements.iter()
-                    .map(|v| v.to_display_string())
-                    .collect();
+                let items: Vec<String> = elements.iter().map(|v| v.to_display_string()).collect();
                 format!("[{}]", items.join(", "))
             }
             Value::Map(entries) => {
@@ -74,14 +132,50 @@ impl Value {
                     .map(|(key, value)| format!("{}: {}", key, value.to_display_string()))
                     .collect();
                 items.sort();
-                format!("{} {{{}}}", type_name, items.join(", "))
+                format!("{} {{{}}}", **type_name, items.join(", "))
             }
         }
     }
 }
 
+pub fn value_type_name(value: &Value) -> &'static str {
+    match value {
+        Value::Int(_) => "int",
+        Value::Float(_) => "float",
+        Value::Bool(_) => "bool",
+        Value::Unit => "unit",
+        Value::String(_) => "string",
+        Value::Function(_) => "function",
+        Value::List(_) => "list",
+        Value::Map(_) => "map",
+        Value::Struct { .. } => "struct",
+    }
+}
+
+pub fn type_error(expected: &str, value: &Value) -> String {
+    format!(
+        "Type check failed [context:expected={},actual={}]",
+        expected,
+        value_type_name(value)
+    )
+}
+
 pub trait Backend {
     fn call(&mut self, method: &str, args: Vec<Value>) -> Result<Value, String>;
+}
+
+fn backend_unknown_method_error(backend: &str, method: &str) -> String {
+    format!(
+        "Backend call failed [context:backend={},method={}]: unknown method",
+        backend, method
+    )
+}
+
+fn backend_arity_error(op: &str, expected: usize, got: usize) -> String {
+    format!(
+        "Backend call failed [context:op={},expected_args={},actual_args={}]: invalid arity",
+        op, expected, got
+    )
 }
 
 /// Mock backend para trace/debug
@@ -105,7 +199,7 @@ impl Backend for TraceBackend {
             print!("{}", arg.to_display_string());
         }
         println!(")");
-        
+
         Ok(Value::Unit)
     }
 }
@@ -134,7 +228,7 @@ impl Backend for AgentBackend {
                 }
                 Ok(Value::Unit)
             }
-            _ => Err(format!("Unknown agent method: {}", method)),
+            _ => Err(backend_unknown_method_error("agent", method)),
         }
     }
 }
@@ -163,7 +257,7 @@ impl Backend for VisualBackend {
                 }
                 Ok(Value::Unit)
             }
-            _ => Err(format!("Unknown visual method: {}", method)),
+            _ => Err(backend_unknown_method_error("visual", method)),
         }
     }
 }
@@ -188,34 +282,46 @@ impl Backend for GraphBackend {
         match method {
             "bar" => {
                 let (title, labels, values) = chart_args("graph.bar", args)?;
-                Ok(Value::String(render_bar_chart(&title, &labels, &values)))
+                Ok(Value::new_string(render_bar_chart(
+                    &title, &labels, &values,
+                )))
             }
             "line" => {
                 let (title, labels, values) = chart_args("graph.line", args)?;
-                Ok(Value::String(render_line_chart(&title, &labels, &values)))
+                Ok(Value::new_string(render_line_chart(
+                    &title, &labels, &values,
+                )))
             }
             "pie" => {
                 let (title, labels, values) = chart_args("graph.pie", args)?;
-                Ok(Value::String(render_pie_chart(&title, &labels, &values)))
+                Ok(Value::new_string(render_pie_chart(
+                    &title, &labels, &values,
+                )))
             }
             "stats" => {
                 if args.len() != 1 {
-                    return Err(format!("graph.stats expects 1 argument, got {}", args.len()));
+                    return Err(backend_arity_error("graph.stats", 1, args.len()));
                 }
                 let values = value_list_ints("graph.stats values", &args[0])?;
                 Ok(chart_stats(&values))
             }
             "table" => {
                 let (title, labels, values) = chart_args("graph.table", args)?;
-                Ok(Value::String(render_table(&title, &labels, &values)))
+                Ok(Value::new_string(render_table(&title, &labels, &values)))
             }
             "save" => {
                 if args.len() != 5 {
-                    return Err(format!("graph.save expects 5 arguments, got {}", args.len()));
+                    return Err(backend_arity_error("graph.save", 5, args.len()));
                 }
-                let path = args[0].as_string().map_err(|e| format!("graph.save: {}", e))?;
-                let kind = args[1].as_string().map_err(|e| format!("graph.save: {}", e))?;
-                let title = args[2].as_string().map_err(|e| format!("graph.save: {}", e))?;
+                let path = args[0]
+                    .as_string()
+                    .map_err(|e| format!("graph.save: {}", e))?;
+                let kind = args[1]
+                    .as_string()
+                    .map_err(|e| format!("graph.save: {}", e))?;
+                let title = args[2]
+                    .as_string()
+                    .map_err(|e| format!("graph.save: {}", e))?;
                 let labels = value_list_strings("graph.save labels", &args[3])?;
                 let values = value_list_ints("graph.save values", &args[4])?;
                 validate_chart_data("graph.save", &labels, &values)?;
@@ -235,11 +341,11 @@ impl Backend for GraphBackend {
                 }
                 fs::write(&path, svg)
                     .map_err(|e| format!("graph.save could not write '{}': {}", path, e))?;
-                Ok(Value::String(path))
+                Ok(Value::new_string(path))
             }
             "dashboard" => {
                 if args.len() != 3 {
-                    return Err(format!("graph.dashboard expects 3 arguments, got {}", args.len()));
+                    return Err(backend_arity_error("graph.dashboard", 3, args.len()));
                 }
                 let path = args[0]
                     .as_string()
@@ -259,9 +365,9 @@ impl Backend for GraphBackend {
                 }
                 fs::write(&path, html)
                     .map_err(|e| format!("graph.dashboard could not write '{}': {}", path, e))?;
-                Ok(Value::String(path))
+                Ok(Value::new_string(path))
             }
-            _ => Err(format!("Unknown graph method: {}", method)),
+            _ => Err(backend_unknown_method_error("graph", method)),
         }
     }
 }
@@ -273,14 +379,13 @@ struct ChartSpec {
     values: Vec<i64>,
 }
 
-fn chart_args(
-    name: &str,
-    args: Vec<Value>,
-) -> Result<(String, Vec<String>, Vec<i64>), String> {
+fn chart_args(name: &str, args: Vec<Value>) -> Result<(String, Vec<String>, Vec<i64>), String> {
     if args.len() != 3 {
-        return Err(format!("{} expects 3 arguments, got {}", name, args.len()));
+        return Err(backend_arity_error(name, 3, args.len()));
     }
-    let title = args[0].as_string().map_err(|e| format!("{}: {}", name, e))?;
+    let title = args[0]
+        .as_string()
+        .map_err(|e| format!("{}: {}", name, e))?;
     let labels = value_list_strings(&format!("{} labels", name), &args[1])?;
     let values = value_list_ints(&format!("{} values", name), &args[2])?;
     validate_chart_data(name, &labels, &values)?;
@@ -300,12 +405,7 @@ fn dashboard_charts(value: &Value) -> Result<Vec<ChartSpec>, String> {
     for (index, item) in items.iter().enumerate() {
         let map = match item {
             Value::Map(map) => map,
-            _ => {
-                return Err(format!(
-                    "graph.dashboard chart {} must be a map",
-                    index
-                ))
-            }
+            _ => return Err(format!("graph.dashboard chart {} must be a map", index)),
         };
         let kind = required_string(map, "kind", index)?;
         let title = required_string(map, "title", index)?;
@@ -387,7 +487,7 @@ fn chart_stats(values: &[i64]) -> Value {
         stats.insert("min".to_string(), Value::Unit);
         stats.insert("max".to_string(), Value::Unit);
         stats.insert("average".to_string(), Value::Unit);
-        return Value::Map(stats);
+        return Value::new_map(stats);
     }
 
     let total: i64 = values.iter().sum();
@@ -396,8 +496,11 @@ fn chart_stats(values: &[i64]) -> Value {
     stats.insert("total".to_string(), Value::Int(total));
     stats.insert("min".to_string(), Value::Int(min));
     stats.insert("max".to_string(), Value::Int(max));
-    stats.insert("average".to_string(), Value::Int(total / values.len() as i64));
-    Value::Map(stats)
+    stats.insert(
+        "average".to_string(),
+        Value::Int(total / values.len() as i64),
+    );
+    Value::new_map(stats)
 }
 
 fn render_bar_chart(title: &str, labels: &[String], values: &[i64]) -> String {
@@ -407,7 +510,12 @@ fn render_bar_chart(title: &str, labels: &[String], values: &[i64]) -> String {
     let top = 64i64;
     let chart_w = 600i64;
     let chart_h = 280i64;
-    let max = values.iter().map(|value| value.abs()).max().unwrap_or(1).max(1);
+    let max = values
+        .iter()
+        .map(|value| value.abs())
+        .max()
+        .unwrap_or(1)
+        .max(1);
     let step = (chart_w / labels.len() as i64).max(28);
     let bar_w = (step - 12).max(12);
 
@@ -495,14 +603,20 @@ fn render_pie_chart(title: &str, labels: &[String], values: &[i64]) -> String {
     let cy = 220.0f64;
     let radius = 120.0f64;
     let total: i64 = values.iter().map(|value| value.abs()).sum::<i64>().max(1);
-    let colors = ["#2563eb", "#059669", "#dc2626", "#d97706", "#7c3aed", "#0891b2"];
+    let colors = [
+        "#2563eb", "#059669", "#dc2626", "#d97706", "#7c3aed", "#0891b2",
+    ];
     let mut start = -std::f64::consts::FRAC_PI_2;
     let mut body = String::new();
 
     for (index, (label, value)) in labels.iter().zip(values.iter()).enumerate() {
         let slice = value.abs() as f64 / total as f64;
         let end = start + slice * std::f64::consts::TAU;
-        let large_arc = if end - start > std::f64::consts::PI { 1 } else { 0 };
+        let large_arc = if end - start > std::f64::consts::PI {
+            1
+        } else {
+            0
+        };
         let x1 = cx + radius * start.cos();
         let y1 = cy + radius * start.sin();
         let x2 = cx + radius * end.cos();
@@ -617,23 +731,25 @@ impl Backend for NetBackend {
         match method {
             "get" => {
                 if args.len() != 1 {
-                    return Err(format!("net.get expects 1 argument, got {}", args.len()));
+                    return Err(backend_arity_error("net.get", 1, args.len()));
                 }
                 let url = args[0].as_string().map_err(|e| format!("net.get: {}", e))?;
                 let response = http_request("GET", &url, "", self.timeout)?;
-                Ok(Value::String(response.body))
+                Ok(Value::new_string(response.body))
             }
             "status" => {
                 if args.len() != 1 {
-                    return Err(format!("net.status expects 1 argument, got {}", args.len()));
+                    return Err(backend_arity_error("net.status", 1, args.len()));
                 }
-                let url = args[0].as_string().map_err(|e| format!("net.status: {}", e))?;
+                let url = args[0]
+                    .as_string()
+                    .map_err(|e| format!("net.status: {}", e))?;
                 let response = http_request("GET", &url, "", self.timeout)?;
                 Ok(Value::Int(response.status as i64))
             }
             "ok" => {
                 if args.len() != 1 {
-                    return Err(format!("net.ok expects 1 argument, got {}", args.len()));
+                    return Err(backend_arity_error("net.ok", 1, args.len()));
                 }
                 let url = args[0].as_string().map_err(|e| format!("net.ok: {}", e))?;
                 let response = http_request("GET", &url, "", self.timeout)?;
@@ -642,14 +758,18 @@ impl Backend for NetBackend {
             }
             "post" => {
                 if args.len() != 2 {
-                    return Err(format!("net.post expects 2 arguments, got {}", args.len()));
+                    return Err(backend_arity_error("net.post", 2, args.len()));
                 }
-                let url = args[0].as_string().map_err(|e| format!("net.post: {}", e))?;
-                let body = args[1].as_string().map_err(|e| format!("net.post: {}", e))?;
+                let url = args[0]
+                    .as_string()
+                    .map_err(|e| format!("net.post: {}", e))?;
+                let body = args[1]
+                    .as_string()
+                    .map_err(|e| format!("net.post: {}", e))?;
                 let response = http_request("POST", &url, &body, self.timeout)?;
-                Ok(Value::String(response.body))
+                Ok(Value::new_string(response.body))
             }
-            _ => Err(format!("Unknown net method: {}", method)),
+            _ => Err(backend_unknown_method_error("net", method)),
         }
     }
 }
@@ -659,11 +779,22 @@ struct HttpResponse {
     body: String,
 }
 
-fn http_request(method: &str, url: &str, body: &str, timeout: Duration) -> Result<HttpResponse, String> {
+fn http_request(
+    method: &str,
+    url: &str,
+    body: &str,
+    timeout: Duration,
+) -> Result<HttpResponse, String> {
     let parsed = parse_http_url(url)?;
     let address = format!("{}:{}", parsed.host, parsed.port);
-    let mut stream = TcpStream::connect(&address)
-        .map_err(|e| format!("net.{} failed to connect to '{}': {}", method.to_lowercase(), address, e))?;
+    let mut stream = TcpStream::connect(&address).map_err(|e| {
+        format!(
+            "net.{} failed to connect to '{}': {}",
+            method.to_lowercase(),
+            address,
+            e
+        )
+    })?;
     stream
         .set_read_timeout(Some(timeout))
         .map_err(|e| format!("net could not set read timeout: {}", e))?;
@@ -676,7 +807,7 @@ fn http_request(method: &str, url: &str, body: &str, timeout: Duration) -> Resul
             "POST {} HTTP/1.1\r\nHost: {}\r\nUser-Agent: matter-core/0.1\r\nConnection: close\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}",
             parsed.path,
             parsed.host,
-            body.as_bytes().len(),
+            body.len(),
             body
         )
     } else {
@@ -686,14 +817,22 @@ fn http_request(method: &str, url: &str, body: &str, timeout: Duration) -> Resul
         )
     };
 
-    stream
-        .write_all(request.as_bytes())
-        .map_err(|e| format!("net.{} failed to write request: {}", method.to_lowercase(), e))?;
+    stream.write_all(request.as_bytes()).map_err(|e| {
+        format!(
+            "net.{} failed to write request: {}",
+            method.to_lowercase(),
+            e
+        )
+    })?;
 
     let mut response = String::new();
-    stream
-        .read_to_string(&mut response)
-        .map_err(|e| format!("net.{} failed to read response: {}", method.to_lowercase(), e))?;
+    stream.read_to_string(&mut response).map_err(|e| {
+        format!(
+            "net.{} failed to read response: {}",
+            method.to_lowercase(),
+            e
+        )
+    })?;
 
     parse_http_response(&response)
 }
@@ -757,6 +896,484 @@ pub struct StoreBackend {
     values: HashMap<String, Value>,
 }
 
+#[derive(Debug, Clone)]
+struct ToolSpec {
+    name: String,
+    description: String,
+    expensive: bool,
+}
+
+/// Tool-calling backend that lets Matter orchestrate IA-style tool requests.
+pub struct ToolBackend {
+    tools: HashMap<String, ToolSpec>,
+}
+
+impl ToolBackend {
+    pub fn new() -> Self {
+        let mut backend = Self {
+            tools: HashMap::new(),
+        };
+        backend.seed_defaults();
+        backend
+    }
+
+    fn seed_defaults(&mut self) {
+        self.tools.insert(
+            "agent.backend".to_string(),
+            ToolSpec {
+                name: "agent.backend".to_string(),
+                description: "Bridge to agent/backend operations".to_string(),
+                expensive: true,
+            },
+        );
+        self.tools.insert(
+            "visual.render".to_string(),
+            ToolSpec {
+                name: "visual.render".to_string(),
+                description: "Render visual artifacts and UI scenes".to_string(),
+                expensive: true,
+            },
+        );
+        self.tools.insert(
+            "net.fetch".to_string(),
+            ToolSpec {
+                name: "net.fetch".to_string(),
+                description: "Network fetch operation".to_string(),
+                expensive: true,
+            },
+        );
+    }
+
+    fn spec_to_value(spec: &ToolSpec) -> Value {
+        let mut map = HashMap::new();
+        map.insert("name".to_string(), Value::new_string(spec.name.clone()));
+        map.insert(
+            "description".to_string(),
+            Value::new_string(spec.description.clone()),
+        );
+        map.insert("expensive".to_string(), Value::Bool(spec.expensive));
+        Value::new_map(map)
+    }
+
+    fn classify_tool(&self, name: &str) -> Value {
+        let expensive = self
+            .tools
+            .get(name)
+            .map(|tool| tool.expensive)
+            .unwrap_or(true);
+        let mut map = HashMap::new();
+        map.insert("tool".to_string(), Value::new_string(name.to_string()));
+        map.insert("expensive".to_string(), Value::Bool(expensive));
+        map.insert(
+            "recommendation".to_string(),
+            Value::new_string(if expensive {
+                "defer_or_cache".to_string()
+            } else {
+                "execute_now".to_string()
+            }),
+        );
+        Value::new_map(map)
+    }
+
+    fn invoke_json(&self, name: &str, payload: Value) -> Value {
+        let expensive = self
+            .tools
+            .get(name)
+            .map(|tool| tool.expensive)
+            .unwrap_or(true);
+        let mut map = HashMap::new();
+        map.insert("tool".to_string(), Value::new_string(name.to_string()));
+        map.insert("status".to_string(), Value::new_string("ok".to_string()));
+        map.insert(
+            "format".to_string(),
+            Value::new_string("MTR_TOOL_1".to_string()),
+        );
+        map.insert("expensive".to_string(), Value::Bool(expensive));
+        map.insert(
+            "energy_hint".to_string(),
+            Value::new_string(if expensive {
+                "high_cost_virtual_op".to_string()
+            } else {
+                "low_cost_virtual_op".to_string()
+            }),
+        );
+        map.insert("payload".to_string(), payload);
+        Value::new_map(map)
+    }
+
+    fn parse_agent_role(value: &str) -> AgentRole {
+        match value.to_ascii_lowercase().as_str() {
+            "planner" => AgentRole::Planner,
+            "reviewer" => AgentRole::Reviewer,
+            "runtime" => AgentRole::Runtime,
+            "userproxy" | "user_proxy" | "user-proxy" => AgentRole::UserProxy,
+            _ => AgentRole::Worker,
+        }
+    }
+
+    fn parse_task_state(value: &str) -> TaskState {
+        match value.to_ascii_lowercase().as_str() {
+            "in_progress" | "inprogress" => TaskState::InProgress,
+            "blocked" => TaskState::Blocked,
+            "ready_for_review" | "readyforreview" => TaskState::ReadyForReview,
+            "completed" => TaskState::Completed,
+            _ => TaskState::Proposed,
+        }
+    }
+
+    fn map_get_string(entries: &HashMap<String, Value>, key: &str) -> Result<String, String> {
+        match entries.get(key) {
+            Some(value) => value.as_string(),
+            None => Ok(String::new()),
+        }
+    }
+
+    fn map_get_string_list(
+        entries: &HashMap<String, Value>,
+        key: &str,
+    ) -> Result<Vec<String>, String> {
+        match entries.get(key) {
+            Some(Value::List(items)) => items.iter().map(|item| item.as_string()).collect(),
+            Some(Value::Unit) | None => Ok(Vec::new()),
+            Some(_) => Err(format!(
+                "tool.invoke_frame expects '{}' as list<string>",
+                key
+            )),
+        }
+    }
+
+    fn invoke_frame(&self, frame_payload: &HashMap<String, Value>) -> Result<Value, String> {
+        let from_name = Self::map_get_string(frame_payload, "from_name")?;
+        let from_role = Self::parse_agent_role(&Self::map_get_string(frame_payload, "from_role")?);
+        let to_name = Self::map_get_string(frame_payload, "to_name")?;
+        let to_role = Self::parse_agent_role(&Self::map_get_string(frame_payload, "to_role")?);
+        let task_id = Self::map_get_string(frame_payload, "task_id")?;
+        let state = Self::parse_task_state(&Self::map_get_string(frame_payload, "state")?);
+
+        let mut frame = AgentFrame::new(
+            AgentId::new(
+                if from_name.is_empty() {
+                    "planner"
+                } else {
+                    from_name.as_str()
+                },
+                from_role,
+            ),
+            AgentId::new(
+                if to_name.is_empty() {
+                    "worker"
+                } else {
+                    to_name.as_str()
+                },
+                to_role,
+            ),
+            if task_id.is_empty() {
+                "tool-task"
+            } else {
+                task_id.as_str()
+            },
+        )
+        .with_state(state)
+        .with_goal(Self::map_get_string(frame_payload, "goal")?)
+        .with_summary(Self::map_get_string(frame_payload, "summary")?)
+        .with_next_action(Self::map_get_string(frame_payload, "next_action")?);
+
+        for fact in Self::map_get_string_list(frame_payload, "facts")? {
+            frame = frame.add_fact(fact);
+        }
+        for blocker in Self::map_get_string_list(frame_payload, "blockers")? {
+            frame = frame.add_blocker(blocker);
+        }
+        for request in Self::map_get_string_list(frame_payload, "requests")? {
+            frame = frame.add_request(request);
+        }
+
+        let response = frame.response_from_receiver();
+        let session = AgentSession::new("tool-session")
+            .add_frame(frame.clone())
+            .add_response(response.clone());
+        let packet = session.handoff_packet(8);
+        let wire = packet.to_wire();
+
+        let mut out = HashMap::new();
+        out.insert("status".to_string(), Value::new_string("ok".to_string()));
+        out.insert(
+            "protocol".to_string(),
+            Value::new_string("matter-agent-protocol".to_string()),
+        );
+        out.insert(
+            "readiness".to_string(),
+            Value::new_string(format!("{:?}", frame.readiness()).to_ascii_lowercase()),
+        );
+        out.insert(
+            "response_kind".to_string(),
+            Value::new_string(format!("{:?}", response.kind).to_ascii_lowercase()),
+        );
+        out.insert(
+            "next_action".to_string(),
+            Value::new_string(response.next_action),
+        );
+        out.insert("summary".to_string(), Value::new_string(response.summary));
+        out.insert("wire".to_string(), Value::new_string(wire));
+        out.insert("actionable".to_string(), Value::Bool(frame.is_actionable()));
+        Ok(Value::new_map(out))
+    }
+
+    fn from_wire(&self, wire: &str) -> Result<Value, String> {
+        let packet = AgentHandoffPacket::from_wire(wire)
+            .map_err(|error| format!("tool.from_wire parse error: {}", error))?;
+        let mut out = HashMap::new();
+        out.insert("packet_id".to_string(), Value::new_string(packet.packet_id));
+        out.insert(
+            "session_id".to_string(),
+            Value::new_string(packet.context.session_id),
+        );
+        out.insert(
+            "latest_task_id".to_string(),
+            Value::new_string(packet.context.latest_task_id),
+        );
+        out.insert(
+            "next_action".to_string(),
+            Value::new_string(packet.context.next_action),
+        );
+        out.insert("terminal".to_string(), Value::Bool(packet.context.terminal));
+        out.insert(
+            "event_count".to_string(),
+            Value::Int(packet.context.event_count as i64),
+        );
+        out.insert(
+            "last_response_kind".to_string(),
+            Value::new_string(
+                packet
+                    .context
+                    .last_response_kind
+                    .map(|kind| format!("{:?}", kind).to_ascii_lowercase())
+                    .unwrap_or_else(|| "none".to_string()),
+            ),
+        );
+        Ok(Value::new_map(out))
+    }
+
+    fn parse_merge_strategy(value: &str) -> MergeStrategy {
+        match value.to_ascii_lowercase().as_str() {
+            "prefer_terminal" | "terminal" => MergeStrategy::PreferTerminal,
+            "prefer_blocked" | "blocked" => MergeStrategy::PreferBlocked,
+            _ => MergeStrategy::PreferLatest,
+        }
+    }
+
+    fn merge_wire(
+        &self,
+        left: &str,
+        right: &str,
+        strategy: MergeStrategy,
+    ) -> Result<Value, String> {
+        let left_packet = AgentHandoffPacket::from_wire(left)
+            .map_err(|error| format!("tool.merge_wire left parse error: {}", error))?;
+        let right_packet = AgentHandoffPacket::from_wire(right)
+            .map_err(|error| format!("tool.merge_wire right parse error: {}", error))?;
+        let mut out = HashMap::new();
+        match left_packet.merge_with_strategy(&right_packet, strategy) {
+            Ok(merged) => {
+                let merged_wire = merged.to_wire_with_strategy(strategy);
+                out.insert("status".to_string(), Value::new_string("ok".to_string()));
+                out.insert(
+                    "packet_id".to_string(),
+                    Value::new_string(merged.packet_id.clone()),
+                );
+                out.insert(
+                    "lineage_depth".to_string(),
+                    Value::Int(merged.lineage_depth as i64),
+                );
+                out.insert(
+                    "next_action".to_string(),
+                    Value::new_string(merged.context.next_action.clone()),
+                );
+                out.insert("wire".to_string(), Value::new_string(merged_wire));
+            }
+            Err(error) => {
+                // Controlled fallback: return preferred valid wire instead of hard failure.
+                let preferred = match strategy {
+                    MergeStrategy::PreferBlocked => right_packet,
+                    _ => left_packet,
+                };
+                out.insert(
+                    "status".to_string(),
+                    Value::new_string("degraded".to_string()),
+                );
+                out.insert("error".to_string(), Value::new_string(error));
+                out.insert(
+                    "packet_id".to_string(),
+                    Value::new_string(preferred.packet_id.clone()),
+                );
+                out.insert(
+                    "lineage_depth".to_string(),
+                    Value::Int(preferred.lineage_depth as i64),
+                );
+                out.insert(
+                    "next_action".to_string(),
+                    Value::new_string(preferred.context.next_action.clone()),
+                );
+                out.insert(
+                    "wire".to_string(),
+                    Value::new_string(preferred.to_wire_with_strategy(strategy)),
+                );
+            }
+        }
+        Ok(Value::new_map(out))
+    }
+
+    fn validate_wire(&self, wire: &str) -> Value {
+        match AgentHandoffPacket::from_wire(wire) {
+            Ok(packet) => {
+                let mut out = HashMap::new();
+                out.insert("ok".to_string(), Value::Bool(true));
+                out.insert("packet_id".to_string(), Value::new_string(packet.packet_id));
+                out.insert(
+                    "lineage_depth".to_string(),
+                    Value::Int(packet.lineage_depth as i64),
+                );
+                Value::new_map(out)
+            }
+            Err(error) => {
+                let mut out = HashMap::new();
+                out.insert("ok".to_string(), Value::Bool(false));
+                out.insert("error".to_string(), Value::new_string(error));
+                Value::new_map(out)
+            }
+        }
+    }
+}
+
+impl Default for ToolBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Backend for ToolBackend {
+    fn call(&mut self, method: &str, args: Vec<Value>) -> Result<Value, String> {
+        match method {
+            "list" => {
+                if !args.is_empty() {
+                    return Err(backend_arity_error("tool.list", 0, args.len()));
+                }
+                let mut names: Vec<String> = self.tools.keys().cloned().collect();
+                names.sort();
+                Ok(Value::new_list(
+                    names.into_iter().map(Value::new_string).collect(),
+                ))
+            }
+            "describe" => {
+                if args.len() != 1 {
+                    return Err(backend_arity_error("tool.describe", 1, args.len()));
+                }
+                let name = args[0].as_string()?;
+                if let Some(spec) = self.tools.get(&name) {
+                    Ok(Self::spec_to_value(spec))
+                } else {
+                    Ok(Value::Unit)
+                }
+            }
+            "register" => {
+                if args.len() != 3 {
+                    return Err(backend_arity_error("tool.register", 3, args.len()));
+                }
+                let name = args[0].as_string()?;
+                let description = args[1].as_string()?;
+                let expensive = args[2].as_bool()?;
+                self.tools.insert(
+                    name.clone(),
+                    ToolSpec {
+                        name,
+                        description,
+                        expensive,
+                    },
+                );
+                Ok(Value::Unit)
+            }
+            "call" => {
+                if args.is_empty() || args.len() > 2 {
+                    return Err(format!(
+                        "Backend call failed [context:op=tool.call,expected_args=1..2,actual_args={}]: invalid arity",
+                        args.len()
+                    ));
+                }
+                let tool_name = args[0].as_string()?;
+                let payload = args.get(1).cloned().unwrap_or(Value::Unit);
+                let Some(spec) = self.tools.get(&tool_name) else {
+                    return Err(format!("tool.call unknown tool '{}'", tool_name));
+                };
+
+                let mut map = HashMap::new();
+                map.insert("tool".to_string(), Value::new_string(tool_name));
+                map.insert("status".to_string(), Value::new_string("ok".to_string()));
+                map.insert("expensive".to_string(), Value::Bool(spec.expensive));
+                map.insert("payload".to_string(), payload);
+                Ok(Value::new_map(map))
+            }
+            "classify" => {
+                if args.len() != 1 {
+                    return Err(backend_arity_error("tool.classify", 1, args.len()));
+                }
+                let tool_name = args[0].as_string()?;
+                Ok(self.classify_tool(&tool_name))
+            }
+            "invoke_json" => {
+                if args.is_empty() || args.len() > 2 {
+                    return Err(format!(
+                        "Backend call failed [context:op=tool.invoke_json,expected_args=1..2,actual_args={}]: invalid arity",
+                        args.len()
+                    ));
+                }
+                let tool_name = args[0].as_string()?;
+                let payload = args.get(1).cloned().unwrap_or(Value::Unit);
+                Ok(self.invoke_json(&tool_name, payload))
+            }
+            "invoke_frame" => {
+                if args.len() != 1 {
+                    return Err(backend_arity_error("tool.invoke_frame", 1, args.len()));
+                }
+                let Value::Map(entries) = &args[0] else {
+                    return Err("tool.invoke_frame expects a map payload".to_string());
+                };
+                self.invoke_frame(entries)
+            }
+            "from_wire" => {
+                if args.len() != 1 {
+                    return Err(backend_arity_error("tool.from_wire", 1, args.len()));
+                }
+                let wire = args[0].as_string()?;
+                self.from_wire(&wire)
+            }
+            "merge_wire" => {
+                if args.len() < 2 || args.len() > 3 {
+                    return Err(format!(
+                        "Backend call failed [context:op=tool.merge_wire,expected_args=2..3,actual_args={}]: invalid arity",
+                        args.len()
+                    ));
+                }
+                let left = args[0].as_string()?;
+                let right = args[1].as_string()?;
+                let strategy = if args.len() == 3 {
+                    Self::parse_merge_strategy(&args[2].as_string()?)
+                } else {
+                    MergeStrategy::PreferLatest
+                };
+                self.merge_wire(&left, &right, strategy)
+            }
+            "validate_wire" => {
+                if args.len() != 1 {
+                    return Err(backend_arity_error("tool.validate_wire", 1, args.len()));
+                }
+                let wire = args[0].as_string()?;
+                Ok(self.validate_wire(&wire))
+            }
+            _ => Err(backend_unknown_method_error("tool", method)),
+        }
+    }
+}
+
 impl StoreBackend {
     pub fn new() -> Self {
         let path = env::var("MATTER_STORE_PATH")
@@ -785,9 +1402,8 @@ impl StoreBackend {
 
         let json = serde_json::to_string_pretty(&serde_json::Value::Object(object))
             .map_err(|e| format!("could not encode store: {}", e))?;
-        fs::write(&self.path, json).map_err(|e| {
-            format!("could not write store '{}': {}", self.path.display(), e)
-        })
+        fs::write(&self.path, json)
+            .map_err(|e| format!("could not write store '{}': {}", self.path.display(), e))
     }
 }
 
@@ -802,7 +1418,7 @@ impl Backend for StoreBackend {
         match method {
             "set" => {
                 if args.len() != 2 {
-                    return Err("store.set expects 2 arguments".to_string());
+                    return Err(backend_arity_error("store.set", 2, args.len()));
                 }
                 let key = args[0].as_string()?;
                 self.values.insert(key, args[1].clone());
@@ -811,21 +1427,21 @@ impl Backend for StoreBackend {
             }
             "get" => {
                 if args.len() != 1 {
-                    return Err("store.get expects 1 argument".to_string());
+                    return Err(backend_arity_error("store.get", 1, args.len()));
                 }
                 let key = args[0].as_string()?;
                 Ok(self.values.get(&key).cloned().unwrap_or(Value::Unit))
             }
             "has" => {
                 if args.len() != 1 {
-                    return Err("store.has expects 1 argument".to_string());
+                    return Err(backend_arity_error("store.has", 1, args.len()));
                 }
                 let key = args[0].as_string()?;
                 Ok(Value::Bool(self.values.contains_key(&key)))
             }
             "delete" => {
                 if args.len() != 1 {
-                    return Err("store.delete expects 1 argument".to_string());
+                    return Err(backend_arity_error("store.delete", 1, args.len()));
                 }
                 let key = args[0].as_string()?;
                 let existed = self.values.remove(&key).is_some();
@@ -834,7 +1450,7 @@ impl Backend for StoreBackend {
             }
             "clear" => {
                 if !args.is_empty() {
-                    return Err("store.clear expects 0 arguments".to_string());
+                    return Err(backend_arity_error("store.clear", 0, args.len()));
                 }
                 self.values.clear();
                 self.save()?;
@@ -842,13 +1458,15 @@ impl Backend for StoreBackend {
             }
             "list" => {
                 if !args.is_empty() {
-                    return Err("store.list expects 0 arguments".to_string());
+                    return Err(backend_arity_error("store.list", 0, args.len()));
                 }
                 let mut keys: Vec<String> = self.values.keys().cloned().collect();
                 keys.sort();
-                Ok(Value::List(keys.into_iter().map(Value::String).collect()))
+                Ok(Value::new_list(
+                    keys.into_iter().map(Value::new_string).collect(),
+                ))
             }
-            _ => Err(format!("Unknown store method: {}", method)),
+            _ => Err(backend_unknown_method_error("store", method)),
         }
     }
 }
@@ -881,50 +1499,91 @@ fn encode_value(value: &Value) -> serde_json::Value {
     let mut object = serde_json::Map::new();
     match value {
         Value::Int(n) => {
-            object.insert("type".to_string(), serde_json::Value::String("int".to_string()));
+            object.insert(
+                "type".to_string(),
+                serde_json::Value::String("int".to_string()),
+            );
             object.insert("value".to_string(), serde_json::Value::Number((*n).into()));
         }
+        Value::Float(f) => {
+            object.insert(
+                "type".to_string(),
+                serde_json::Value::String("float".to_string()),
+            );
+            if let Some(num) = serde_json::Number::from_f64(*f) {
+                object.insert("value".to_string(), serde_json::Value::Number(num));
+            } else {
+                object.insert("value".to_string(), serde_json::Value::Null);
+            }
+        }
         Value::Bool(b) => {
-            object.insert("type".to_string(), serde_json::Value::String("bool".to_string()));
+            object.insert(
+                "type".to_string(),
+                serde_json::Value::String("bool".to_string()),
+            );
             object.insert("value".to_string(), serde_json::Value::Bool(*b));
         }
         Value::String(s) => {
-            object.insert("type".to_string(), serde_json::Value::String("string".to_string()));
-            object.insert("value".to_string(), serde_json::Value::String(s.clone()));
+            object.insert(
+                "type".to_string(),
+                serde_json::Value::String("string".to_string()),
+            );
+            object.insert(
+                "value".to_string(),
+                serde_json::Value::String((**s).clone()),
+            );
         }
         Value::Unit => {
-            object.insert("type".to_string(), serde_json::Value::String("unit".to_string()));
+            object.insert(
+                "type".to_string(),
+                serde_json::Value::String("unit".to_string()),
+            );
         }
         Value::List(elements) => {
-            object.insert("type".to_string(), serde_json::Value::String("list".to_string()));
+            object.insert(
+                "type".to_string(),
+                serde_json::Value::String("list".to_string()),
+            );
             object.insert(
                 "value".to_string(),
                 serde_json::Value::Array(elements.iter().map(encode_value).collect()),
             );
         }
         Value::Map(entries) => {
-            object.insert("type".to_string(), serde_json::Value::String("map".to_string()));
+            object.insert(
+                "type".to_string(),
+                serde_json::Value::String("map".to_string()),
+            );
             let mut values = serde_json::Map::new();
-            for (key, value) in entries {
+            for (key, value) in entries.iter() {
                 values.insert(key.clone(), encode_value(value));
             }
             object.insert("value".to_string(), serde_json::Value::Object(values));
         }
         Value::Struct { type_name, fields } => {
-            object.insert("type".to_string(), serde_json::Value::String("struct".to_string()));
+            object.insert(
+                "type".to_string(),
+                serde_json::Value::String("struct".to_string()),
+            );
             object.insert(
                 "name".to_string(),
-                serde_json::Value::String(type_name.clone()),
+                serde_json::Value::String((**type_name).clone()),
             );
             let mut values = serde_json::Map::new();
-            for (key, value) in fields {
+            for (key, value) in fields.iter() {
                 values.insert(key.clone(), encode_value(value));
             }
             object.insert("value".to_string(), serde_json::Value::Object(values));
         }
         Value::Function(name) => {
-            object.insert("type".to_string(), serde_json::Value::String("function".to_string()));
-            object.insert("value".to_string(), serde_json::Value::String(name.clone()));
+            object.insert(
+                "type".to_string(),
+                serde_json::Value::String("function".to_string()),
+            );
+            object.insert(
+                "value".to_string(),
+                serde_json::Value::String((**name).clone()),
+            );
         }
     }
     serde_json::Value::Object(object)
@@ -946,13 +1605,19 @@ fn decode_value(json: &serde_json::Value) -> Result<Value, String> {
                 .and_then(|v| v.as_i64())
                 .ok_or_else(|| "stored int is invalid".to_string())?,
         )),
+        "float" => Ok(Value::Float(
+            object
+                .get("value")
+                .and_then(|v| v.as_f64())
+                .ok_or_else(|| "stored float is invalid".to_string())?,
+        )),
         "bool" => Ok(Value::Bool(
             object
                 .get("value")
                 .and_then(|v| v.as_bool())
                 .ok_or_else(|| "stored bool is invalid".to_string())?,
         )),
-        "string" => Ok(Value::String(
+        "string" => Ok(Value::new_string(
             object
                 .get("value")
                 .and_then(|v| v.as_str())
@@ -965,7 +1630,11 @@ fn decode_value(json: &serde_json::Value) -> Result<Value, String> {
                 .get("value")
                 .and_then(|v| v.as_array())
                 .ok_or_else(|| "stored list is invalid".to_string())?;
-            values.iter().map(decode_value).collect::<Result<Vec<_>, _>>().map(Value::List)
+            values
+                .iter()
+                .map(decode_value)
+                .collect::<Result<Vec<_>, _>>()
+                .map(Value::new_list)
         }
         "map" => {
             let values = object
@@ -976,7 +1645,7 @@ fn decode_value(json: &serde_json::Value) -> Result<Value, String> {
             for (key, value) in values {
                 map.insert(key.clone(), decode_value(value)?);
             }
-            Ok(Value::Map(map))
+            Ok(Value::new_map(map))
         }
         "struct" => {
             let type_name = object
@@ -992,9 +1661,9 @@ fn decode_value(json: &serde_json::Value) -> Result<Value, String> {
             for (key, value) in values {
                 fields.insert(key.clone(), decode_value(value)?);
             }
-            Ok(Value::Struct { type_name, fields })
+            Ok(Value::new_struct(type_name, fields))
         }
-        "function" => Ok(Value::Function(
+        "function" => Ok(Value::new_function(
             object
                 .get("value")
                 .and_then(|v| v.as_str())
@@ -1016,12 +1685,12 @@ mod tests {
             .call(
                 "bar",
                 vec![
-                    Value::String("Vendas".to_string()),
-                    Value::List(vec![
-                        Value::String("Jan".to_string()),
-                        Value::String("Fev".to_string()),
+                    Value::new_string("Vendas".to_string()),
+                    Value::new_list(vec![
+                        Value::new_string("Jan".to_string()),
+                        Value::new_string("Fev".to_string()),
                     ]),
-                    Value::List(vec![Value::Int(10), Value::Int(24)]),
+                    Value::new_list(vec![Value::Int(10), Value::Int(24)]),
                 ],
             )
             .unwrap();
@@ -1039,9 +1708,9 @@ mod tests {
             .call(
                 "line",
                 vec![
-                    Value::String("Uso".to_string()),
-                    Value::List(vec![Value::String("A".to_string())]),
-                    Value::List(vec![Value::Int(1), Value::Int(2)]),
+                    Value::new_string("Uso".to_string()),
+                    Value::new_list(vec![Value::new_string("A".to_string())]),
+                    Value::new_list(vec![Value::Int(1), Value::Int(2)]),
                 ],
             )
             .unwrap_err();
@@ -1054,32 +1723,35 @@ mod tests {
         let mut graph = GraphBackend::new();
         let path = std::env::temp_dir().join("matter_graph_dashboard_test.html");
         let mut chart = HashMap::new();
-        chart.insert("kind".to_string(), Value::String("bar".to_string()));
-        chart.insert("title".to_string(), Value::String("Receita".to_string()));
+        chart.insert("kind".to_string(), Value::new_string("bar".to_string()));
+        chart.insert(
+            "title".to_string(),
+            Value::new_string("Receita".to_string()),
+        );
         chart.insert(
             "labels".to_string(),
-            Value::List(vec![
-                Value::String("Jan".to_string()),
-                Value::String("Fev".to_string()),
+            Value::new_list(vec![
+                Value::new_string("Jan".to_string()),
+                Value::new_string("Fev".to_string()),
             ]),
         );
         chart.insert(
             "values".to_string(),
-            Value::List(vec![Value::Int(10), Value::Int(20)]),
+            Value::new_list(vec![Value::Int(10), Value::Int(20)]),
         );
 
         let result = graph
             .call(
                 "dashboard",
                 vec![
-                    Value::String(path.display().to_string()),
-                    Value::String("Painel".to_string()),
-                    Value::List(vec![Value::Map(chart)]),
+                    Value::new_string(path.display().to_string()),
+                    Value::new_string("Painel".to_string()),
+                    Value::new_list(vec![Value::new_map(chart)]),
                 ],
             )
             .unwrap();
 
-        assert_eq!(result, Value::String(path.display().to_string()));
+        assert_eq!(result, Value::new_string(path.display().to_string()));
         let html = fs::read_to_string(&path).unwrap();
         assert!(html.contains("<!doctype html>"));
         assert!(html.contains("Painel"));
@@ -1093,7 +1765,7 @@ mod tests {
         let result = graph
             .call(
                 "stats",
-                vec![Value::List(vec![
+                vec![Value::new_list(vec![
                     Value::Int(12),
                     Value::Int(20),
                     Value::Int(16),
@@ -1103,7 +1775,7 @@ mod tests {
             .unwrap();
 
         let Value::Map(stats) = result else {
-            panic!("expected stats map");
+            unreachable!("expected stats map");
         };
         assert_eq!(stats.get("count"), Some(&Value::Int(4)));
         assert_eq!(stats.get("total"), Some(&Value::Int(76)));
@@ -1119,12 +1791,12 @@ mod tests {
             .call(
                 "table",
                 vec![
-                    Value::String("Resumo".to_string()),
-                    Value::List(vec![
-                        Value::String("Jan".to_string()),
-                        Value::String("Fev".to_string()),
+                    Value::new_string("Resumo".to_string()),
+                    Value::new_list(vec![
+                        Value::new_string("Jan".to_string()),
+                        Value::new_string("Fev".to_string()),
                     ]),
-                    Value::List(vec![Value::Int(10), Value::Int(20)]),
+                    Value::new_list(vec![Value::Int(10), Value::Int(20)]),
                 ],
             )
             .unwrap();
@@ -1133,5 +1805,329 @@ mod tests {
         assert!(html.contains("<table>"));
         assert!(html.contains("<caption>Resumo</caption>"));
         assert!(html.contains("<td>Jan</td><td>10</td>"));
+    }
+
+    #[test]
+    fn unknown_method_errors_use_context_contract() {
+        let mut agent = AgentBackend::new();
+        let agent_err = agent.call("noop", vec![]).unwrap_err();
+        assert!(agent_err.starts_with("Backend call failed"));
+        assert!(agent_err.contains("[context:backend=agent,method=noop]"));
+
+        let mut visual = VisualBackend::new();
+        let visual_err = visual.call("noop", vec![]).unwrap_err();
+        assert!(visual_err.contains("[context:backend=visual,method=noop]"));
+
+        let mut graph = GraphBackend::new();
+        let graph_err = graph.call("noop", vec![]).unwrap_err();
+        assert!(graph_err.contains("[context:backend=graph,method=noop]"));
+
+        let mut net = NetBackend::new();
+        let net_err = net.call("noop", vec![]).unwrap_err();
+        assert!(net_err.contains("[context:backend=net,method=noop]"));
+
+        let path = std::env::temp_dir().join("matter_store_unknown_method_test.json");
+        let mut store = StoreBackend::with_path(path.clone());
+        let store_err = store.call("noop", vec![]).unwrap_err();
+        assert!(store_err.contains("[context:backend=store,method=noop]"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn value_type_errors_use_context_contract() {
+        let int_err = Value::Bool(true).as_int().unwrap_err();
+        assert!(int_err.starts_with("Type check failed"));
+        assert!(int_err.contains("[context:expected=int,actual=bool]"));
+
+        let bool_err = Value::Int(7).as_bool().unwrap_err();
+        assert!(bool_err.contains("[context:expected=bool,actual=int]"));
+
+        let string_err = Value::Unit.as_string().unwrap_err();
+        assert!(string_err.contains("[context:expected=string,actual=unit]"));
+    }
+
+    #[test]
+    fn net_and_store_arity_errors_use_context_contract() {
+        let mut net = NetBackend::new();
+        let net_err = net.call("get", vec![]).unwrap_err();
+        assert!(net_err.starts_with("Backend call failed"));
+        assert!(net_err.contains("[context:op=net.get,expected_args=1,actual_args=0]"));
+
+        let path = std::env::temp_dir().join("matter_store_arity_contract_test.json");
+        let mut store = StoreBackend::with_path(path.clone());
+        let store_err = store.call("clear", vec![Value::Int(1)]).unwrap_err();
+        assert!(store_err.contains("[context:op=store.clear,expected_args=0,actual_args=1]"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn graph_arity_errors_use_context_contract() {
+        let mut graph = GraphBackend::new();
+        let err = graph.call("stats", vec![]).unwrap_err();
+        assert!(err.starts_with("Backend call failed"));
+        assert!(err.contains("[context:op=graph.stats,expected_args=1,actual_args=0]"));
+    }
+
+    #[test]
+    fn tool_backend_can_register_list_describe_and_call() {
+        let mut backend = ToolBackend::new();
+        backend
+            .call(
+                "register",
+                vec![
+                    Value::new_string("local.summarize".to_string()),
+                    Value::new_string("Local text summarization".to_string()),
+                    Value::Bool(false),
+                ],
+            )
+            .unwrap();
+
+        let list = backend.call("list", vec![]).unwrap();
+        let Value::List(names) = list else {
+            panic!("tool.list should return a list");
+        };
+        assert!(names.iter().any(
+            |name| matches!(name, Value::String(value) if value.as_str() == "local.summarize")
+        ));
+
+        let described = backend
+            .call(
+                "describe",
+                vec![Value::new_string("local.summarize".to_string())],
+            )
+            .unwrap();
+        let Value::Map(spec) = described else {
+            panic!("tool.describe should return map");
+        };
+        assert_eq!(
+            spec.get("expensive"),
+            Some(&Value::Bool(false)),
+            "registered tool should preserve expensive flag"
+        );
+
+        let result = backend
+            .call(
+                "call",
+                vec![
+                    Value::new_string("local.summarize".to_string()),
+                    Value::new_string("hello".to_string()),
+                ],
+            )
+            .unwrap();
+        let Value::Map(out) = result else {
+            panic!("tool.call should return map");
+        };
+        assert_eq!(
+            out.get("status"),
+            Some(&Value::new_string("ok".to_string()))
+        );
+    }
+
+    #[test]
+    fn tool_backend_classify_and_invoke_json_include_energy_hints() {
+        let mut backend = ToolBackend::new();
+        let class = backend
+            .call(
+                "classify",
+                vec![Value::new_string("visual.render".to_string())],
+            )
+            .unwrap();
+        let Value::Map(class_map) = class else {
+            panic!("tool.classify should return map");
+        };
+        assert_eq!(class_map.get("expensive"), Some(&Value::Bool(true)));
+
+        let invoked = backend
+            .call(
+                "invoke_json",
+                vec![
+                    Value::new_string("visual.render".to_string()),
+                    Value::new_string("{\"scene\":\"hero\"}".to_string()),
+                ],
+            )
+            .unwrap();
+        let Value::Map(invoke_map) = invoked else {
+            panic!("tool.invoke_json should return map");
+        };
+        assert_eq!(
+            invoke_map.get("format"),
+            Some(&Value::new_string("MTR_TOOL_1".to_string()))
+        );
+        assert_eq!(
+            invoke_map.get("energy_hint"),
+            Some(&Value::new_string("high_cost_virtual_op".to_string()))
+        );
+    }
+
+    #[test]
+    fn tool_backend_invoke_frame_and_from_wire_round_trip() {
+        let mut backend = ToolBackend::new();
+
+        let mut payload = HashMap::new();
+        payload.insert(
+            "from_name".to_string(),
+            Value::new_string("planner".to_string()),
+        );
+        payload.insert(
+            "from_role".to_string(),
+            Value::new_string("planner".to_string()),
+        );
+        payload.insert(
+            "to_name".to_string(),
+            Value::new_string("worker".to_string()),
+        );
+        payload.insert(
+            "to_role".to_string(),
+            Value::new_string("worker".to_string()),
+        );
+        payload.insert(
+            "task_id".to_string(),
+            Value::new_string("task-42".to_string()),
+        );
+        payload.insert(
+            "state".to_string(),
+            Value::new_string("proposed".to_string()),
+        );
+        payload.insert(
+            "goal".to_string(),
+            Value::new_string("Integrate tool-calling protocol".to_string()),
+        );
+        payload.insert(
+            "summary".to_string(),
+            Value::new_string("Frame is complete and actionable".to_string()),
+        );
+        payload.insert(
+            "next_action".to_string(),
+            Value::new_string("execute".to_string()),
+        );
+        payload.insert(
+            "facts".to_string(),
+            Value::new_list(vec![Value::new_string("energy-aware".to_string())]),
+        );
+
+        let invoked = backend
+            .call("invoke_frame", vec![Value::new_map(payload)])
+            .unwrap();
+        let Value::Map(invoke_map) = invoked else {
+            panic!("tool.invoke_frame should return map");
+        };
+        assert_eq!(
+            invoke_map.get("status"),
+            Some(&Value::new_string("ok".to_string()))
+        );
+        assert_eq!(invoke_map.get("actionable"), Some(&Value::Bool(true)));
+
+        let wire = invoke_map
+            .get("wire")
+            .expect("wire should exist")
+            .as_string()
+            .expect("wire should be string");
+
+        let decoded = backend
+            .call("from_wire", vec![Value::new_string(wire)])
+            .unwrap();
+        let Value::Map(decoded_map) = decoded else {
+            panic!("tool.from_wire should return map");
+        };
+        assert_eq!(
+            decoded_map.get("latest_task_id"),
+            Some(&Value::new_string("task-42".to_string()))
+        );
+        assert_eq!(decoded_map.get("terminal"), Some(&Value::Bool(false)));
+    }
+
+    #[test]
+    fn tool_backend_merge_and_validate_wire() {
+        let mut backend = ToolBackend::new();
+
+        let mut payload_a = HashMap::new();
+        payload_a.insert(
+            "from_name".to_string(),
+            Value::new_string("planner".to_string()),
+        );
+        payload_a.insert(
+            "from_role".to_string(),
+            Value::new_string("planner".to_string()),
+        );
+        payload_a.insert(
+            "to_name".to_string(),
+            Value::new_string("worker".to_string()),
+        );
+        payload_a.insert(
+            "to_role".to_string(),
+            Value::new_string("worker".to_string()),
+        );
+        payload_a.insert(
+            "task_id".to_string(),
+            Value::new_string("merge-task".to_string()),
+        );
+        payload_a.insert(
+            "state".to_string(),
+            Value::new_string("proposed".to_string()),
+        );
+        payload_a.insert(
+            "goal".to_string(),
+            Value::new_string("merge packets".to_string()),
+        );
+        payload_a.insert(
+            "summary".to_string(),
+            Value::new_string("first frame".to_string()),
+        );
+        payload_a.insert(
+            "next_action".to_string(),
+            Value::new_string("execute".to_string()),
+        );
+
+        let mut payload_b = payload_a.clone();
+        payload_b.insert(
+            "state".to_string(),
+            Value::new_string("blocked".to_string()),
+        );
+        payload_b.insert(
+            "blockers".to_string(),
+            Value::new_list(vec![Value::new_string("missing_api_key".to_string())]),
+        );
+        payload_b.insert(
+            "summary".to_string(),
+            Value::new_string("second frame blocked".to_string()),
+        );
+
+        let wire_a = match backend
+            .call("invoke_frame", vec![Value::new_map(payload_a)])
+            .unwrap()
+        {
+            Value::Map(map) => map.get("wire").unwrap().as_string().unwrap(),
+            _ => panic!("invoke_frame result expected map"),
+        };
+        let wire_b = match backend
+            .call("invoke_frame", vec![Value::new_map(payload_b)])
+            .unwrap()
+        {
+            Value::Map(map) => map.get("wire").unwrap().as_string().unwrap(),
+            _ => panic!("invoke_frame result expected map"),
+        };
+
+        let merged = backend
+            .call(
+                "merge_wire",
+                vec![
+                    Value::new_string(wire_a.clone()),
+                    Value::new_string(wire_b.clone()),
+                    Value::new_string("prefer_blocked".to_string()),
+                ],
+            )
+            .unwrap();
+        let Value::Map(merged_map) = merged else {
+            panic!("merge_wire should return map");
+        };
+        let merged_wire = merged_map.get("wire").unwrap().as_string().unwrap();
+
+        let valid = backend
+            .call("validate_wire", vec![Value::new_string(merged_wire)])
+            .unwrap();
+        let Value::Map(valid_map) = valid else {
+            panic!("validate_wire should return map");
+        };
+        assert_eq!(valid_map.get("ok"), Some(&Value::Bool(true)));
     }
 }

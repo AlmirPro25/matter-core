@@ -1,0 +1,7 @@
+[package]
+name = "matter-energy"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+matter-backend = { workspace = true }

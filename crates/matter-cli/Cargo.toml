@@ -7,6 +7,10 @@ edition.workspace = true
 name = "matter-cli"
 path = "src/main.rs"
 
+[features]
+default = []
+llvm = []
+
 [dependencies]
 matter-lexer = { workspace = true }
 matter-parser = { workspace = true }
@@ -15,3 +19,10 @@ matter-bytecode = { workspace = true }
 matter-vm = { workspace = true }
 matter-runtime = { workspace = true }
 matter-backend = { workspace = true }
+matter-lsp = { workspace = true }
+matter-debugger = { workspace = true }
+matter-formatter = { workspace = true }
+matter-linter = { workspace = true }
+matter-native = { path = "../matter-native" }
+tokio = { version = "1.35", features = ["rt", "rt-multi-thread"] }
+serde_json = "1"

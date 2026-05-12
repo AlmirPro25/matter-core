@@ -1,0 +1,46 @@
+# Calculator - Demonstração de REPL e funções
+# Execute: matter repl < calculator.matter
+
+print "=== Matter Calculator ==="
+print ""
+
+# Funções básicas
+fn add(a, b) {
+    return a + b
+}
+
+fn subtract(a, b) {
+    return a - b
+}
+
+fn multiply(a, b) {
+    return a * b
+}
+
+fn divide(a, b) {
+    if b == 0 {
+        print "Error: Division by zero"
+        return 0
+    }
+    return a / b
+}
+
+fn power(base, exp) {
+    return math.pow(base, exp)
+}
+
+# Demonstração
+print "Basic Operations:"
+print "10 + 5 = 15"
+print "10 - 5 = 5"
+print "10 * 5 = 50"
+print "10 / 5 = 2"
+print ""
+
+print "Advanced Operations:"
+print "2^10 = 1024"
+print "sqrt(144) = 12"
+print "abs(-42) = 42"
+print ""
+
+print "Calculator ready! Define your own operations in REPL."

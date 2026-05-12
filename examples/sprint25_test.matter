@@ -1,0 +1,23 @@
+// Sprint 25 Test Program
+// Tests: functions, arithmetic, if/else, print
+
+fn add(a, b) {
+    return a + b;
+}
+
+fn multiply(a, b) {
+    return a * b;
+}
+
+// Test basic function calls
+let x = add(10, 20);
+let y = multiply(x, 2);
+
+// Test conditional
+if y > 50 {
+    print(y);
+} else {
+    print(0);
+}
+
+// Expected output: 60

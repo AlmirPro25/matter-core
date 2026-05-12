@@ -1,0 +1,12 @@
+[package]
+name = "matter-photonic"
+version = "0.1.0"
+edition = "2021"
+authors = ["Matter Core Team"]
+license = "MIT"
+description = "Photonic computing for Matter - light-based computation"
+
+[dependencies]
+num-complex = "0.4"
+
+[dev-dependencies]

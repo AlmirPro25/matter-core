@@ -1,0 +1,14 @@
+fn seed_drivers() {
+    let drivers = []
+    drivers.push({ "id": 1, "name": "Carlos", "car": "Corolla", "lat": 10, "lng": 11, "online": true, "active_ride_id": 0 })
+    drivers.push({ "id": 2, "name": "Ana", "car": "Civic", "lat": 14, "lng": 9, "online": true, "active_ride_id": 0 })
+    drivers.push({ "id": 3, "name": "Bruno", "car": "Onix", "lat": 20, "lng": 19, "online": true, "active_ride_id": 0 })
+    return drivers
+}
+
+fn seed_riders() {
+    let riders = []
+    riders.push({ "id": 101, "name": "Joao", "risk_score": 12, "priority": 1 })
+    riders.push({ "id": 102, "name": "Maria", "risk_score": 8, "priority": 2 })
+    return riders
+}

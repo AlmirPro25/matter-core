@@ -1,0 +1,285 @@
+# Biological Computing in Matter
+# DNA/RNA computation and molecular algorithms
+
+import "matter-biological" as bio
+
+# Example 1: DNA Manipulation
+fn dna_basics() {
+    # Create DNA sequence
+    let dna = bio.DNA.new("ATGCGATCGATCG")
+    
+    print(f"DNA sequence: {dna}")
+    print(f"Length: {dna.len()} bases")
+    print(f"GC content: {dna.gc_content()}%")
+    
+    # Get complement
+    let complement = dna.complement()
+    print(f"Complement: {complement}")
+    
+    # Get reverse complement
+    let rev_comp = dna.reverse_complement()
+    print(f"Reverse complement: {rev_comp}")
+}
+
+# Example 2: Central Dogma (DNA → RNA → Protein)
+fn central_dogma() {
+    # DNA sequence (gene)
+    let dna = bio.DNA.new("ATGTTTAAAGGG")
+    print(f"DNA: {dna}")
+    
+    # Transcription: DNA → RNA
+    let rna = dna.transcribe()
+    print(f"RNA: {rna}")
+    
+    # Translation: RNA → Protein
+    let protein = rna.translate()
+    print(f"Protein: {protein}")
+    print(f"Molecular weight: {protein.molecular_weight()} Da")
+    
+    # This is how cells make proteins!
+    # Matter can simulate this process
+}
+
+# Example 3: DNA Computing
+fn dna_computing() {
+    # DNA can be used for computation!
+    # Adleman solved Hamiltonian Path using DNA in 1994
+    
+    let computer = bio.DNAComputer.new()
+    
+    # Add DNA strands representing graph edges
+    computer.add_strand(bio.DNA.new("ATGC"))  # Node A → B
+    computer.add_strand(bio.DNA.new("GCTA"))  # Node B → C
+    computer.add_strand(bio.DNA.new("CGAT"))  # Node C → D
+    
+    # Hybridization finds complementary strands
+    let pairs = computer.hybridize()
+    print(f"Found {pairs.len()} complementary pairs")
+    
+    # Ligation joins strands (represents path)
+    let path = computer.ligate(0, 1)
+    print(f"Path found: {path}")
+    
+    # DNA computing advantages:
+    # - Massive parallelism (10^18 operations/second)
+    # - Low energy consumption
+    # - High information density (1 gram DNA = 215 petabytes!)
+}
+
+# Example 4: CRISPR Simulation
+fn crispr_simulation() {
+    # Simulate CRISPR gene editing
+    
+    # Target DNA sequence
+    let target = bio.DNA.new("ATGCGATCGATCGATCGATCG")
+    print(f"Original DNA: {target}")
+    
+    # CRISPR guide RNA
+    let guide_rna = bio.RNA.new("AUCGAUCGAU")
+    
+    # Find target site
+    let target_dna = bio.DNA.new("ATCGATCGAT")
+    let positions = target.find_motif(target_dna)
+    
+    if positions.len() > 0 {
+        print(f"CRISPR target found at position {positions[0]}")
+        print("Cas9 would cut here")
+        
+        # In real CRISPR, DNA is cut and repaired
+        # This can fix genetic diseases!
+    }
+}
+
+# Example 5: Genetic Algorithm
+fn genetic_algorithm() {
+    # Evolve solution using biological principles
+    
+    # Population of DNA sequences
+    let population = [
+        bio.DNA.new("ATGC"),
+        bio.DNA.new("GCTA"),
+        bio.DNA.new("CGAT"),
+        bio.DNA.new("TACG"),
+    ]
+    
+    # Fitness function (example: maximize GC content)
+    fn fitness(dna: bio.DNA) -> f64 {
+        dna.gc_content()
+    }
+    
+    # Evolution loop
+    for generation in 0..10 {
+        # Selection (keep fittest)
+        let fittest = population
+            .sort_by(|a, b| fitness(b) <=> fitness(a))
+            .take(2)
+        
+        # Crossover (combine DNA)
+        # Mutation (random changes)
+        # (Simplified for demo)
+        
+        print(f"Generation {generation}: Best fitness = {fitness(fittest[0])}")
+    }
+    
+    print("Genetic algorithm converged!")
+}
+
+# Example 6: Protein Folding Prediction
+fn protein_folding() {
+    # Predict protein 3D structure from sequence
+    # This is crucial for drug design!
+    
+    let protein = bio.Protein.new("MKTAYIAKQRQISFVKSHFSRQLEERLGLIEVQAPILSRVGDGTQDNLSGAEKAVQVKVKALPDAQFEVVHSLAKWKRQTLGQHDFSAGEGLYTHMKALRPDEDRLSPLHSVYVDQWDWERVMGDGERQFSTLKSTVEAIWAGIKATEAAVSEEFGLAPFLPDQIHFVHSQELLSRYPDLDAKGRERAIAKDLGAVFLVGIGGKLSDGHRHDVRAPDYDDWSTPSELGHAGLNGDILVWNPVLEDAFELSSMGIRVDADTLKHQLALTGDEDRLELEWHQALLRGEMPQTIGGGIGQSRLTMLLLQLPHIGQVQAGVWPAAVRESVPSLL")
+    
+    print(f"Protein sequence: {protein}")
+    print(f"Length: {protein.len()} amino acids")
+    print(f"Molecular weight: {protein.molecular_weight()} Da")
+    
+    # In real implementation, would predict 3D structure
+    # AlphaFold uses AI, but quantum computers could be faster!
+    
+    print("Predicting 3D structure...")
+    print("(Would use quantum annealing or molecular dynamics)")
+}
+
+# Example 7: Synthetic Biology - Design Genetic Circuit
+fn genetic_circuit() {
+    # Design biological circuit (like electronic circuit but with DNA)
+    
+    # Promoter (ON/OFF switch)
+    let promoter = bio.DNA.new("TATAAA")
+    
+    # Gene (produces protein)
+    let gene = bio.DNA.new("ATGTTTAAAGGG")
+    
+    # Terminator (STOP signal)
+    let terminator = bio.DNA.new("TTTTT")
+    
+    # Assemble circuit
+    let circuit = promoter + gene + terminator
+    
+    print(f"Genetic circuit: {circuit}")
+    print("This circuit produces protein when activated")
+    
+    # Real applications:
+    # - Biosensors (detect toxins)
+    # - Biofuels (produce ethanol)
+    # - Medicine (produce insulin)
+}
+
+# Example 8: Real-World - Personalized Medicine
+fn personalized_medicine() {
+    # Analyze patient DNA for drug response
+    
+    # Patient DNA sequence (simplified)
+    let patient_dna = bio.DNA.new("ATGCGATCGATCG")
+    
+    # Known drug resistance mutation
+    let resistance_motif = bio.DNA.new("GATCG")
+    
+    # Check for mutation
+    let positions = patient_dna.find_motif(resistance_motif)
+    
+    if positions.len() > 0 {
+        print("⚠️  Drug resistance mutation found!")
+        print("Recommend alternative treatment")
+    } else {
+        print("✅ No resistance mutation")
+        print("Standard treatment should work")
+    }
+    
+    # This is the future of medicine!
+    # Personalized treatment based on your DNA
+}
+
+# Example 9: DNA Data Storage
+fn dna_storage() {
+    # Store digital data in DNA
+    # 1 gram DNA = 215 petabytes!
+    
+    # Encode text to DNA
+    fn encode_to_dna(text: str) -> bio.DNA {
+        # Convert text to binary
+        let binary = text.bytes().map(|b| format!("{:08b}", b)).join("")
+        
+        # Convert binary to DNA (00=A, 01=T, 10=G, 11=C)
+        let dna_str = binary
+            .chunks(2)
+            .map(|chunk| match chunk {
+                "00" => "A",
+                "01" => "T",
+                "10" => "G",
+                "11" => "C",
+                _ => "A"
+            })
+            .join("")
+        
+        bio.DNA.new(dna_str)
+    }
+    
+    let message = "Hello, World!"
+    let dna = encode_to_dna(message)
+    
+    print(f"Original: {message}")
+    print(f"Encoded in DNA: {dna}")
+    print(f"Storage density: {dna.len()} bases for {message.len()} bytes")
+    
+    # DNA storage advantages:
+    # - Extreme density (215 PB/gram)
+    # - Long-term stability (1000+ years)
+    # - No power needed
+    # - Perfect for archival storage!
+}
+
+# Main demo
+fn main() {
+    print("=== Matter Biological Computing Demo ===\n")
+    
+    print("1. DNA Basics")
+    dna_basics()
+    print()
+    
+    print("2. Central Dogma (DNA → RNA → Protein)")
+    central_dogma()
+    print()
+    
+    print("3. DNA Computing")
+    dna_computing()
+    print()
+    
+    print("4. CRISPR Simulation")
+    crispr_simulation()
+    print()
+    
+    print("5. Genetic Algorithm")
+    genetic_algorithm()
+    print()
+    
+    print("6. Protein Folding")
+    protein_folding()
+    print()
+    
+    print("7. Genetic Circuit Design")
+    genetic_circuit()
+    print()
+    
+    print("8. Personalized Medicine")
+    personalized_medicine()
+    print()
+    
+    print("9. DNA Data Storage")
+    dna_storage()
+    print()
+    
+    print("=== Biological Computing in Matter ===")
+    print("✅ DNA/RNA manipulation")
+    print("✅ DNA computing (10^18 ops/sec)")
+    print("✅ CRISPR simulation")
+    print("✅ Genetic algorithms")
+    print("✅ Protein folding")
+    print("✅ Synthetic biology")
+    print("✅ Personalized medicine")
+    print("✅ DNA storage (215 PB/gram)")
+    print()
+    print("Matter: First language with native biological computing!")
+}

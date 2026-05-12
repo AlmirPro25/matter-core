@@ -1,0 +1,151 @@
+{
+  "Function Declaration": {
+    "prefix": "fn",
+    "body": [
+      "fn ${1:name}(${2:params}) {",
+      "\t${3:return $0}",
+      "}"
+    ],
+    "description": "Create a function"
+  },
+  "If Statement": {
+    "prefix": "if",
+    "body": [
+      "if ${1:condition} {",
+      "\t$0",
+      "}"
+    ],
+    "description": "Create an if statement"
+  },
+  "If-Else Statement": {
+    "prefix": "ifelse",
+    "body": [
+      "if ${1:condition} {",
+      "\t${2}",
+      "} else {",
+      "\t${3}",
+      "}"
+    ],
+    "description": "Create an if-else statement"
+  },
+  "While Loop": {
+    "prefix": "while",
+    "body": [
+      "while ${1:condition} {",
+      "\t$0",
+      "}"
+    ],
+    "description": "Create a while loop"
+  },
+  "For Loop": {
+    "prefix": "for",
+    "body": [
+      "for ${1:item} in ${2:collection} {",
+      "\t$0",
+      "}"
+    ],
+    "description": "Create a for loop"
+  },
+  "Loop": {
+    "prefix": "loop",
+    "body": [
+      "loop {",
+      "\t$0",
+      "}"
+    ],
+    "description": "Create an infinite loop"
+  },
+  "Event Handler": {
+    "prefix": "on",
+    "body": [
+      "on ${1:event} {",
+      "\t$0",
+      "}"
+    ],
+    "description": "Create an event handler"
+  },
+  "Import Statement": {
+    "prefix": "import",
+    "body": [
+      "import \"${1:path}\""
+    ],
+    "description": "Import a module"
+  },
+  "Variable Declaration": {
+    "prefix": "let",
+    "body": [
+      "let ${1:name} = ${2:value}"
+    ],
+    "description": "Declare a variable"
+  },
+  "Variable Assignment": {
+    "prefix": "set",
+    "body": [
+      "set ${1:name} = ${2:value}"
+    ],
+    "description": "Assign to a variable"
+  },
+  "Print Statement": {
+    "prefix": "print",
+    "body": [
+      "print ${1:value}"
+    ],
+    "description": "Print a value"
+  },
+  "Agent Say": {
+    "prefix": "agent.say",
+    "body": [
+      "agent.say(\"${1:message}\")"
+    ],
+    "description": "Agent backend - say"
+  },
+  "Visual Run": {
+    "prefix": "visual.run",
+    "body": [
+      "visual.run(\"${1:app_name}\")"
+    ],
+    "description": "Visual backend - run app"
+  },
+  "Store Set": {
+    "prefix": "store.set",
+    "body": [
+      "store.set(\"${1:key}\", ${2:value})"
+    ],
+    "description": "Store backend - set value"
+  },
+  "Store Get": {
+    "prefix": "store.get",
+    "body": [
+      "store.get(\"${1:key}\")"
+    ],
+    "description": "Store backend - get value"
+  },
+  "Net Request": {
+    "prefix": "net.request",
+    "body": [
+      "net.request(\"${1:url}\")"
+    ],
+    "description": "Net backend - HTTP request"
+  },
+  "List Push": {
+    "prefix": "list.push",
+    "body": [
+      "list.push(${1:list}, ${2:value})"
+    ],
+    "description": "List backend - push value"
+  },
+  "JSON Stringify": {
+    "prefix": "json.stringify",
+    "body": [
+      "json.stringify(${1:value})"
+    ],
+    "description": "JSON backend - stringify"
+  },
+  "JSON Parse": {
+    "prefix": "json.parse",
+    "body": [
+      "json.parse(\"${1:json_string}\")"
+    ],
+    "description": "JSON backend - parse"
+  }
+}

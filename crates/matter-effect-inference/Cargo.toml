@@ -1,0 +1,12 @@
+[package]
+name = "matter-effect-inference"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+matter-ast = { path = "../matter-ast" }
+matter-effects = { path = "../matter-effects" }
+
+[dev-dependencies]

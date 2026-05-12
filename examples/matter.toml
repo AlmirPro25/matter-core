@@ -1,0 +1,11 @@
+[package]
+name = "matter-examples"
+version = "0.1.0"
+description = "Matter Core examples collection"
+license = "MIT"
+entry = "src/main.matter"
+
+[dependencies]
+# Add dependencies here
+# math-utils = "^1.0.0"
+# string-helpers = { path = "../string-helpers" }

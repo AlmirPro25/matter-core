@@ -1,0 +1,21 @@
+[package]
+name = "matter-native"
+version = "0.1.0"
+edition = "2021"
+authors = ["Matter Core Team"]
+description = "Native code generator for Matter Core - zero dependencies, pure Rust"
+license = "MIT"
+
+[dependencies]
+matter-bytecode = { path = "../matter-bytecode" }
+matter-optimizer = { path = "../matter-optimizer" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[dev-dependencies]
+
+[features]
+default = []
+x86_64 = []
+arm64 = []
+riscv = []

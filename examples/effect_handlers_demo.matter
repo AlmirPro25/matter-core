@@ -1,0 +1,400 @@
+// ============================================
+// MATTER EFFECT HANDLERS DEMO
+// Sprint 28: Intercepting and Modifying Effects
+// ============================================
+
+// 1. BASIC HANDLER - Logging
+handler logging {
+    on io.print(msg) {
+        // Intercept print and log to file
+        file.write("app.log", "[LOG] " + msg + "\n");
+        resume;  // Continue with original print
+    }
+}
+
+// 2. TRACING HANDLER - Trace all operations
+handler tracing {
+    on io.print(msg) {
+        print "[TRACE] io.print called with: ";
+        print msg;
+        resume;
+    }
+    
+    on db.query(sql) {
+        print "[TRACE] db.query called with: ";
+        print sql;
+        resume;
+    }
+    
+    on network.get(url) {
+        print "[TRACE] network.get called with: ";
+        print url;
+        resume;
+    }
+}
+
+// 3. RETRY HANDLER - Retry failed operations
+handler retry {
+    on network.get(url) {
+        let result = try_operation();
+        if result.is_error() {
+            print "Retrying...";
+            retry(3);  // Retry up to 3 times
+        }
+        return result;
+    }
+    
+    on network.post(url, data) {
+        let result = try_operation();
+        if result.is_error() {
+            print "Retrying POST...";
+            retry(3);
+        }
+        return result;
+    }
+}
+
+// 4. MOCK HANDLER - Mock operations for testing
+handler mock {
+    on io.print(msg) {
+        // Do nothing (silent)
+        return unit;
+    }
+    
+    on network.get(url) {
+        // Return fake data
+        return "mock data from " + url;
+    }
+    
+    on db.query(sql) {
+        // Return fake results
+        return [
+            { id: 1, name: "Mock User 1" },
+            { id: 2, name: "Mock User 2" }
+        ];
+    }
+}
+
+// 5. CACHE HANDLER - Cache operation results
+handler cache {
+    let cache_store = {};
+    
+    on network.get(url) {
+        // Check cache first
+        if cache_store.has(url) {
+            print "Cache HIT for: ";
+            print url;
+            return cache_store.get(url);
+        }
+        
+        print "Cache MISS for: ";
+        print url;
+        
+        // Execute original operation
+        let result = resume;
+        
+        // Store in cache
+        cache_store.set(url, result);
+        
+        return result;
+    }
+}
+
+// 6. RATE LIMITING HANDLER
+handler rate_limit {
+    let request_count = 0;
+    let last_reset = time.now();
+    
+    on network.get(url) {
+        let now = time.now();
+        
+        // Reset counter every second
+        if now - last_reset > 1000 {
+            request_count = 0;
+            last_reset = now;
+        }
+        
+        // Check rate limit
+        if request_count >= 10 {
+            print "Rate limit exceeded! Waiting...";
+            time.sleep(1000);
+            request_count = 0;
+        }
+        
+        request_count = request_count + 1;
+        resume;
+    }
+}
+
+// 7. AUTHENTICATION HANDLER
+handler auth {
+    let token = "secret-token-123";
+    
+    on network.get(url) {
+        print "Adding auth header...";
+        // Add authentication header
+        let headers = { "Authorization": "Bearer " + token };
+        return network.get_with_headers(url, headers);
+    }
+    
+    on network.post(url, data) {
+        print "Adding auth header to POST...";
+        let headers = { "Authorization": "Bearer " + token };
+        return network.post_with_headers(url, data, headers);
+    }
+}
+
+// 8. ERROR HANDLING HANDLER
+handler error_handler {
+    on network.get(url) {
+        let result = try_operation();
+        
+        if result.is_error() {
+            print "Network error occurred!";
+            print "URL: ";
+            print url;
+            print "Error: ";
+            print result.error();
+            
+            // Return default value
+            return { error: true, message: "Network error" };
+        }
+        
+        return result;
+    }
+}
+
+// 9. TIMING HANDLER - Measure operation time
+handler timing {
+    on io.print(msg) {
+        let start = time.now();
+        resume;
+        let end = time.now();
+        print "io.print took: ";
+        print end - start;
+        print "ms";
+    }
+    
+    on network.get(url) {
+        let start = time.now();
+        let result = resume;
+        let end = time.now();
+        print "network.get took: ";
+        print end - start;
+        print "ms";
+        return result;
+    }
+}
+
+// 10. VALIDATION HANDLER
+handler validation {
+    on db.query(sql) {
+        // Validate SQL (prevent injection)
+        if sql.contains("DROP") or sql.contains("DELETE") {
+            print "SECURITY: Dangerous SQL detected!";
+            abort("SQL injection attempt");
+        }
+        resume;
+    }
+}
+
+// ============================================
+// USAGE EXAMPLES
+// ============================================
+
+// Example 1: Simple logging
+fn example1() -> unit with io {
+    with logging {
+        print "Hello, World!";
+        print "This will be logged!";
+    }
+}
+
+// Example 2: Multiple handlers
+fn example2() -> unit with io, network {
+    with logging, tracing {
+        print "Starting request...";
+        let data = net.get("https://api.example.com/data");
+        print "Got data: ";
+        print data;
+    }
+}
+
+// Example 3: Retry on failure
+fn example3() -> unit with io, network {
+    with retry {
+        let data = net.get("https://unreliable-api.com/data");
+        print data;
+    }
+}
+
+// Example 4: Testing with mocks
+fn example4() -> unit with io, network, db {
+    with mock {
+        // All operations are mocked
+        print "This won't actually print";
+        let data = net.get("https://api.example.com");
+        let users = db.query("SELECT * FROM users");
+        
+        // But we can still test logic
+        if users.length() > 0 {
+            print "Users found!";
+        }
+    }
+}
+
+// Example 5: Caching
+fn example5() -> unit with io, network {
+    with cache {
+        // First call - cache miss
+        let data1 = net.get("https://api.example.com/data");
+        
+        // Second call - cache hit!
+        let data2 = net.get("https://api.example.com/data");
+        
+        print "Both calls returned same data";
+    }
+}
+
+// Example 6: Rate limiting
+fn example6() -> unit with io, network {
+    with rate_limit {
+        // Make many requests
+        for i in range(0, 20) {
+            let data = net.get("https://api.example.com/item/" + i);
+            print data;
+        }
+    }
+}
+
+// Example 7: Authentication
+fn example7() -> unit with io, network {
+    with auth {
+        // Auth header added automatically
+        let data = net.get("https://api.example.com/protected");
+        print data;
+    }
+}
+
+// Example 8: Composition - Multiple handlers
+fn example8() -> unit with io, network {
+    with logging, tracing, retry, cache, auth {
+        // All handlers active!
+        // 1. Auth adds header
+        // 2. Cache checks cache
+        // 3. Retry on failure
+        // 4. Tracing logs operation
+        // 5. Logging writes to file
+        
+        let data = net.get("https://api.example.com/data");
+        print data;
+    }
+}
+
+// Example 9: Timing measurements
+fn example9() -> unit with io, network {
+    with timing {
+        print "Starting...";
+        let data = net.get("https://api.example.com/data");
+        print "Done!";
+    }
+}
+
+// Example 10: Validation
+fn example10() -> unit with io, db {
+    with validation {
+        // Safe query - allowed
+        db.query("SELECT * FROM users WHERE id = 1");
+        
+        // Dangerous query - blocked!
+        // db.query("DROP TABLE users");  // Would abort!
+    }
+}
+
+// ============================================
+// ADVANCED: Custom Handler
+// ============================================
+
+handler custom_metrics {
+    let metrics = {
+        print_count: 0,
+        network_count: 0,
+        db_count: 0
+    };
+    
+    on io.print(msg) {
+        metrics.print_count = metrics.print_count + 1;
+        resume;
+    }
+    
+    on network.get(url) {
+        metrics.network_count = metrics.network_count + 1;
+        resume;
+    }
+    
+    on db.query(sql) {
+        metrics.db_count = metrics.db_count + 1;
+        resume;
+    }
+    
+    on app.shutdown() {
+        print "=== METRICS ===";
+        print "Prints: ";
+        print metrics.print_count;
+        print "Network: ";
+        print metrics.network_count;
+        print "Database: ";
+        print metrics.db_count;
+    }
+}
+
+// ============================================
+// MAIN
+// ============================================
+
+fn main() -> unit with io, network, db {
+    print "=== EFFECT HANDLERS DEMO ===";
+    print "";
+    
+    print "Example 1: Logging";
+    example1();
+    print "";
+    
+    print "Example 2: Multiple handlers";
+    example2();
+    print "";
+    
+    print "Example 3: Retry";
+    example3();
+    print "";
+    
+    print "Example 4: Mocking";
+    example4();
+    print "";
+    
+    print "Example 5: Caching";
+    example5();
+    print "";
+    
+    print "Example 6: Rate limiting";
+    example6();
+    print "";
+    
+    print "Example 7: Authentication";
+    example7();
+    print "";
+    
+    print "Example 8: Composition";
+    example8();
+    print "";
+    
+    print "Example 9: Timing";
+    example9();
+    print "";
+    
+    print "Example 10: Validation";
+    example10();
+    print "";
+    
+    print "=== DEMO COMPLETE ===";
+}

@@ -1,0 +1,77 @@
+# Exemplo: Concorrência com Go (Goroutines e Channels)
+
+import "sync" from go
+import "time" from go
+
+fn main() {
+    print "=== Go Concurrency Example ==="
+    
+    # Exemplo 1: Goroutines simples
+    print "\n1. Simple Goroutines:"
+    
+    let wg = sync.WaitGroup{}
+    
+    for i in range(5) {
+        wg.Add(1)
+        go fn(id) {
+            print "Goroutine " + id + " started"
+            time.Sleep(time.Second)
+            print "Goroutine " + id + " finished"
+            wg.Done()
+        }(i)
+    }
+    
+    wg.Wait()
+    print "All goroutines finished!"
+    
+    # Exemplo 2: Channels
+    print "\n2. Channels:"
+    
+    let ch = make(chan int, 5)
+    
+    # Producer
+    go fn() {
+        for i in range(5) {
+            print "Sending: " + i
+            ch <- i
+            time.Sleep(500 * time.Millisecond)
+        }
+        close(ch)
+    }()
+    
+    # Consumer
+    for value in ch {
+        print "Received: " + value
+    }
+    
+    # Exemplo 3: Worker Pool
+    print "\n3. Worker Pool:"
+    
+    let jobs = make(chan int, 10)
+    let results = make(chan int, 10)
+    
+    # Cria workers
+    for w in range(3) {
+        go fn(id) {
+            for job in jobs {
+                print "Worker " + id + " processing job " + job
+                time.Sleep(time.Second)
+                results <- job * 2
+            }
+        }(w)
+    }
+    
+    # Envia jobs
+    for j in range(5) {
+        jobs <- j
+    }
+    close(jobs)
+    
+    # Coleta resultados
+    for r in range(5) {
+        let result = <-results
+        print "Result: " + result
+    }
+    
+    print "\n✅ Concurrency examples complete!"
+}

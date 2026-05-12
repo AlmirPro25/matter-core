@@ -1,0 +1,44 @@
+# Counter App
+# Aplicação de contador com persistência
+
+# Inicializar contador do store
+on boot {
+    if store.has("counter") {
+        let current = store.get("counter")
+        print "Counter restored: " + current
+    } else {
+        store.set("counter", 0)
+        print "Counter initialized to 0"
+    }
+}
+
+# Incrementar contador
+fn increment() {
+    let current = store.get("counter")
+    let new_value = current + 1
+    store.set("counter", new_value)
+    print "Counter: " + new_value
+    return new_value
+}
+
+# Decrementar contador
+fn decrement() {
+    let current = store.get("counter")
+    let new_value = current - 1
+    store.set("counter", new_value)
+    print "Counter: " + new_value
+    return new_value
+}
+
+# Reset contador
+fn reset() {
+    store.set("counter", 0)
+    print "Counter reset to 0"
+}
+
+# Simular uso
+increment()
+increment()
+increment()
+decrement()
+print "Final value: " + store.get("counter")

@@ -1,0 +1,9 @@
+fn is_request_safe(rider, request) {
+    if rider["risk_score"] > 90 {
+        return false
+    }
+    if request["distance_km"] <= 0 {
+        return false
+    }
+    return true
+}

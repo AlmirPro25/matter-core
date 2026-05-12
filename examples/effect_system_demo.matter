@@ -1,0 +1,261 @@
+//! Effect System Demo
+//!
+//! Este programa demonstra o sistema de efeitos do Matter.
+//!
+//! Efeitos permitem rastrear e controlar side effects em compile-time!
+
+// ============================================
+// 1. FUNÇÕES PURAS (sem efeitos)
+// ============================================
+
+// Função pura - sem efeitos colaterais
+fn pure_add(a: int, b: int) -> int {
+    return a + b;
+}
+
+// Função pura - apenas computação
+fn pure_multiply(a: int, b: int) -> int {
+    return a * b;
+}
+
+print "Funções puras:";
+print pure_add(10, 20);
+print pure_multiply(5, 6);
+
+// ============================================
+// 2. FUNÇÕES COM EFEITO IO
+// ============================================
+
+// Função com efeito IO (print)
+fn log_message(message: string) -> unit with io {
+    print message;
+}
+
+// Função com efeito IO (múltiplos prints)
+fn log_multiple(a: int, b: int) -> unit with io {
+    print "First: " + a;
+    print "Second: " + b;
+}
+
+print "Funções com IO:";
+log_message("Hello from Matter!");
+log_multiple(10, 20);
+
+// ============================================
+// 3. FUNÇÕES COM MÚLTIPLOS EFEITOS
+// ============================================
+
+// Função com IO + Database
+fn save_to_database(data: string) -> result with io, db {
+    print "Saving to database...";
+    let conn = db.connect();
+    conn.save(data);
+    print "Saved!";
+    return ok;
+}
+
+// Função com IO + Network
+fn fetch_data(url: string) -> string with io, network {
+    print "Fetching from: " + url;
+    let response = net.get(url);
+    print "Fetched!";
+    return response;
+}
+
+// Função com IO + Database + Network
+fn sync_data(url: string) -> result with io, db, network {
+    print "Syncing data...";
+    let data = net.get(url);
+    let conn = db.connect();
+    conn.save(data);
+    print "Synced!";
+    return ok;
+}
+
+print "Múltiplos efeitos:";
+save_to_database("test data");
+let data = fetch_data("https://api.example.com");
+sync_data("https://api.example.com/sync");
+
+// ============================================
+// 4. EFEITO TIME
+// ============================================
+
+// Função com efeito Time
+fn wait_and_print(seconds: int) -> unit with io, time {
+    print "Waiting...";
+    time.sleep(seconds * 1000);
+    print "Done waiting!";
+}
+
+print "Efeito Time:";
+wait_and_print(1);
+
+// ============================================
+// 5. EFEITO RANDOM
+// ============================================
+
+// Função com efeito Random
+fn generate_random() -> int with random {
+    return random.int();
+}
+
+// Função com Random + IO
+fn print_random() -> unit with io, random {
+    let num = random.int();
+    print "Random number: " + num;
+}
+
+print "Efeito Random:";
+print generate_random();
+print_random();
+
+// ============================================
+// 6. COMPOSIÇÃO DE EFEITOS
+// ============================================
+
+// Função que chama outras com efeitos
+fn complex_operation() -> result with io, db, network, time {
+    print "Starting complex operation...";
+    
+    // IO effect
+    print "Step 1: Logging";
+    
+    // Network effect
+    let data = net.get("https://api.example.com");
+    
+    // Time effect
+    time.sleep(100);
+    
+    // Database effect
+    let conn = db.connect();
+    conn.save(data);
+    
+    print "Complex operation complete!";
+    return ok;
+}
+
+print "Composição de efeitos:";
+complex_operation();
+
+// ============================================
+// 7. VERIFICAÇÃO DE EFEITOS
+// ============================================
+
+// Esta função REQUER efeito IO
+fn requires_io() -> unit with io {
+    print "This requires IO effect";
+}
+
+// Esta função NÃO PODE chamar requires_io() sem declarar IO
+// fn invalid() -> unit {
+//     requires_io();  // ERRO: requires_io needs IO effect!
+// }
+
+// Esta função PODE chamar requires_io() porque declara IO
+fn valid() -> unit with io {
+    requires_io();  // OK: we have IO effect
+}
+
+print "Verificação de efeitos:";
+valid();
+
+// ============================================
+// 8. EFEITOS CUSTOMIZADOS
+// ============================================
+
+// Função com efeito customizado
+fn custom_effect_function() -> unit with custom("my_effect") {
+    print "Custom effect!";
+}
+
+print "Efeito customizado:";
+custom_effect_function();
+
+// ============================================
+// 9. HANDLERS DE EFEITOS
+// ============================================
+
+// Handler para efeito IO
+handle io {
+    on print(message) {
+        // Intercepta print e adiciona timestamp
+        let timestamp = time.now();
+        actual_print("[" + timestamp + "] " + message);
+    }
+}
+
+// Handler para efeito Database
+handle db {
+    on connect() {
+        print "Connecting to database...";
+        return actual_db_connect();
+    }
+    
+    on query(sql) {
+        print "Executing query: " + sql;
+        return actual_db_query(sql);
+    }
+}
+
+print "Handlers de efeitos:";
+print "This will have timestamp!";
+
+// ============================================
+// 10. EFEITOS E TIPOS
+// ============================================
+
+// Função que retorna Result com efeitos
+fn safe_operation() -> result<string, error> with io, db {
+    try {
+        print "Attempting operation...";
+        let conn = db.connect();
+        let result = conn.query("SELECT * FROM users");
+        print "Operation successful!";
+        return ok(result);
+    } catch (e) {
+        print "Operation failed: " + e;
+        return error(e);
+    }
+}
+
+print "Efeitos e tipos:";
+let result = safe_operation();
+match result {
+    ok(value) => print "Success: " + value,
+    error(e) => print "Error: " + e
+}
+
+// ============================================
+// 11. EFEITOS ASSÍNCRONOS
+// ============================================
+
+// Função assíncrona com efeitos
+async fn async_fetch(url: string) -> string with async, io, network {
+    print "Async fetching...";
+    let response = await net.get(url);
+    print "Async fetch complete!";
+    return response;
+}
+
+print "Efeitos assíncronos:";
+let async_data = await async_fetch("https://api.example.com");
+
+// ============================================
+// 12. RESUMO DE EFEITOS
+// ============================================
+
+print "✅ Effect System Demo Complete!";
+print "";
+print "Efeitos suportados:";
+print "- pure: Sem efeitos colaterais";
+print "- io: Input/Output";
+print "- db: Database";
+print "- network: Network requests";
+print "- fs: File system";
+print "- time: Time operations";
+print "- random: Random numbers";
+print "- state: Mutable state";
+print "- exception: Can throw";
+print "- async: Async/await";
+print "- custom: Custom effects";

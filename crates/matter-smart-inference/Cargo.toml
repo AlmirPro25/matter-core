@@ -1,0 +1,18 @@
+[package]
+name = "matter-smart-inference"
+version = "0.1.0"
+edition = "2021"
+authors = ["Matter Core Team"]
+license = "MIT"
+
+[dependencies]
+matter-ast = { path = "../matter-ast" }
+matter-types = { path = "../matter-types" }
+matter-error = { path = "../matter-error" }
+matter-polyglot = { path = "../matter-polyglot" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+petgraph = "0.6"
+
+[lib]
+crate-type = ["cdylib", "rlib"]

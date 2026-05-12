@@ -1,0 +1,28 @@
+# Exemplo avançado com propriedades visuais
+# Demonstra controle fino de regiões e propriedades
+
+on boot {
+    visual.surface("main", 1080, 1920)
+    
+    # Criar região de checkout
+    visual.region("checkout", 100, 200, 300, 80)
+    
+    # Configurar propriedades
+    visual.set("checkout", "energy", 100)
+    visual.set("checkout", "material", "glass")
+    
+    # Criar região de menu
+    visual.region("menu", 50, 50, 400, 60)
+    visual.set("menu", "behavior", "slide")
+    
+    print "Interface visual inicializada"
+}
+
+on tap {
+    visual.pulse("checkout")
+    visual.set("checkout", "energy", 80)
+}
+
+on swipe {
+    visual.pulse("menu")
+}

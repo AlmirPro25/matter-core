@@ -1,0 +1,36 @@
+# Matter Pro Capabilities Test
+
+fn calculate_circle_area(radius: float) -> float {
+    let pi: float = 3.14159;
+    return pi * radius * radius;
+}
+
+fn check_eligibility(age: int, has_license: bool) -> bool {
+    # Suporte a operadores lógicos e precedência
+    if age >= 18 && has_license || age > 100 {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+fn main() {
+    let r: float = 5.0;
+    let area = calculate_circle_area(r);
+    print "Area: ";
+    print area;
+
+    let can_drive = check_eligibility(20, true);
+    if can_drive && !false {
+        print "Access granted";
+    }
+
+    # Modulus test
+    let remainder = 10 % 3;
+    print "Remainder 10%3: ";
+    print remainder;
+    
+    # Semicolon test (optional)
+    let x = 10; let y = 20;
+    print x + y;
+}

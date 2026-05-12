@@ -1,0 +1,62 @@
+// Sprint 25 - Break and Continue Test
+// Tests break and continue statements in loops
+
+// Test 1: Break in while loop
+let sum1 = 0
+let i = 0
+while i < 10 {
+    if i == 5 {
+        break
+    }
+    sum1 = sum1 + i
+    i = i + 1
+}
+print(sum1)  // Expected: 10 (0+1+2+3+4)
+
+// Test 2: Continue in while loop
+let sum2 = 0
+let j = 0
+while j < 10 {
+    j = j + 1
+    if j == 5 {
+        continue
+    }
+    sum2 = sum2 + j
+}
+print(sum2)  // Expected: 50 (1+2+3+4+6+7+8+9+10 = 55-5 = 50)
+
+// Test 3: Break in for loop
+let sum3 = 0
+for k in 0..10 {
+    if k == 7 {
+        break
+    }
+    sum3 = sum3 + k
+}
+print(sum3)  // Expected: 21 (0+1+2+3+4+5+6)
+
+// Test 4: Continue in for loop
+let sum4 = 0
+for m in 0..10 {
+    if m == 3 {
+        continue
+    }
+    sum4 = sum4 + m
+}
+print(sum4)  // Expected: 42 (0+1+2+4+5+6+7+8+9 = 45-3 = 42)
+
+// Test 5: Nested loops with break
+let sum5 = 0
+let x = 0
+while x < 5 {
+    let y = 0
+    while y < 5 {
+        if y == 3 {
+            break
+        }
+        sum5 = sum5 + 1
+        y = y + 1
+    }
+    x = x + 1
+}
+print(sum5)  // Expected: 15 (3 iterations * 5 outer loops)

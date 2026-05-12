@@ -1,0 +1,21 @@
+fn ride_request(rider_id, origin_lat, origin_lng, dest_lat, dest_lng, distance_km) {
+    return {
+        "rider_id": rider_id,
+        "origin_lat": origin_lat,
+        "origin_lng": origin_lng,
+        "dest_lat": dest_lat,
+        "dest_lng": dest_lng,
+        "distance_km": distance_km
+    }
+}
+
+fn find_rider_by_id(riders, rider_id) {
+    let i = 0
+    while i < riders.len() {
+        if riders[i]["id"] == rider_id {
+            return riders[i]
+        }
+        set i = i + 1
+    }
+    return { "id": 0, "name": "unknown", "risk_score": 100, "priority": 9 }
+}

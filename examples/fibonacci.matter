@@ -1,0 +1,17 @@
+// Fibonacci Real - Teste de performance
+fn main() {
+    print("Calculando Fibonacci...")
+    
+    let n = 20
+    let result = fib(n)
+    
+    print("fib(20) =")
+    print(result)
+}
+
+fn fib(n) {
+    if n < 2 {
+        return n
+    }
+    return fib(n - 1) + fib(n - 2)
+}

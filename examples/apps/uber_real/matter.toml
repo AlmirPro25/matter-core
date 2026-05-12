@@ -1,0 +1,8 @@
+[package]
+name = "uber-real"
+version = "0.1.0"
+description = "Uber-style app architecture in Matter"
+license = "MIT"
+entry = "main.matter"
+
+[dependencies]

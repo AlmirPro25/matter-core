@@ -5,6 +5,4 @@ edition = "2021"
 authors = ["Matter Core Team"]
 license = "MIT"
 
-[workspace]
-
 [dependencies]

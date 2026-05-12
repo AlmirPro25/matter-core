@@ -1,0 +1,19 @@
+# Matter can now inspect this file with:
+# matter-cli reflect-json examples/reflexive_self.matter
+
+fn fib(n) {
+    if n <= 1 {
+        return n
+    }
+
+    return fib(n - 1) + fib(n - 2)
+}
+
+fn describe(name) {
+    return "reflecting " + name
+}
+
+let label = describe("Matter")
+print label
+print fib(6)
+

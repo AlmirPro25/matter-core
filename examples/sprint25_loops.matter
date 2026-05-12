@@ -1,0 +1,23 @@
+// Sprint 25 Loop Test
+// Tests: while loops, for loops, arithmetic
+
+// Test while loop
+let i = 0;
+let sum = 0;
+
+while i < 5 {
+    sum = sum + i;
+    i = i + 1;
+}
+
+print(sum);  // Expected: 10 (0+1+2+3+4)
+
+// Test for loop
+let list = [1, 2, 3, 4, 5];
+let total = 0;
+
+for item in list {
+    total = total + item;
+}
+
+print(total);  // Expected: 15 (1+2+3+4+5)

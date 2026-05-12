@@ -1,0 +1,8 @@
+[package]
+name = "matter-molecular"
+version = "0.1.0"
+edition = "2021"
+authors = ["Matter Core Team"]
+license = "MIT"
+
+[dependencies]

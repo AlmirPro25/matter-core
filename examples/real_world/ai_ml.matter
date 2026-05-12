@@ -1,0 +1,531 @@
+// 🤖 AI/ML SYSTEM - Matter Core
+// Demonstra Matter sendo usado para Machine Learning e AI
+
+// ============================================
+// 1. NEURAL NETWORK TRAINING
+// ============================================
+
+struct NeuralNetwork {
+    layers: [[float]],
+    weights: [[float]],
+    biases: [float],
+    learning_rate: float
+}
+
+fn create_network(input_size: int, hidden_size: int, output_size: int) -> NeuralNetwork {
+    return NeuralNetwork {
+        layers: [[0.0; input_size], [0.0; hidden_size], [0.0; output_size]],
+        weights: [random_matrix(input_size, hidden_size), random_matrix(hidden_size, output_size)],
+        biases: [random_vector(hidden_size), random_vector(output_size)],
+        learning_rate: 0.01
+    };
+    // Efeitos inferidos: random
+}
+
+fn train(network: NeuralNetwork, data: [[float]], labels: [int], epochs: int) -> NeuralNetwork {
+    print "Training neural network...";
+    
+    for epoch in range(epochs) {
+        let total_loss = 0.0;
+        
+        for i in range(data.length) {
+            let input = data[i];
+            let label = labels[i];
+            
+            // Forward pass
+            let output = forward(network, input);
+            
+            // Calculate loss
+            let loss = cross_entropy_loss(output, label);
+            total_loss = total_loss + loss;
+            
+            // Backward pass
+            network = backward(network, input, label);
+        }
+        
+        let avg_loss = total_loss / data.length;
+        print "Epoch " + epoch + " - Loss: " + avg_loss;
+        
+        // Save checkpoint every 10 epochs
+        if epoch % 10 == 0 {
+            db.query("INSERT INTO checkpoints VALUES (?, ?, ?)", 
+                epoch, avg_loss, serialize(network));
+        }
+    }
+    
+    return network;
+    // Efeitos inferidos: io, random, db
+}
+
+fn forward(network: NeuralNetwork, input: [float]) -> [float] {
+    let activation = input;
+    
+    for i in range(network.weights.length) {
+        activation = matrix_multiply(activation, network.weights[i]);
+        activation = add_bias(activation, network.biases[i]);
+        activation = relu(activation);
+    }
+    
+    return softmax(activation);
+    // Efeito inferido: pure (função pura!)
+}
+
+// ============================================
+// 2. COMPUTER VISION (Image Classification)
+// ============================================
+
+fn classify_image(image_path: string) -> string {
+    // Load model
+    let model = load_model("models/resnet50.matter");
+    
+    // Load and preprocess image
+    let image = fs.read(image_path);
+    let tensor = preprocess_image(image);
+    
+    // Inference
+    let predictions = model.predict(tensor);
+    
+    // Get top prediction
+    let top_class = argmax(predictions);
+    let confidence = predictions[top_class];
+    
+    print "Prediction: " + class_names[top_class] + " (" + confidence + ")";
+    
+    return class_names[top_class];
+    // Efeitos inferidos: io, fs
+}
+
+// ============================================
+// 3. NATURAL LANGUAGE PROCESSING
+// ============================================
+
+fn sentiment_analysis(text: string) -> string {
+    // Load pre-trained model
+    let model = load_model("models/sentiment_bert.matter");
+    
+    // Tokenize
+    let tokens = tokenize(text);
+    
+    // Encode
+    let input_ids = encode(tokens);
+    
+    // Inference
+    let logits = model.predict(input_ids);
+    
+    // Decode
+    let sentiment = if logits[0] > logits[1] {
+        "positive"
+    } else {
+        "negative"
+    };
+    
+    let confidence = max(softmax(logits));
+    
+    print "Sentiment: " + sentiment + " (" + confidence + ")";
+    
+    return sentiment;
+    // Efeito inferido: io
+}
+
+fn chatbot(user_message: string) -> string {
+    // Load GPT-style model
+    let model = load_model("models/gpt_small.matter");
+    
+    // Add to conversation history
+    conversation_history.push({
+        role: "user",
+        content: user_message
+    });
+    
+    // Generate response
+    let prompt = format_conversation(conversation_history);
+    let response = model.generate(prompt, max_tokens: 100);
+    
+    // Add to history
+    conversation_history.push({
+        role: "assistant",
+        content: response
+    });
+    
+    // Save to database
+    db.query("INSERT INTO conversations VALUES (?, ?, ?)",
+        time.now(), user_message, response);
+    
+    return response;
+    // Efeitos inferidos: io, db, time
+}
+
+// ============================================
+// 4. RECOMMENDATION SYSTEM
+// ============================================
+
+fn recommend_products(user_id: int, n: int) -> [Product] {
+    // Get user history
+    let history = db.query("SELECT * FROM purchases WHERE user_id = ?", user_id);
+    
+    // Get user embeddings
+    let user_embedding = get_user_embedding(user_id);
+    
+    // Get all products
+    let products = db.query("SELECT * FROM products");
+    
+    // Calculate similarities
+    let scores = [];
+    for product in products {
+        let product_embedding = get_product_embedding(product.id);
+        let similarity = cosine_similarity(user_embedding, product_embedding);
+        scores.push({product: product, score: similarity});
+    }
+    
+    // Sort by score
+    scores.sort(fn(a, b) { return b.score - a.score; });
+    
+    // Return top N
+    let recommendations = [];
+    for i in range(n) {
+        recommendations.push(scores[i].product);
+    }
+    
+    print "Recommended " + n + " products for user " + user_id;
+    
+    return recommendations;
+    // Efeitos inferidos: io, db
+}
+
+// ============================================
+// 5. REINFORCEMENT LEARNING (Game AI)
+// ============================================
+
+struct Agent {
+    q_table: [[float]],
+    epsilon: float,
+    learning_rate: float,
+    discount_factor: float
+}
+
+fn train_agent(env: Environment, episodes: int) -> Agent {
+    let agent = Agent {
+        q_table: [[0.0; env.action_space]; env.state_space],
+        epsilon: 1.0,
+        learning_rate: 0.1,
+        discount_factor: 0.99
+    };
+    
+    for episode in range(episodes) {
+        let state = env.reset();
+        let total_reward = 0.0;
+        
+        loop {
+            // Choose action (epsilon-greedy)
+            let action = if random.float() < agent.epsilon {
+                random.int(0, env.action_space)
+            } else {
+                argmax(agent.q_table[state])
+            };
+            
+            // Take action
+            let result = env.step(action);
+            let next_state = result.state;
+            let reward = result.reward;
+            let done = result.done;
+            
+            // Update Q-table
+            let old_value = agent.q_table[state][action];
+            let next_max = max(agent.q_table[next_state]);
+            let new_value = old_value + agent.learning_rate * 
+                (reward + agent.discount_factor * next_max - old_value);
+            agent.q_table[state][action] = new_value;
+            
+            total_reward = total_reward + reward;
+            state = next_state;
+            
+            if done {
+                break;
+            }
+        }
+        
+        // Decay epsilon
+        agent.epsilon = agent.epsilon * 0.995;
+        
+        print "Episode " + episode + " - Reward: " + total_reward;
+    }
+    
+    return agent;
+    // Efeitos inferidos: io, random
+}
+
+// ============================================
+// 6. TIME SERIES FORECASTING
+// ============================================
+
+fn forecast_sales(days: int) -> [float] {
+    // Load historical data
+    let history = db.query("SELECT * FROM sales ORDER BY date DESC LIMIT 365");
+    
+    // Prepare features
+    let features = prepare_features(history);
+    
+    // Load LSTM model
+    let model = load_model("models/sales_lstm.matter");
+    
+    // Forecast
+    let predictions = [];
+    let current_input = features[-30:];  // Last 30 days
+    
+    for day in range(days) {
+        let prediction = model.predict(current_input);
+        predictions.push(prediction);
+        
+        // Update input (sliding window)
+        current_input = current_input[1:] + [prediction];
+    }
+    
+    print "Forecasted " + days + " days of sales";
+    
+    // Save predictions
+    for i in range(days) {
+        let date = time.now() + (i * 86400);  // Add days
+        db.query("INSERT INTO forecasts VALUES (?, ?)", date, predictions[i]);
+    }
+    
+    return predictions;
+    // Efeitos inferidos: io, db, time
+}
+
+// ============================================
+// 7. ANOMALY DETECTION
+// ============================================
+
+fn detect_anomalies(data: [float]) -> [int] {
+    // Calculate statistics
+    let mean = average(data);
+    let std = standard_deviation(data);
+    
+    // Z-score method
+    let threshold = 3.0;
+    let anomalies = [];
+    
+    for i in range(data.length) {
+        let z_score = abs((data[i] - mean) / std);
+        
+        if z_score > threshold {
+            anomalies.push(i);
+            print "Anomaly detected at index " + i + ": " + data[i];
+            
+            // Alert
+            net.post("https://alerts.com/notify", {
+                type: "anomaly",
+                index: i,
+                value: data[i],
+                z_score: z_score
+            });
+        }
+    }
+    
+    return anomalies;
+    // Efeitos inferidos: io, network
+}
+
+// ============================================
+// 8. DISTRIBUTED TRAINING (Multi-GPU)
+// ============================================
+
+fn distributed_training(data: [[float]], labels: [int]) -> NeuralNetwork {
+    with logging, tracing, timing {
+        // Initialize model
+        let model = create_network(784, 128, 10);
+        
+        // Split data across GPUs
+        let num_gpus = 4;
+        let batch_size = data.length / num_gpus;
+        
+        // Parallel training
+        let results = [];
+        for gpu_id in range(num_gpus) {
+            let start = gpu_id * batch_size;
+            let end = start + batch_size;
+            let gpu_data = data[start:end];
+            let gpu_labels = labels[start:end];
+            
+            // Train on GPU (async)
+            spawn {
+                let gpu_model = train_on_gpu(model, gpu_data, gpu_labels, gpu_id);
+                results.push(gpu_model);
+            };
+        }
+        
+        // Wait for all GPUs
+        wait_all();
+        
+        // Average gradients
+        let final_model = average_models(results);
+        
+        print "Distributed training complete!";
+        
+        return final_model;
+    }
+    // Efeitos inferidos: io, random, async
+}
+
+// ============================================
+// 9. MODEL SERVING (Production API)
+// ============================================
+
+fn serve_model() -> unit {
+    with logging, tracing, retry, auth, rate_limit, cache {
+        // Load model once
+        let model = load_model("models/production.matter");
+        
+        print "Model loaded. Starting API server...";
+        
+        http.listen(8080, fn(req) {
+            if req.path == "/predict" {
+                // Parse input
+                let input = json.parse(req.body);
+                
+                // Validate
+                if !validate_input(input) {
+                    return Response {
+                        status: 400,
+                        body: json.stringify({error: "Invalid input"})
+                    };
+                }
+                
+                // Predict
+                let prediction = model.predict(input.data);
+                
+                // Log prediction
+                db.query("INSERT INTO predictions VALUES (?, ?, ?)",
+                    time.now(), input.data, prediction);
+                
+                return Response {
+                    status: 200,
+                    body: json.stringify({
+                        prediction: prediction,
+                        confidence: max(prediction)
+                    })
+                };
+            }
+            
+            if req.path == "/health" {
+                return Response {
+                    status: 200,
+                    body: json.stringify({status: "healthy"})
+                };
+            }
+            
+            return Response {
+                status: 404,
+                body: json.stringify({error: "Not found"})
+            };
+        });
+    }
+    // Efeitos inferidos: io, network, db, time
+}
+
+// ============================================
+// 10. AUTO ML (Hyperparameter Tuning)
+// ============================================
+
+fn auto_ml(data: [[float]], labels: [int]) -> NeuralNetwork {
+    print "Starting AutoML...";
+    
+    let best_model = null;
+    let best_accuracy = 0.0;
+    
+    // Grid search
+    let learning_rates = [0.001, 0.01, 0.1];
+    let hidden_sizes = [64, 128, 256];
+    let batch_sizes = [32, 64, 128];
+    
+    for lr in learning_rates {
+        for hs in hidden_sizes {
+            for bs in batch_sizes {
+                print "Testing: lr=" + lr + ", hs=" + hs + ", bs=" + bs;
+                
+                // Create model
+                let model = create_network(784, hs, 10);
+                model.learning_rate = lr;
+                
+                // Train
+                model = train(model, data, labels, epochs: 10);
+                
+                // Evaluate
+                let accuracy = evaluate(model, data, labels);
+                
+                print "Accuracy: " + accuracy;
+                
+                // Update best
+                if accuracy > best_accuracy {
+                    best_accuracy = accuracy;
+                    best_model = model;
+                    
+                    // Save best model
+                    fs.write("models/best_model.matter", serialize(model));
+                }
+                
+                // Log to database
+                db.query("INSERT INTO experiments VALUES (?, ?, ?, ?, ?)",
+                    lr, hs, bs, accuracy, time.now());
+            }
+        }
+    }
+    
+    print "AutoML complete! Best accuracy: " + best_accuracy;
+    
+    return best_model;
+    // Efeitos inferidos: io, random, db, fs, time
+}
+
+// ============================================
+// MAIN - AI/ML DEMO
+// ============================================
+
+fn main() -> unit {
+    print "=== Matter AI/ML System ===";
+    
+    // 1. Train neural network
+    let data = load_mnist_data();
+    let model = train(create_network(784, 128, 10), data.train, data.labels, 50);
+    
+    // 2. Image classification
+    let prediction = classify_image("images/cat.jpg");
+    
+    // 3. Sentiment analysis
+    let sentiment = sentiment_analysis("I love Matter language!");
+    
+    // 4. Chatbot
+    let response = chatbot("What is Matter?");
+    
+    // 5. Recommendations
+    let products = recommend_products(user_id: 123, n: 5);
+    
+    // 6. Reinforcement learning
+    let agent = train_agent(CartPoleEnv(), episodes: 1000);
+    
+    // 7. Time series forecasting
+    let forecast = forecast_sales(days: 30);
+    
+    // 8. Anomaly detection
+    let anomalies = detect_anomalies(sensor_data);
+    
+    // 9. Serve model
+    spawn {
+        serve_model();
+    };
+    
+    print "AI/ML system running!";
+    // Efeitos inferidos: io, random, db, fs, time, network, async
+}
+
+// ============================================
+// FEATURES EM AÇÃO
+// ============================================
+
+// ✅ Effect Inference - Efeitos inferidos automaticamente
+// ✅ Gradual Typing - Tipos opcionais
+// ✅ Effect Handlers - logging, tracing, retry, cache
+// ✅ Hot Reload - Modifique código → Atualização instantânea
+// ✅ 3 Backends - Bytecode (dev), LLVM (prod), Native (dist)
+
+// MATTER - A LINGUAGEM DO FUTURO! 🚀🔥

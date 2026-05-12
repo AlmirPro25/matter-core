@@ -1,5 +1,5 @@
-/// Matter Error System
-/// Sistema de erros estruturado com stack traces e contexto
+//! Matter Error System
+//! Sistema de erros estruturado com stack traces e contexto
 
 use std::fmt;
 
@@ -137,9 +137,9 @@ impl MatterError {
 
         // Source snippet
         if let Some(snippet) = &self.source_snippet {
-            output.push_str("\n");
+            output.push('\n');
             output.push_str(snippet);
-            output.push_str("\n");
+            output.push('\n');
         }
 
         // Hint
@@ -273,8 +273,8 @@ mod tests {
 
     #[test]
     fn test_error_with_hint() {
-        let error = MatterError::semantic_error("undefined variable 'x'")
-            .with_hint("Did you mean 'y'?");
+        let error =
+            MatterError::semantic_error("undefined variable 'x'").with_hint("Did you mean 'y'?");
         assert!(error.hint.is_some());
         assert_eq!(error.hint.unwrap(), "Did you mean 'y'?");
     }
@@ -295,8 +295,7 @@ mod tests {
 
     #[test]
     fn test_json_output() {
-        let error = MatterError::parser_error("unexpected token", 10, 5)
-            .with_hint("Expected '}'");
+        let error = MatterError::parser_error("unexpected token", 10, 5).with_hint("Expected '}'");
         let json = error.to_json();
         assert!(json.contains("\"type\":\"parser\""));
         assert!(json.contains("\"message\":\"unexpected token\""));

@@ -6,10 +6,31 @@ pub struct Program {
     pub statements: Vec<Statement>,
 }
 
+/// Type annotation for gradual typing
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypeAnnotation {
+    Simple(String),                                     // int, string, bool, float
+    Nullable(Box<TypeAnnotation>),                      // int?
+    NonNullable(Box<TypeAnnotation>),                   // string!
+    List(Box<TypeAnnotation>),                          // [int]
+    Map(Box<TypeAnnotation>, Box<TypeAnnotation>),      // map<string, int>
+    Union(Vec<TypeAnnotation>),                         // int | string
+    Function(Vec<TypeAnnotation>, Box<TypeAnnotation>), // fn(int, int) -> int
+    Generic(String, Vec<TypeAnnotation>),               // List<T>
+}
+
+/// Function parameter with optional type
+#[derive(Debug, Clone, PartialEq)]
+pub struct Param {
+    pub name: String,
+    pub type_annotation: Option<TypeAnnotation>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
     Let {
         name: String,
+        type_annotation: Option<TypeAnnotation>,
         value: Expression,
     },
     Set {
@@ -29,12 +50,17 @@ pub enum Statement {
     Print(Expression),
     FunctionDef {
         name: String,
-        params: Vec<String>,
+        params: Vec<Param>,
+        return_type: Option<TypeAnnotation>,
         body: Vec<Statement>,
+        effects: Option<Vec<String>>, // Sprint 27.3: Effect declarations
     },
     StructDef {
         name: String,
         fields: Vec<(String, String)>,
+    },
+    Import {
+        path: String,
     },
     OnEvent {
         event: String,
@@ -69,6 +95,7 @@ pub enum Statement {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
     Int(i64),
+    Float(f64),
     Bool(bool),
     String(String),
     Unit,
@@ -77,6 +104,10 @@ pub enum Expression {
         left: Box<Expression>,
         op: BinaryOp,
         right: Box<Expression>,
+    },
+    Unary {
+        op: UnaryOp,
+        operand: Box<Expression>,
     },
     Call {
         callee: Box<Expression>,
@@ -115,16 +146,41 @@ pub enum BinaryOp {
     Sub,
     Mul,
     Div,
+    Mod,
     Eq,
     NotEq,
     Lt,
     Gt,
     LtEq,
     GtEq,
+    And,
+    Or,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum UnaryOp {
+    Not,
+    Neg,
 }
 
 impl Program {
     pub fn new(statements: Vec<Statement>) -> Self {
         Self { statements }
+    }
+}
+
+impl Param {
+    pub fn new(name: String) -> Self {
+        Self {
+            name,
+            type_annotation: None,
+        }
+    }
+
+    pub fn with_type(name: String, type_annotation: TypeAnnotation) -> Self {
+        Self {
+            name,
+            type_annotation: Some(type_annotation),
+        }
     }
 }

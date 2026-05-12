@@ -1,0 +1,20 @@
+# Sum Array Benchmark
+# Testa performance de operações em arrays
+
+print "=== Sum Array Benchmark ==="
+print "Computing sum of 1000 elements..."
+
+let sum = 0
+let i = 0
+
+while i < 1000 {
+    set sum = sum + i
+    set i = i + 1
+}
+
+print "Sum:"
+print sum
+print "Elements:"
+print i
+
+print "Benchmark complete!"

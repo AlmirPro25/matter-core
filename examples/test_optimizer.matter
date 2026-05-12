@@ -1,0 +1,21 @@
+# Test Optimizer
+# Este código tem expressões constantes que podem ser otimizadas
+
+# Constant folding: 10 + 20 * 2 = 50
+let x = 10 + 20 * 2
+
+# Constant folding: 100 - 50 = 50
+let y = 100 - 50
+
+# Constant folding: 5 * 10 = 50
+let z = 5 * 10
+
+# Constant folding: 200 / 4 = 50
+let w = 200 / 4
+
+print x
+print y
+print z
+print w
+
+# Todos devem imprimir 50

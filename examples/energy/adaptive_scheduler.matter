@@ -1,0 +1,11 @@
+# Adaptive scheduler using tool-calling + defer policy
+energy.set_mode("adaptive")
+energy.configure("allow_defer", true)
+
+let should_defer = energy.defer("tool")
+if should_defer {
+    print "Deferring expensive tool call"
+} else {
+    let out = tool.call("visual.render", "build dashboard frame")
+    print out
+}

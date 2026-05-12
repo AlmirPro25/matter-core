@@ -1,0 +1,22 @@
+# JIT Test - Sprint 26
+# Este programa testa a detecção de hot paths e a compilação JIT.
+
+fn add_numbers(a, b) {
+    return a + b
+}
+
+print "--- Starting JIT Test ---"
+
+let i = 0
+while i < 2000 {
+    add_numbers(i, 1)
+    set i = i + 1
+}
+
+print "Loop finished. add_numbers should be JIT compiled now."
+print "Calling add_numbers one more time (Native):"
+let result = add_numbers(10, 20)
+print "Result: "
+print result
+
+print "JIT Test Complete!"

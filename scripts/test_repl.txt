@@ -1,0 +1,7 @@
+let x = 10
+print x
+let y = x + 5
+print y
+let z = x * y
+print z
+:quit

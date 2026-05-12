@@ -1,0 +1,8 @@
+[package]
+name = "matter-memory"
+version = "0.1.0"
+edition = "2021"
+description = "Memory management system for Matter Core with reference counting and cycle detection"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }

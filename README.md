@@ -1,407 +1,177 @@
 # Matter Core
 
-**Um runtime-oriented language system com eventos nativos e backends desacoplados.**
+Matter Core is an experimental embeddable language runtime.
 
-Matter não é apenas uma linguagem — é um sistema completo de **linguagem + runtime + eventos + backends**.
+It has a source language (`.matter`), parser, AST, bytecode format, VM/runtime, CLI tooling, JSON automation commands, events, package manifests, and guarded reflection.
 
-## 🎯 O que torna Matter diferente?
+In one sentence:
 
-### Eventos como Primitiva da Linguagem
-```matter
-on boot {
-    print "Sistema iniciado"
-}
+> Matter Core runs small programs on its own VM and can inspect program structure before execution.
 
-on tap {
-    agent.say("Olá!")
-}
-```
-Eventos não são biblioteca — são parte do DNA da linguagem.
+## First Run
 
-### Backends Desacoplados
-```matter
-agent.say("Processando...")
-visual.run("animation")
-db.save({ user: "Alice" })
-```
-Backends são interfaces plugáveis para o mundo externo.
-
-### Bytecode Persistente (próximo marco)
-```bash
-matter compile app.matter -o app.mbc
-matter run-bytecode app.mbc
-```
-Distribuição de aplicações sem source code.
-
-## 📊 Status do Projeto
-
-✅ **v0.1.5 - Sistema Estável** (Maio 2026)
-- Pipeline completo: Source → Lexer → Parser → AST → Bytecode → VM → Runtime
-- Funções com recursão
-- Hierarquia de escopo completa
-- Loops (while, loop, for, break, continue)
-- Data Model completo (List, Map, Struct)
-- Sistema de eventos
-- Backends mock
-- **38 testes passando (100%)** ✅
-- **22 testes de integração end-to-end** ✅
-- **Sistema de erros estruturado** ✅
-
-🔄 **v0.2 - Próximo Marco** (Junho 2026)
-- Sprint 6: Standard Library (math, string)
-- Sprint 7: REPL Interativo
-- Sprint 8: Error Integration
-- Sprint 9: Performance Optimization
-
-## 🚀 Quick Start
-
-### Instalação
-
-**Método Rápido (Windows):**
+Download the latest Windows release zip from GitHub Releases, extract it, open PowerShell in the extracted folder, then run:
 
 ```powershell
-# 1. Abra PowerShell como Administrador
-# 2. Navegue até a pasta do projeto
-cd "caminho\para\matter-core"
-
-# 3. Execute o instalador
-.\install.ps1
-
-# 4. Feche e abra um novo terminal
-# 5. Teste
-matter --help
+.\matter-cli.exe run examples\first_run.matter
+.\matter-cli.exe reflect-json examples\first_run.matter
+.\matter-cli.exe reflexive-guard-json examples\first_run.matter
 ```
 
-**Método Manual:**
+Those three commands prove the core loop:
 
-```bash
-# Clonar o repositório
-git clone <repo-url>
-cd matter-core
+- `run`: source -> bytecode -> VM -> output
+- `reflect-json`: source -> structured program facts
+- `reflexive-guard-json`: reflection -> safety policy decision
 
-# Compilar em modo release
-cargo build --release
+No Rust install is required when using a release zip.
 
-# Executável estará em: target/release/matter-cli.exe
+To learn the syntax, run the executable tour:
+
+```powershell
+.\matter-cli.exe run examples\language_tour.matter
 ```
 
-### Após Instalação
+## Build From Source
 
-```bash
-# Executar arquivo Matter
-matter run meu_programa.matter
+If you are developing Matter itself:
 
-# Compilar para bytecode
-matter compile programa.matter -o programa.mbc
-
-# Executar bytecode
-matter run-bytecode programa.mbc
-
-# Ver exemplos
-cd "C:\Program Files\Matter\examples"
-matter run hello.matter
+```powershell
+git clone https://github.com/AlmirPro25/mater.git
+cd mater
+cargo run -q -p matter-cli -- run examples\first_run.matter
 ```
 
-## 📝 Sintaxe Matter
+Build the CLI:
 
-### Variáveis e Estado
+```powershell
+cargo build -p matter-cli --release
+.\target\release\matter-cli.exe run examples\first_run.matter
+```
+
+## What Matter Can Do Today
+
+- execute `.matter` source files
+- compile source into MBC1 bytecode
+- run bytecode on the Matter VM
+- define functions and use recursion
+- use variables, lists, maps, structs, branches, loops, and events
+- expose JSON commands for tools, agents, and CI
+- inspect source structure with `reflect-json`
+- evaluate guarded reflexive workflows with `reflexive-guard-json`
+- benchmark programs and gate performance budgets
+
+## Example
 
 ```matter
-let x = 10
-set x = x + 1
-print x
-```
+fn fib(n) {
+    if n <= 1 {
+        return n
+    }
 
-### Condicionais
-
-```matter
-if x > 5 {
-    print "maior que 5"
+    return fib(n - 1) + fib(n - 2)
 }
 
-if x == 10 {
-    print "exatamente 10"
-} else {
-    print "não é 10"
-}
+print "fib(8)"
+print fib(8)
 ```
 
-### Funções (em desenvolvimento)
+Run it:
 
-```matter
-fn soma(a, b) {
-    return a + b
-}
-
-let resultado = soma(10, 20)
+```powershell
+.\matter-cli.exe run examples\first_run.matter
 ```
 
-### Eventos
+Inspect it as data:
 
-```matter
-on boot {
-    print "Sistema iniciado"
-}
-
-on shutdown {
-    print "Desligando..."
-}
+```powershell
+.\matter-cli.exe reflect-json examples\first_run.matter
 ```
 
-### Backend Calls
+Guard it before a reflexive/self-modifying workflow:
 
-```matter
-agent.say("Olá do Matter!")
-visual.run("pizzaria")
+```powershell
+.\matter-cli.exe reflexive-guard-json examples\first_run.matter
 ```
 
-## 🏗️ Arquitetura
+## CLI Highlights
 
-```
-Source Code (.matter)
-    ↓
-Lexer (tokenização)
-    ↓
-Parser (construção AST)
-    ↓
-AST (representação estrutural)
-    ↓
-Bytecode Builder (compilação MBC)
-    ↓
-MBC Binary (bytecode Matter)
-    ↓
-Matter VM (execução stack-based)
-    ↓
-Runtime (eventos, estado)
-    ↓
-Backends (visual, agent, etc)
+- `run` / `run-json`: execute Matter source.
+- `check` / `check-json`: parse and compile without running.
+- `compile` / `compile-json`: emit Matter bytecode.
+- `run-bytecode` / `run-bytecode-json`: execute compiled bytecode.
+- `reflect-json`: inspect source as AST and bytecode facts.
+- `reflexive-guard-json`: evaluate safety gates for generated or self-mutating code.
+- `benchmark-json`: measure execution time with machine-readable stats.
+- `benchmark-gate-json`: enforce performance budgets.
+- `init` / `init-json`: scaffold a Matter project.
+- `project-*`: operate on `matter.toml` package manifests.
+
+Machine-readable capabilities:
+
+```powershell
+.\matter-cli.exe capabilities-json
 ```
 
-## 📦 Estrutura do Projeto
+## Who This Is For
 
-```
-matter-core/
-├── crates/
-│   ├── matter-lexer/      # Análise léxica (tokens)
-│   ├── matter-parser/     # Análise sintática (AST)
-│   ├── matter-ast/        # Definições da AST
-│   ├── matter-bytecode/   # Compilador para MBC
-│   ├── matter-vm/         # Máquina virtual stack-based
-│   ├── matter-runtime/    # Sistema de eventos e estado
-│   ├── matter-backend/    # Contratos de backend
-│   └── matter-cli/        # Interface de linha de comando
-├── examples/              # Exemplos de código Matter
-├── docs/                  # Documentação completa
-└── Cargo.toml            # Workspace Rust
-```
+Matter Core is currently best for:
 
-## ✅ Funcionalidades Implementadas
+- developers exploring embeddable scripting and VM design
+- agent/tooling builders who need JSON validation and execution
+- students learning how lexers, parsers, bytecode, and VMs fit together
+- DSL experiments where code needs to be inspected before it runs
 
-### v0.1.5 - Sistema Estável ✅
-**Conquistas:**
-- ✅ Pipeline completo (9 crates modulares)
-- ✅ Funções com recursão e call frames
-- ✅ Hierarquia de escopo (Global → Event → Function → Block)
-- ✅ Loops (while, loop, for, break, continue)
-- ✅ Data Model completo (List, Map, Struct)
-- ✅ Operadores completos (+, -, *, /, ==, !=, <, >, <=, >=)
-- ✅ Sistema de eventos nativos
-- ✅ Backends desacoplados
-- ✅ Bytecode MBC1 (persistível em disco)
-- ✅ CLI funcional (20+ comandos)
-- ✅ Sistema de erros estruturado
-- ✅ 38 testes unitários passando (100%)
-- ✅ 22 testes de integração end-to-end
-- ✅ Validação semântica robusta
+It is not yet a polished general-purpose language distribution. The runtime is experimental, but the core pipeline is real and tested.
 
-### Tipos de Dados
-- ✅ `int` - Inteiros de 64 bits
-- ✅ `bool` - Booleanos (true/false)
-- ✅ `string` - Strings UTF-8
-- ✅ `unit` - Tipo vazio ()
-- ✅ `list` - Listas dinâmicas
-- ✅ `map` - Mapas chave-valor
-- ✅ `struct` - Estruturas de dados
+## Repository Layout
 
-### Controle de Fluxo
-- ✅ `if`/`else` - Condicionais
-- ✅ `while` - Loop com condição
-- ✅ `loop` - Loop infinito
-- ✅ `for` - Iteração em coleções
-- ✅ `break` - Sair do loop
-- ✅ `continue` - Próxima iteração
-- ✅ `fn` - Definição de funções
-- ✅ `return` - Retorno de função
-
-### Sistema de Eventos
-- ✅ `on <event>` - Event handlers
-- ✅ Event dispatch via CLI
-- ✅ Event scope isolado
-
-### Backends
-- ✅ Trait `Backend` genérica
-- ✅ `AgentBackend` (mock)
-- ✅ `VisualBackend` (mock)
-- ✅ `TraceBackend` (debug)
-- ✅ Backend calls: `backend.method(args)`
-
-## 🔜 Próximos Passos
-
-### Sprint 3.5: MBC1 Persistence 🔥 (CRÍTICO)
-**Objetivo:** Bytecode em disco
-
-- [ ] Serialização de Bytecode → arquivo .mbc
-- [ ] Desserialização de arquivo .mbc → Bytecode
-- [ ] `matter compile app.matter -o app.mbc`
-- [ ] `matter run-bytecode app.mbc`
-- [ ] `matter inspect app.mbc`
-
-**Por quê é crítico:** Separa "protótipo" de "linguagem real". Permite distribuição de aplicações.
-
-### Sprint 4: Data Model
-- [ ] List type
-- [ ] Map type
-- [ ] Struct type
-- [ ] For loops com iteração
-
-### Sprint 5: Error System
-- [ ] MatterError type estruturado
-- [ ] Stack traces
-- [ ] Line/column tracking
-
-### Sprint 6: REPL
-- [ ] `matter repl` command
-- [ ] Interactive shell
-- [ ] History e autocomplete
-
-Ver `PROGRESS.md` e `STRATEGIC_VISION.md` para roadmap completo.
-
-## 🎯 Princípios Fundamentais
-
-### 1. Runtime-Oriented Language System
-Matter não é apenas uma linguagem — é linguagem + runtime + eventos + backends integrados.
-
-### 2. Eventos como Primitiva
-Eventos são parte do DNA da linguagem, não biblioteca externa.
-
-### 3. Backends Desacoplados
-Interfaces plugáveis para diferentes domínios (IA, UI, dados, etc).
-
-### 4. Bytecode Persistente
-MBC1 permite distribuição de aplicações sem source code.
-
-### 5. Simplicidade Pragmática
-Escolhas práticas sobre pureza teórica (ex: Reference Counting > Ownership).
-
-### 6. Estado Mutável Nativo
-Estado é cidadão de primeira classe, não efeito colateral.
-
-### 7. Modularidade por Design
-Arquitetura permite crescimento sem reescrever tudo.
-
-### 8. IA-Friendly
-Sintaxe otimizada para geração por IA/LLM.
-
-## 🌍 Comparação com Outras Linguagens
-
-**vs Python:** Eventos nativos, bytecode próprio, backends desacoplados  
-**vs JavaScript:** Sintaxe mais limpa, eventos como primitiva  
-**vs Rust:** Mais simples, sem borrow checker, prototipagem rápida  
-**vs Erlang/Elixir:** Sintaxe mais familiar, backends flexíveis, VM própria
-
-**Posicionamento:** Aplicações reativas, prototipagem rápida, integração com IA/LLM, sistemas orientados a eventos.
-
-## 📚 Documentação
-
-- [MANIFESTO.md](docs/MANIFESTO.md) - Princípios e filosofia
-- [SPEC.md](docs/SPEC.md) - Especificação completa da linguagem
-- [ARCHITECTURE.md](docs/ARCHITECTURE.md) - Arquitetura técnica detalhada
-- [STRATEGIC_VISION.md](STRATEGIC_VISION.md) - Visão estratégica e roadmap
-- [PROGRESS.md](PROGRESS.md) - Progresso e sprints
-- [SPRINT_3.5.md](SPRINT_3.5.md) - MBC1 Persistence (próximo marco)
-
-## 🧪 Executar Testes
-
-```bash
-cargo test
+```text
+crates/      Rust workspace crates
+docs/        Technical documentation and onboarding notes
+examples/    Matter source examples and demo apps
+stdlib/      Matter standard library material
+tests/       Workspace integration tests
 ```
 
-## 🔧 Desenvolvimento
+## Development
 
-```bash
-# Compilar em modo debug
-cargo build
+Format and test:
 
-# Executar com cargo
-cargo run --bin matter-cli -- run examples/simple.matter
-
-# Verificar warnings
-cargo clippy
-
-# Formatar código
-cargo fmt
+```powershell
+cargo fmt --all
+cargo check -p matter-cli
+cargo test --workspace --all-targets
 ```
 
-## 📊 Estatísticas do Projeto
+The repository uses `.cargo/config.toml` to place build output outside this directory. This avoids Windows toolchain failures caused by spaces in the workspace path.
 
-- **9 crates** organizados em workspace
-- **30+ instruções** de bytecode
-- **18 exemplos** funcionais
-- **38 testes** passando (100%)
-- **22 testes de integração** end-to-end
-- **Sprints completos:** 5 (Funções, Scopes, Loops, Data Model, Error System)
-- **Arquitetura limpa** com separação rígida
-- **Zero dependências externas** (apenas std)
-- **Cobertura de testes:** ~75%
+## Documentation
 
-## 🎨 Exemplos Completos
+Start here:
 
-### Recursão
-```matter
-fn fatorial(n) {
-    if n <= 1 { return 1 }
-    return n * fatorial(n - 1)
-}
+- [User onboarding](docs/USER_ONBOARDING.md)
+- [Language tour](docs/LANGUAGE_TOUR.md)
+- [Reflexive core](docs/REFLEXIVE_CORE.md)
+- [Build status](docs/BUILD_STATUS.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Language spec](docs/SPEC.md)
+- [Documentation index](docs/INDEX.md)
 
-print fatorial(5)  # 120
+## GitHub Repository Metadata
+
+Suggested repository description:
+
+```text
+Experimental embeddable language runtime: parser, bytecode, VM, CLI, JSON tooling, and guarded reflection.
 ```
 
-### Loops
-```matter
-let i = 0
-while i < 5 {
-    print i
-    set i = i + 1
-}
+Suggested topics:
 
-loop {
-    if i >= 10 { break }
-    set i = i + 1
-}
+```text
+rust language-runtime bytecode vm compiler cli scripting-language dsl
 ```
 
-### Shadowing
-```matter
-let x = 10
-if true {
-    let x = 20
-    print x  # 20
-}
-print x  # 10
-```
+## License
 
-Ver pasta `examples/` para mais exemplos funcionais.
-
-## 🤝 Contribuindo
-
-Este é um projeto em desenvolvimento ativo. Contribuições são bem-vindas!
-
-## 📄 Licença
-
-MIT
-
----
-
-**Matter não é apenas uma linguagem. É um runtime-oriented language system.**
-
-Ver `STRATEGIC_VISION.md` para entender o que isso significa.
+MIT. See [LICENSE](LICENSE).

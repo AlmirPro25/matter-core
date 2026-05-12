@@ -1,0 +1,99 @@
+# Matter language tour: syntax that works today.
+
+let name = "Matter"
+let version = 1
+let active = true
+
+print "basics"
+print name
+print version
+print active
+
+print "math"
+print 10 + 5
+print 10 - 5
+print 10 * 5
+print 10 / 5
+print 10 % 3
+
+fn square(n) {
+    return n * n
+}
+
+fn fib(n) {
+    if n <= 1 {
+        return n
+    }
+
+    return fib(n - 1) + fib(n - 2)
+}
+
+print "functions"
+print square(9)
+print fib(7)
+
+print "branches"
+let score = 82
+if score >= 90 {
+    print "excellent"
+} else {
+    print "not-excellent"
+}
+
+print "while"
+let i = 0
+while i < 3 {
+    print i
+    set i = i + 1
+}
+
+print "loop break continue"
+let j = 0
+loop {
+    set j = j + 1
+    if j == 2 {
+        continue
+    }
+    print j
+    if j >= 4 {
+        break
+    }
+}
+
+print "lists"
+let scores = [95, 82, 67]
+print scores
+print scores[0]
+scores.push(100)
+print scores.len()
+
+print "maps"
+let user = {
+    "name": "Ana",
+    "age": 21
+}
+print user
+print user.name
+print user["age"]
+set user.active = true
+print user.active
+
+print "structs"
+struct Point {
+    x: int,
+    y: int
+}
+
+let p = Point {
+    x: 10,
+    y: 20
+}
+print p.x
+print p.y
+
+on boot {
+    print "event boot"
+}
+
+spawn boot
+

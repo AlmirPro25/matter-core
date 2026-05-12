@@ -1,0 +1,45 @@
+# Weather App
+# Aplicação que busca dados de clima (simulado)
+
+fn fetch_weather(city) {
+    print "Fetching weather for " + city + "..."
+    
+    # Simular API call (em produção usaria net.get)
+    # let response = net.get("https://api.weather.com/" + city)
+    
+    # Dados simulados
+    let weather = {
+        "city": city,
+        "temperature": 25,
+        "condition": "Sunny",
+        "humidity": 60
+    }
+    
+    return weather
+}
+
+fn display_weather(weather) {
+    print "=== Weather Report ==="
+    print "City: " + weather["city"]
+    print "Temperature: " + weather["temperature"] + "°C"
+    print "Condition: " + weather["condition"]
+    print "Humidity: " + weather["humidity"] + "%"
+    print "====================="
+}
+
+fn save_weather_history(weather) {
+    # Salvar no store para histórico
+    let timestamp = time.now()
+    let key = "weather_" + timestamp
+    store.set(key, json.stringify(weather))
+    print "Weather data saved to history"
+}
+
+# Usar a aplicação
+let weather = fetch_weather("São Paulo")
+display_weather(weather)
+save_weather_history(weather)
+
+# Buscar outro local
+let weather2 = fetch_weather("Rio de Janeiro")
+display_weather(weather2)

@@ -1,0 +1,53 @@
+# Ride App (Uber-like)
+# Fluxo de mobilidade com matching e fechamento de corridas
+
+let driver_names = ["Carlos", "Ana"]
+let driver_cars = ["Toyota Corolla", "Honda Civic"]
+
+let ride_riders = ["Joao", "Maria"]
+let ride_origins = ["Centro", "Paulista"]
+let ride_destinations = ["Aeroporto", "Vila Mariana"]
+let ride_km = [18, 7]
+let ride_driver_idx = [0, 1]
+
+let completed_count = 0
+let total_revenue = 0
+
+print "Motoristas registrados"
+print driver_names[0]
+print driver_cars[0]
+print driver_names[1]
+print driver_cars[1]
+
+let i = 0
+while i < 2 {
+    let fare = 8 + (ride_km[i] * 3)
+
+    print "Corrida criada"
+    print ride_riders[i]
+    print ride_origins[i]
+    print ride_destinations[i]
+    print "Motorista"
+    print driver_names[ride_driver_idx[i]]
+    print "Tarifa estimada"
+    print fare
+
+    print "Corrida concluida"
+    print ride_riders[i]
+    print fare
+
+    set completed_count = completed_count + 1
+    set total_revenue = total_revenue + fare
+    set i = i + 1
+}
+
+print "=== Ride Dashboard ==="
+print "Motoristas"
+print driver_names.len()
+print "Corridas"
+print ride_riders.len()
+print "Corridas concluidas"
+print completed_count
+print "Receita total"
+print total_revenue
+print "======================"

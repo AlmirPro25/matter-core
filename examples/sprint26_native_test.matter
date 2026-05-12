@@ -1,0 +1,41 @@
+// Sprint 26: Matter Native Compiler Test
+// Tests the from-scratch native compiler (no LLVM dependency)
+
+// Test 1: Simple arithmetic
+let x = 10 + 20
+print(x)  // Expected: 30
+
+// Test 2: Variables
+let a = 5
+let b = 3
+let result = a * b
+print(result)  // Expected: 15
+
+// Test 3: Comparisons
+let is_greater = 10 > 5
+print(is_greater)  // Expected: 1 (true)
+
+let is_equal = 10 == 10
+print(is_equal)  // Expected: 1 (true)
+
+// Test 4: Control flow
+let n = 100
+if n > 50 {
+    print(1)  // Expected: 1
+}
+
+// Test 5: Loops
+let sum = 0
+let i = 1
+while i <= 10 {
+    set sum = sum + i
+    set i = i + 1
+}
+print(sum)  // Expected: 55
+
+// Test 6: Subtraction and division
+let sub_result = 100 - 25
+print(sub_result)  // Expected: 75
+
+let div_result = 100 / 4
+print(div_result)  // Expected: 25

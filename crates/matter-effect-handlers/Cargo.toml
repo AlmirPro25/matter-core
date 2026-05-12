@@ -1,0 +1,11 @@
+[package]
+name = "matter-effect-handlers"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+matter-effects = { path = "../matter-effects" }
+
+[dev-dependencies]

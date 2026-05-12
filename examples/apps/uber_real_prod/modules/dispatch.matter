@@ -1,0 +1,25 @@
+fn build_ride(ride_id, rider, request, driver_id, fare, surge) {
+    return {
+        "id": ride_id,
+        "rider_id": rider["id"],
+        "origin_lat": request["origin_lat"],
+        "origin_lng": request["origin_lng"],
+        "dest_lat": request["dest_lat"],
+        "dest_lng": request["dest_lng"],
+        "distance_km": request["distance_km"],
+        "driver_id": driver_id,
+        "fare": fare,
+        "surge": surge,
+        "status": "assigned"
+    }
+}
+
+fn build_response(ride) {
+    return {
+        "ride_id": ride["id"],
+        "driver_id": ride["driver_id"],
+        "fare": ride["fare"],
+        "surge": ride["surge"],
+        "status": ride["status"]
+    }
+}

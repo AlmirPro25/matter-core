@@ -1,0 +1,18 @@
+# Agent protocol frame invocation from Matter language
+let frame = {
+  "from_name": "planner",
+  "from_role": "planner",
+  "to_name": "worker",
+  "to_role": "worker",
+  "task_id": "task-runtime-1",
+  "state": "proposed",
+  "goal": "Execute AI toolcall with energy awareness",
+  "summary": "Frame has enough context for execution",
+  "next_action": "execute"
+}
+
+let result = tool.invoke_frame(frame)
+print result
+
+let decoded = tool.from_wire(result.wire)
+print decoded

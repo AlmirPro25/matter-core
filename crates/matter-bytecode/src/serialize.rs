@@ -1,13 +1,13 @@
-/// Serialization for Matter Bytecode (MBC1)
-/// 
-/// Format:
-/// - Magic: [u8; 4] = "MBC1"
-/// - Version: u16 (major.minor encoded as major << 8 | minor)
-/// - Flags: u16 (reserved for future use)
-/// - Sections: Constants, Functions, Events, Main
+//! Serialization for Matter Bytecode (MBC1)
+//!
+//! Format:
+//! - Magic: [u8; 4] = "MBC1"
+//! - Version: u16 (major.minor encoded as major << 8 | minor)
+//! - Flags: u16 (reserved for future use)
+//! - Sections: Constants, Functions, Events, Main
 
-use std::io::{Write, Result};
-use crate::{Bytecode, Constant, Instruction, Function, EventHandler};
+use crate::{Bytecode, Constant, EventHandler, Function, Instruction};
+use std::io::{Result, Write};
 
 /// MBC1 Format Version
 pub const MBC_VERSION_MAJOR: u8 = 0;
@@ -30,97 +30,97 @@ impl Bytecode {
     pub fn serialize<W: Write>(&self, writer: &mut W) -> Result<()> {
         // Magic number
         writer.write_all(&self.magic)?;
-        
+
         // Version (u16)
         let version = encode_version(MBC_VERSION_MAJOR, MBC_VERSION_MINOR);
         writer.write_all(&version.to_le_bytes())?;
-        
+
         // Flags (u16) - reserved for future use
         let flags: u16 = 0;
         writer.write_all(&flags.to_le_bytes())?;
-        
+
         // Total instruction count (u32) - for quick validation
         let total_instructions = self.count_total_instructions();
         writer.write_all(&(total_instructions as u32).to_le_bytes())?;
-        
+
         // Sections
         self.serialize_constants_section(writer)?;
         self.serialize_functions_section(writer)?;
         self.serialize_events_section(writer)?;
         self.serialize_main_section(writer)?;
-        
+
         // End marker
         writer.write_all(&[SECTION_END])?;
-        
+
         Ok(())
     }
-    
+
     /// Count total instructions for validation
     fn count_total_instructions(&self) -> usize {
         let mut count = self.main_instructions.len();
-        
+
         for func in self.functions.values() {
             count += func.instructions.len();
         }
-        
+
         for event in self.event_handlers.values() {
             count += event.instructions.len();
         }
-        
+
         count
     }
-    
+
     /// Serialize constants section
     fn serialize_constants_section<W: Write>(&self, writer: &mut W) -> Result<()> {
         writer.write_all(&[SECTION_CONSTANTS])?;
-        
+
         // Count
         writer.write_all(&(self.constants.len() as u32).to_le_bytes())?;
-        
+
         // Each constant
         for constant in &self.constants {
             serialize_constant(constant, writer)?;
         }
-        
+
         Ok(())
     }
-    
+
     /// Serialize functions section
     fn serialize_functions_section<W: Write>(&self, writer: &mut W) -> Result<()> {
         writer.write_all(&[SECTION_FUNCTIONS])?;
-        
+
         // Count
         writer.write_all(&(self.functions.len() as u32).to_le_bytes())?;
-        
+
         // Each function
         for (name, func) in &self.functions {
             serialize_function(name, func, writer)?;
         }
-        
+
         Ok(())
     }
-    
+
     /// Serialize event handlers section
     fn serialize_events_section<W: Write>(&self, writer: &mut W) -> Result<()> {
         writer.write_all(&[SECTION_EVENTS])?;
-        
+
         // Count
         writer.write_all(&(self.event_handlers.len() as u32).to_le_bytes())?;
-        
+
         // Each event handler
         for (event, handler) in &self.event_handlers {
             serialize_event_handler(event, handler, writer)?;
         }
-        
+
         Ok(())
     }
-    
+
     /// Serialize main instructions section
     fn serialize_main_section<W: Write>(&self, writer: &mut W) -> Result<()> {
         writer.write_all(&[SECTION_MAIN])?;
-        
+
         serialize_instructions(&self.main_instructions, writer)?;
-        
+
         Ok(())
     }
 }
@@ -131,6 +131,10 @@ fn serialize_constant<W: Write>(constant: &Constant, writer: &mut W) -> Result<(
         Constant::Int(n) => {
             writer.write_all(&[0x01])?; // type tag
             writer.write_all(&n.to_le_bytes())?;
+        }
+        Constant::Float(f) => {
+            writer.write_all(&[0x05])?;
+            writer.write_all(&f.to_le_bytes())?;
         }
         Constant::Bool(b) => {
             writer.write_all(&[0x02])?;
@@ -155,26 +159,30 @@ fn serialize_function<W: Write>(name: &str, func: &Function, writer: &mut W) -> 
     let name_bytes = name.as_bytes();
     writer.write_all(&(name_bytes.len() as u32).to_le_bytes())?;
     writer.write_all(name_bytes)?;
-    
+
     // Param count
     writer.write_all(&(func.param_count as u32).to_le_bytes())?;
-    
+
     // Instructions
     serialize_instructions(&func.instructions, writer)?;
-    
+
     Ok(())
 }
 
 /// Serialize an event handler
-fn serialize_event_handler<W: Write>(event: &str, handler: &EventHandler, writer: &mut W) -> Result<()> {
+fn serialize_event_handler<W: Write>(
+    event: &str,
+    handler: &EventHandler,
+    writer: &mut W,
+) -> Result<()> {
     // Event name
     let event_bytes = event.as_bytes();
     writer.write_all(&(event_bytes.len() as u32).to_le_bytes())?;
     writer.write_all(event_bytes)?;
-    
+
     // Instructions
     serialize_instructions(&handler.instructions, writer)?;
-    
+
     Ok(())
 }
 
@@ -182,12 +190,12 @@ fn serialize_event_handler<W: Write>(event: &str, handler: &EventHandler, writer
 fn serialize_instructions<W: Write>(instructions: &[Instruction], writer: &mut W) -> Result<()> {
     // Count
     writer.write_all(&(instructions.len() as u32).to_le_bytes())?;
-    
+
     // Each instruction
     for instr in instructions {
         serialize_instruction(instr, writer)?;
     }
-    
+
     Ok(())
 }
 
@@ -222,6 +230,10 @@ fn serialize_instruction<W: Write>(instr: &Instruction, writer: &mut W) -> Resul
             writer.write_all(&(bytes.len() as u32).to_le_bytes())?;
             writer.write_all(bytes)?;
         }
+        Instruction::LoadParam(index) => {
+            writer.write_all(&[0x09])?;
+            writer.write_all(&(*index as u32).to_le_bytes())?;
+        }
         Instruction::StoreExisting(name) => {
             writer.write_all(&[0x08])?;
             let bytes = name.as_bytes();
@@ -234,6 +246,11 @@ fn serialize_instruction<W: Write>(instr: &Instruction, writer: &mut W) -> Resul
         Instruction::Sub => writer.write_all(&[0x11])?,
         Instruction::Mul => writer.write_all(&[0x12])?,
         Instruction::Div => writer.write_all(&[0x13])?,
+        Instruction::Mod => writer.write_all(&[0x14])?,
+        Instruction::Neg => writer.write_all(&[0x15])?,
+        Instruction::And => writer.write_all(&[0x16])?,
+        Instruction::Or => writer.write_all(&[0x17])?,
+        Instruction::Not => writer.write_all(&[0x18])?,
         Instruction::Eq => writer.write_all(&[0x20])?,
         Instruction::NotEq => writer.write_all(&[0x21])?,
         Instruction::Lt => writer.write_all(&[0x22])?,
@@ -259,24 +276,35 @@ fn serialize_instruction<W: Write>(instr: &Instruction, writer: &mut W) -> Resul
             writer.write_all(&(bytes.len() as u32).to_le_bytes())?;
             writer.write_all(bytes)?;
         }
+        Instruction::CallNamed { name, arg_count } => {
+            writer.write_all(&[0x43])?;
+            let bytes = name.as_bytes();
+            writer.write_all(&(bytes.len() as u32).to_le_bytes())?;
+            writer.write_all(bytes)?;
+            writer.write_all(&(*arg_count as u32).to_le_bytes())?;
+        }
         Instruction::Print => writer.write_all(&[0x50])?,
-        Instruction::BackendCall { backend, method, arg_count } => {
+        Instruction::BackendCall {
+            backend,
+            method,
+            arg_count,
+        } => {
             writer.write_all(&[0x60])?;
-            
+
             // Backend name
             let backend_bytes = backend.as_bytes();
             writer.write_all(&(backend_bytes.len() as u32).to_le_bytes())?;
             writer.write_all(backend_bytes)?;
-            
+
             // Method name
             let method_bytes = method.as_bytes();
             writer.write_all(&(method_bytes.len() as u32).to_le_bytes())?;
             writer.write_all(method_bytes)?;
-            
+
             // Arg count
             writer.write_all(&(*arg_count as u32).to_le_bytes())?;
         }
-        
+
         // Sprint 4: Data Model - Lists (0x80-0x8F range)
         Instruction::NewList(size) => {
             writer.write_all(&[0x80])?;
@@ -338,39 +366,39 @@ fn serialize_instruction<W: Write>(instr: &Instruction, writer: &mut W) -> Resul
         Instruction::Pop => writer.write_all(&[0x70])?,
         Instruction::Halt => writer.write_all(&[0xFF])?,
     }
-    
+
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_serialize_empty_bytecode() {
         let bytecode = Bytecode::new();
         let mut buffer = Vec::new();
-        
+
         bytecode.serialize(&mut buffer).unwrap();
-        
+
         // Check magic
         assert_eq!(&buffer[0..4], b"MBC1");
-        
+
         // Check version
         let version = u16::from_le_bytes([buffer[4], buffer[5]]);
         assert_eq!(version, encode_version(0, 1));
     }
-    
+
     #[test]
     fn test_serialize_with_constants() {
         let mut bytecode = Bytecode::new();
         bytecode.add_constant(Constant::Int(42));
         bytecode.add_constant(Constant::Bool(true));
         bytecode.add_constant(Constant::String("hello".to_string()));
-        
+
         let mut buffer = Vec::new();
         bytecode.serialize(&mut buffer).unwrap();
-        
+
         assert!(buffer.len() > 10);
     }
 }

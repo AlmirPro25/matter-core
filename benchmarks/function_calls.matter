@@ -1,0 +1,35 @@
+# Function Calls Benchmark
+# Testa performance de chamadas de função
+
+fn add(a, b) {
+    return a + b
+}
+
+fn multiply(a, b) {
+    return a * b
+}
+
+fn compute(x) {
+    let result = add(x, 10)
+    set result = multiply(result, 2)
+    return result
+}
+
+print "=== Function Calls Benchmark ==="
+print "Running 1000 function calls..."
+
+let i = 0
+let total = 0
+
+while i < 1000 {
+    let result = compute(i)
+    set total = total + result
+    set i = i + 1
+}
+
+print "Total:"
+print total
+print "Calls:"
+print i
+
+print "Benchmark complete!"

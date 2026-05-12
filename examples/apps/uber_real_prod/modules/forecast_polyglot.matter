@@ -1,0 +1,16 @@
+# Polyglot hook: demanda preditiva com Python.
+# Mantido isolado para facilitar fallback local sem Python.
+
+fn demand_forecast_local_fallback(hour_slot) {
+    if hour_slot >= 18 {
+        return 40
+    }
+    if hour_slot >= 8 {
+        return 26
+    }
+    return 14
+}
+
+# Exemplo de assinatura esperada para bridge Python (documental):
+# import "sklearn.linear_model" from python
+# fn demand_forecast_python(features) { ... }

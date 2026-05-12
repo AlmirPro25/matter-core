@@ -1,0 +1,96 @@
+# Exemplo: Java Collections e Streams
+
+import "java.util.ArrayList" from java
+import "java.util.HashMap" from java
+import "java.util.stream.Collectors" from java
+
+fn main() {
+    print "=== Java Collections and Streams Example ==="
+    
+    # Exemplo 1: ArrayList
+    print "\n1. ArrayList:"
+    
+    let list = ArrayList.new()
+    list.add("Apple")
+    list.add("Banana")
+    list.add("Cherry")
+    list.add("Date")
+    list.add("Elderberry")
+    
+    print "List: " + list
+    print "Size: " + list.size()
+    print "First: " + list.get(0)
+    print "Contains Banana: " + list.contains("Banana")
+    
+    # Exemplo 2: HashMap
+    print "\n2. HashMap:"
+    
+    let map = HashMap.new()
+    map.put("name", "John")
+    map.put("age", 30)
+    map.put("city", "New York")
+    map.put("country", "USA")
+    
+    print "Map: " + map
+    print "Name: " + map.get("name")
+    print "Age: " + map.get("age")
+    print "Keys: " + map.keySet()
+    print "Values: " + map.values()
+    
+    # Exemplo 3: Streams
+    print "\n3. Streams:"
+    
+    let numbers = ArrayList.of(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+    
+    # Filter
+    let evens = numbers.stream()
+        .filter(n -> n % 2 == 0)
+        .collect(Collectors.toList())
+    print "Even numbers: " + evens
+    
+    # Map
+    let squares = numbers.stream()
+        .map(n -> n * n)
+        .collect(Collectors.toList())
+    print "Squares: " + squares
+    
+    # Reduce
+    let sum = numbers.stream()
+        .reduce(0, (a, b) -> a + b)
+    print "Sum: " + sum
+    
+    # Exemplo 4: Sorting
+    print "\n4. Sorting:"
+    
+    let fruits = ArrayList.of("Banana", "Apple", "Cherry", "Date")
+    print "Original: " + fruits
+    
+    fruits.sort(String::compareTo)
+    print "Sorted: " + fruits
+    
+    # Exemplo 5: Filtering and Mapping
+    print "\n5. Complex Stream Operations:"
+    
+    let people = ArrayList.of(
+        HashMap.of("name", "Alice", "age", 25),
+        HashMap.of("name", "Bob", "age", 30),
+        HashMap.of("name", "Charlie", "age", 35),
+        HashMap.of("name", "Dave", "age", 28)
+    )
+    
+    let adults = people.stream()
+        .filter(p -> p.get("age") >= 30)
+        .map(p -> p.get("name"))
+        .collect(Collectors.toList())
+    
+    print "Adults (30+): " + adults
+    
+    let avgAge = people.stream()
+        .mapToInt(p -> p.get("age"))
+        .average()
+        .getAsDouble()
+    
+    print "Average age: " + avgAge
+    
+    print "\n✅ Java Collections examples complete!"
+}

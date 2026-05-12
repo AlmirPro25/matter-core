@@ -1,0 +1,73 @@
+// Teste do Matter Native Compiler (MNC)
+// Este programa testa todas as funcionalidades do compilador nativo
+
+// 1. Aritmética básica
+let x = 10 + 20;
+print x;  // 30
+
+let y = x * 2;
+print y;  // 60
+
+let z = y - 10;
+print z;  // 50
+
+// 2. Comparações
+let a = 10 < 20;
+print a;  // 1 (true)
+
+let b = 30 > 40;
+print b;  // 0 (false)
+
+// 3. Variáveis
+let count = 0;
+set count = count + 1;
+print count;  // 1
+
+// 4. If/else
+if count == 1 {
+    print 100;  // 100
+} else {
+    print 200;
+}
+
+// 5. While loops
+let i = 0;
+while i < 5 {
+    print i;  // 0, 1, 2, 3, 4
+    set i = i + 1;
+}
+
+// 6. Funções
+fn dobro(n) {
+    return n * 2;
+}
+
+let resultado = dobro(21);
+print resultado;  // 42
+
+// 7. Recursão
+fn fatorial(n) {
+    if n <= 1 {
+        return 1;
+    }
+    return n * fatorial(n - 1);
+}
+
+let fat = fatorial(5);
+print fat;  // 120
+
+// 8. Funções aninhadas
+fn soma(a, b) {
+    return a + b;
+}
+
+fn multiplica(a, b) {
+    return a * b;
+}
+
+let r1 = soma(10, 20);
+let r2 = multiplica(r1, 2);
+print r2;  // 60
+
+// Teste completo!
+print 999;  // Marcador de fim

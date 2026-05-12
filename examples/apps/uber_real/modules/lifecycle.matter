@@ -1,0 +1,19 @@
+fn mark_driver_busy(driver, ride_id) {
+    set driver["active_ride_id"] = ride_id
+    return driver
+}
+
+fn mark_driver_free(driver) {
+    set driver["active_ride_id"] = 0
+    return driver
+}
+
+fn start_ride(ride) {
+    set ride["status"] = "in_progress"
+    return ride
+}
+
+fn complete_ride(ride) {
+    set ride["status"] = "completed"
+    return ride
+}

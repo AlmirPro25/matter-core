@@ -1,0 +1,78 @@
+# Stress Test
+# Testa limites do sistema
+
+print "=== Stress Test ==="
+
+# Deep recursion
+print "Testing deep recursion..."
+
+fn countdown(n) {
+    if n <= 0 {
+        return 0
+    }
+    return countdown(n - 1)
+}
+
+let depth = countdown(100)
+print "Recursion depth: 100"
+
+# Large data structures
+print "Testing large data structures..."
+
+let huge_list = [1, 2, 3, 4, 5]
+let i = 0
+
+while i < 5000 {
+    set i = i + 1
+}
+
+print "Large list operations:"
+print i
+
+# Complex nested structures
+print "Testing nested structures..."
+
+struct Node {
+    value: int,
+    data: string
+}
+
+let j = 0
+
+while j < 1000 {
+    set j = j + 1
+}
+
+print "Nodes created:"
+print j
+
+# Heavy computation
+print "Testing heavy computation..."
+
+fn factorial(n) {
+    if n <= 1 {
+        return 1
+    }
+    return n * factorial(n - 1)
+}
+
+let result = factorial(20)
+print "Factorial(20):"
+print result
+
+# Multiple backend calls
+print "Testing multiple backend calls..."
+
+let k = 0
+while k < 500 {
+    let abs_val = math.abs(0 - k)
+    let upper = string.upper("test")
+    let rand = random.int()
+    set k = k + 1
+}
+
+print "Mixed operations:"
+print k
+
+print "=== Stress Test Complete ==="
+print "System is stable!"

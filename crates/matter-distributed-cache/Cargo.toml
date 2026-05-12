@@ -1,0 +1,19 @@
+[package]
+name = "matter-distributed-cache"
+version = "0.1.0"
+edition = "2021"
+authors = ["Matter Core Team"]
+license = "MIT"
+
+[dependencies]
+matter-cache = { path = "../matter-cache" }
+matter-error = { path = "../matter-error" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+redis = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
+tokio = { version = "1.0", features = ["full"] }
+blake3 = "1.5"
+lz4 = "1.28"
+
+[lib]
+crate-type = ["cdylib", "rlib"]

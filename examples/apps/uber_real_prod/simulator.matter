@@ -1,0 +1,157 @@
+# Uber Real Prod - Advanced Simulator (single-file, testable)
+
+fn abs_i(x) {
+    if x < 0 {
+        return 0 - x
+    }
+    return x
+}
+
+fn proximity(driver_lat, driver_lng, req_lat, req_lng) {
+    return abs_i(driver_lat - req_lat) + abs_i(driver_lng - req_lng)
+}
+
+fn demand_by_hour(hour_slot) {
+    if hour_slot >= 18 {
+        return 45
+    }
+    if hour_slot >= 8 {
+        return 28
+    }
+    return 14
+}
+
+fn surge_from_market(demand, supply) {
+    if supply == 0 {
+        return 3
+    }
+    if demand > supply {
+        return 2
+    }
+    return 1
+}
+
+fn fare(distance_km, surge, priority) {
+    return ((8 + (distance_km * 4)) * surge) + priority
+}
+
+fn fraud_blocked(risk_score, distance_km) {
+    if risk_score > 90 {
+        return true
+    }
+    if distance_km <= 0 {
+        return true
+    }
+    return false
+}
+
+fn choose_driver_idx(drivers, req_lat, req_lng) {
+    let best_idx = 0
+    let best_score = 999999
+    let i = 0
+    while i < drivers.len() {
+        let d = drivers[i]
+        if d["online"] {
+            if d["active_ride"] == 0 {
+                let score = proximity(d["lat"], d["lng"], req_lat, req_lng)
+                if score < best_score {
+                    set best_score = score
+                    set best_idx = i
+                }
+            }
+        }
+        set i = i + 1
+    }
+    return best_idx
+}
+
+fn seed_drivers() {
+    let ds = []
+    ds.push({ "id": 1, "name": "Carlos", "lat": 10, "lng": 11, "online": true, "active_ride": 0 })
+    ds.push({ "id": 2, "name": "Ana", "lat": 15, "lng": 9, "online": true, "active_ride": 0 })
+    ds.push({ "id": 3, "name": "Bruno", "lat": 24, "lng": 19, "online": true, "active_ride": 0 })
+    return ds
+}
+
+fn seed_requests() {
+    let rs = []
+    rs.push({ "rider_id": 101, "risk": 12, "priority": 1, "o_lat": 12, "o_lng": 10, "d_lat": 22, "d_lng": 20, "km": 16, "hour": 19 })
+    rs.push({ "rider_id": 102, "risk": 8, "priority": 2, "o_lat": 13, "o_lng": 11, "d_lat": 17, "d_lng": 16, "km": 8, "hour": 9 })
+    rs.push({ "rider_id": 103, "risk": 95, "priority": 1, "o_lat": 11, "o_lng": 8, "d_lat": 30, "d_lng": 25, "km": 22, "hour": 20 })
+    rs.push({ "rider_id": 104, "risk": 7, "priority": 1, "o_lat": 20, "o_lng": 17, "d_lat": 21, "d_lng": 19, "km": 4, "hour": 14 })
+    return rs
+}
+
+let drivers = seed_drivers()
+let requests = seed_requests()
+let rides = []
+let events = []
+let next_ride_id = 1
+
+let blocked = 0
+let completed = 0
+let revenue = 0
+let total_wait_score = 0
+
+let i = 0
+while i < requests.len() {
+    let req = requests[i]
+    if fraud_blocked(req["risk"], req["km"]) {
+        set blocked = blocked + 1
+        events.push({ "type": "request_blocked", "rider_id": req["rider_id"] })
+        set i = i + 1
+        continue
+    }
+
+    let demand = demand_by_hour(req["hour"])
+    let supply = drivers.len()
+    let surge = surge_from_market(demand, supply)
+    let idx = choose_driver_idx(drivers, req["o_lat"], req["o_lng"])
+    let d = drivers[idx]
+    let f = fare(req["km"], surge, req["priority"])
+    let wait_score = proximity(d["lat"], d["lng"], req["o_lat"], req["o_lng"])
+
+    set d["active_ride"] = next_ride_id
+    set drivers[idx] = d
+
+    let ride = {
+        "id": next_ride_id,
+        "rider_id": req["rider_id"],
+        "driver_id": d["id"],
+        "fare": f,
+        "surge": surge,
+        "status": "completed"
+    }
+    rides.push(ride)
+    events.push({ "type": "ride_created", "ride_id": next_ride_id })
+    events.push({ "type": "ride_completed", "ride_id": next_ride_id })
+
+    set d["active_ride"] = 0
+    set drivers[idx] = d
+
+    set completed = completed + 1
+    set revenue = revenue + f
+    set total_wait_score = total_wait_score + wait_score
+    set next_ride_id = next_ride_id + 1
+    set i = i + 1
+}
+
+let avg_wait_score = 0
+if completed > 0 {
+    set avg_wait_score = total_wait_score / completed
+}
+
+print "=== UBER REAL PROD SIM ==="
+print "REQUESTS"
+print requests.len()
+print "BLOCKED"
+print blocked
+print "COMPLETED"
+print completed
+print "REVENUE"
+print revenue
+print "EVENTS"
+print events.len()
+print "AVG_WAIT_SCORE"
+print avg_wait_score
+print "=========================="

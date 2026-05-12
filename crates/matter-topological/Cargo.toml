@@ -1,0 +1,12 @@
+[package]
+name = "matter-topological"
+version = "0.1.0"
+edition = "2021"
+authors = ["Matter Core Team"]
+license = "MIT"
+description = "Topological quantum computing for Matter - fault-tolerant quantum computation"
+
+[dependencies]
+num-complex = "0.4"
+
+[dev-dependencies]

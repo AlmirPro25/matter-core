@@ -1,0 +1,59 @@
+# Backend Calls Benchmark
+# Testa performance de chamadas a backends
+
+print "=== Backend Calls Benchmark ==="
+
+# Math backend
+print "Testing math backend..."
+let i = 0
+while i < 1000 {
+    let result = math.abs(0 - i)
+    let max = math.max(i, 100)
+    let min = math.min(i, 50)
+    set i = i + 1
+}
+
+print "Math operations:"
+print i
+
+# String backend
+print "Testing string backend..."
+let text = "Hello World"
+let j = 0
+
+while j < 500 {
+    let upper = string.upper(text)
+    let lower = string.lower(text)
+    let len = string.len(text)
+    set j = j + 1
+}
+
+print "String operations:"
+print j
+
+# Store backend
+print "Testing store backend..."
+let k = 0
+
+while k < 100 {
+    store.set("bench_key", k)
+    let value = store.get("bench_key")
+    set k = k + 1
+}
+
+print "Store operations:"
+print k
+
+# Time backend
+print "Testing time backend..."
+let m = 0
+
+while m < 100 {
+    let now = time.now()
+    set m = m + 1
+}
+
+print "Time operations:"
+print m
+
+print "Benchmark complete!"

@@ -1,0 +1,65 @@
+# Exemplo: REST API com Java (Spring Boot)
+
+import "org.springframework.boot.SpringApplication" from java
+import "org.springframework.boot.autoconfigure.SpringBootApplication" from java
+import "org.springframework.web.bind.annotation.RestController" from java
+import "org.springframework.web.bind.annotation.GetMapping" from java
+import "org.springframework.web.bind.annotation.PostMapping" from java
+import "org.springframework.web.bind.annotation.RequestBody" from java
+
+fn main() {
+    print "=== Java Spring Boot REST API Example ==="
+    
+    # Define Spring Boot Application
+    @SpringBootApplication
+    @RestController
+    class MatterApplication {
+        
+        @GetMapping("/")
+        fn home() {
+            return {
+                "message": "Hello from Matter + Java Spring Boot!",
+                "framework": "Spring Boot",
+                "language": "Java",
+                "polyglot": true
+            }
+        }
+        
+        @GetMapping("/api/products")
+        fn getProducts() {
+            return [
+                {"id": 1, "name": "Laptop", "price": 1200.00},
+                {"id": 2, "name": "Mouse", "price": 25.00},
+                {"id": 3, "name": "Keyboard", "price": 75.00}
+            ]
+        }
+        
+        @GetMapping("/api/products/{id}")
+        fn getProduct(@PathVariable int id) {
+            return {
+                "id": id,
+                "name": "Product " + id,
+                "price": 100.00 * id
+            }
+        }
+        
+        @PostMapping("/api/products")
+        fn createProduct(@RequestBody product) {
+            return {
+                "message": "Product created",
+                "product": product,
+                "id": 4
+            }
+        }
+    }
+    
+    # Inicia aplicação Spring Boot
+    print "🚀 Spring Boot server starting on http://localhost:8080"
+    print "\nTry:"
+    print "  curl http://localhost:8080/"
+    print "  curl http://localhost:8080/api/products"
+    print "  curl http://localhost:8080/api/products/1"
+    print "  curl -X POST http://localhost:8080/api/products -H 'Content-Type: application/json' -d '{\"name\":\"Monitor\",\"price\":300}'"
+    
+    SpringApplication.run(MatterApplication.class)
+}

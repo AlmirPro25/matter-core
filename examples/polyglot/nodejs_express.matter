@@ -1,0 +1,65 @@
+# Exemplo: Web Server com Express (Node.js) em Matter
+
+import "express" from nodejs
+
+fn create_api() {
+    print "=== Express Web Server Demo ==="
+    
+    # Cria aplicação Express
+    let app = express()
+    
+    # Middleware para JSON
+    app.use(express.json())
+    
+    # Rota GET /
+    app.get("/", fn(req, res) {
+        res.json({
+            "message": "Hello from Matter + Express!",
+            "version": "1.0.0",
+            "powered_by": "Matter Polyglot"
+        })
+    })
+    
+    # Rota GET /users
+    app.get("/users", fn(req, res) {
+        let users = [
+            {"id": 1, "name": "Alice", "email": "alice@example.com"},
+            {"id": 2, "name": "Bob", "email": "bob@example.com"},
+            {"id": 3, "name": "Charlie", "email": "charlie@example.com"}
+        ]
+        res.json(users)
+    })
+    
+    # Rota POST /users
+    app.post("/users", fn(req, res) {
+        let user = req.body
+        print "New user: " + user.name
+        res.status(201).json({
+            "message": "User created",
+            "user": user
+        })
+    })
+    
+    # Rota GET /health
+    app.get("/health", fn(req, res) {
+        res.json({
+            "status": "healthy",
+            "uptime": process.uptime(),
+            "timestamp": Date.now()
+        })
+    })
+    
+    # Inicia servidor
+    let port = 3000
+    app.listen(port, fn() {
+        print "🚀 Server running on http://localhost:" + port
+        print "Try:"
+        print "  curl http://localhost:3000/"
+        print "  curl http://localhost:3000/users"
+        print "  curl http://localhost:3000/health"
+    })
+}
+
+fn main() {
+    create_api()
+}

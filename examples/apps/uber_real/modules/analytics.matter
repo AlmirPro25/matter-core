@@ -1,0 +1,35 @@
+fn platform_metrics(drivers, rides) {
+    let online = 0
+    let busy = 0
+    let completed = 0
+    let revenue = 0
+
+    let i = 0
+    while i < drivers.len() {
+        let d = drivers[i]
+        if d["online"] {
+            set online = online + 1
+        }
+        if d["active_ride_id"] != 0 {
+            set busy = busy + 1
+        }
+        set i = i + 1
+    }
+
+    let j = 0
+    while j < rides.len() {
+        let r = rides[j]
+        if r["status"] == "completed" {
+            set completed = completed + 1
+            set revenue = revenue + r["fare"]
+        }
+        set j = j + 1
+    }
+
+    return {
+        "drivers_online": online,
+        "drivers_busy": busy,
+        "rides_completed": completed,
+        "revenue": revenue
+    }
+}

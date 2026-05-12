@@ -1,0 +1,647 @@
+// 📊 DATA SCIENCE SYSTEM - Matter Core
+// Demonstra Matter sendo usado para Data Science e Analytics
+
+// ============================================
+// 1. DATA LOADING & PREPROCESSING
+// ============================================
+
+struct DataFrame {
+    columns: [string],
+    data: [[any]],
+    shape: (int, int)
+}
+
+fn load_csv(path: string) -> DataFrame {
+    print "Loading CSV: " + path;
+    
+    let content = fs.read(path);
+    let lines = content.split("\n");
+    
+    // Parse header
+    let columns = lines[0].split(",");
+    
+    // Parse data
+    let data = [];
+    for i in range(1, lines.length) {
+        let row = lines[i].split(",");
+        data.push(row);
+    }
+    
+    print "Loaded " + data.length + " rows, " + columns.length + " columns";
+    
+    return DataFrame {
+        columns: columns,
+        data: data,
+        shape: (data.length, columns.length)
+    };
+    // Efeitos inferidos: io, fs
+}
+
+fn clean_data(df: DataFrame) -> DataFrame {
+    print "Cleaning data...";
+    
+    let cleaned_data = [];
+    
+    for row in df.data {
+        // Remove rows with missing values
+        let has_missing = false;
+        for value in row {
+            if value == "" || value == "null" || value == "NaN" {
+                has_missing = true;
+                break;
+            }
+        }
+        
+        if !has_missing {
+            cleaned_data.push(row);
+        }
+    }
+    
+    print "Removed " + (df.data.length - cleaned_data.length) + " rows with missing values";
+    
+    return DataFrame {
+        columns: df.columns,
+        data: cleaned_data,
+        shape: (cleaned_data.length, df.columns.length)
+    };
+    // Efeito inferido: io
+}
+
+fn normalize(df: DataFrame, column: string) -> DataFrame {
+    let col_index = df.columns.index_of(column);
+    
+    // Get column values
+    let values = [];
+    for row in df.data {
+        values.push(parse_float(row[col_index]));
+    }
+    
+    // Calculate min and max
+    let min_val = min(values);
+    let max_val = max(values);
+    
+    // Normalize
+    let normalized_data = [];
+    for row in df.data {
+        let new_row = row.clone();
+        let value = parse_float(row[col_index]);
+        new_row[col_index] = (value - min_val) / (max_val - min_val);
+        normalized_data.push(new_row);
+    }
+    
+    return DataFrame {
+        columns: df.columns,
+        data: normalized_data,
+        shape: df.shape
+    };
+    // Efeito inferido: pure (função pura!)
+}
+
+// ============================================
+// 2. EXPLORATORY DATA ANALYSIS (EDA)
+// ============================================
+
+fn describe(df: DataFrame) -> unit {
+    print "=== Data Summary ===";
+    print "Shape: " + df.shape.0 + " rows x " + df.shape.1 + " columns";
+    print "Columns: " + df.columns.join(", ");
+    
+    // Statistics for each numeric column
+    for i in range(df.columns.length) {
+        let column = df.columns[i];
+        let values = [];
+        
+        for row in df.data {
+            let value = try_parse_float(row[i]);
+            if value.is_some() {
+                values.push(value.unwrap());
+            }
+        }
+        
+        if values.length > 0 {
+            print "\n" + column + ":";
+            print "  Count: " + values.length;
+            print "  Mean: " + mean(values);
+            print "  Std: " + std(values);
+            print "  Min: " + min(values);
+            print "  25%: " + percentile(values, 25);
+            print "  50%: " + percentile(values, 50);
+            print "  75%: " + percentile(values, 75);
+            print "  Max: " + max(values);
+        }
+    }
+    // Efeito inferido: io
+}
+
+fn correlation_matrix(df: DataFrame) -> [[float]] {
+    print "Calculating correlation matrix...";
+    
+    let n = df.columns.length;
+    let matrix = [[0.0; n]; n];
+    
+    for i in range(n) {
+        for j in range(n) {
+            let col1 = get_column(df, i);
+            let col2 = get_column(df, j);
+            matrix[i][j] = correlation(col1, col2);
+        }
+    }
+    
+    return matrix;
+    // Efeito inferido: io
+}
+
+fn plot_histogram(df: DataFrame, column: string) -> unit {
+    let values = get_column_by_name(df, column);
+    
+    // Calculate bins
+    let min_val = min(values);
+    let max_val = max(values);
+    let bin_width = (max_val - min_val) / 10;
+    
+    let bins = [0; 10];
+    for value in values {
+        let bin_index = floor((value - min_val) / bin_width);
+        if bin_index >= 10 {
+            bin_index = 9;
+        }
+        bins[bin_index] = bins[bin_index] + 1;
+    }
+    
+    // Print histogram
+    print "\nHistogram: " + column;
+    for i in range(10) {
+        let bar = "";
+        for j in range(bins[i]) {
+            bar = bar + "█";
+        }
+        print "[" + (min_val + i * bin_width) + "-" + (min_val + (i + 1) * bin_width) + "]: " + bar + " (" + bins[i] + ")";
+    }
+    // Efeito inferido: io
+}
+
+// ============================================
+// 3. STATISTICAL ANALYSIS
+// ============================================
+
+fn linear_regression(x: [float], y: [float]) -> (float, float) {
+    // Calculate means
+    let x_mean = mean(x);
+    let y_mean = mean(y);
+    
+    // Calculate slope
+    let numerator = 0.0;
+    let denominator = 0.0;
+    
+    for i in range(x.length) {
+        numerator = numerator + (x[i] - x_mean) * (y[i] - y_mean);
+        denominator = denominator + (x[i] - x_mean) * (x[i] - x_mean);
+    }
+    
+    let slope = numerator / denominator;
+    let intercept = y_mean - slope * x_mean;
+    
+    print "Linear Regression: y = " + slope + "x + " + intercept;
+    
+    return (slope, intercept);
+    // Efeito inferido: io
+}
+
+fn t_test(sample1: [float], sample2: [float]) -> float {
+    let mean1 = mean(sample1);
+    let mean2 = mean(sample2);
+    let std1 = std(sample1);
+    let std2 = std(sample2);
+    let n1 = sample1.length;
+    let n2 = sample2.length;
+    
+    // Calculate t-statistic
+    let t = (mean1 - mean2) / sqrt((std1 * std1 / n1) + (std2 * std2 / n2));
+    
+    print "T-test: t = " + t;
+    
+    return t;
+    // Efeito inferido: io
+}
+
+fn chi_square_test(observed: [int], expected: [int]) -> float {
+    let chi_square = 0.0;
+    
+    for i in range(observed.length) {
+        let diff = observed[i] - expected[i];
+        chi_square = chi_square + (diff * diff) / expected[i];
+    }
+    
+    print "Chi-square: " + chi_square;
+    
+    return chi_square;
+    // Efeito inferido: io
+}
+
+// ============================================
+// 4. MACHINE LEARNING
+// ============================================
+
+fn train_test_split(df: DataFrame, test_size: float) -> (DataFrame, DataFrame) {
+    let n = df.data.length;
+    let test_n = floor(n * test_size);
+    
+    // Shuffle data
+    let shuffled = df.data.clone();
+    shuffle(shuffled);
+    
+    // Split
+    let train_data = shuffled[0:n - test_n];
+    let test_data = shuffled[n - test_n:n];
+    
+    let train_df = DataFrame {
+        columns: df.columns,
+        data: train_data,
+        shape: (train_data.length, df.columns.length)
+    };
+    
+    let test_df = DataFrame {
+        columns: df.columns,
+        data: test_data,
+        shape: (test_data.length, df.columns.length)
+    };
+    
+    print "Train: " + train_df.shape.0 + " rows, Test: " + test_df.shape.0 + " rows";
+    
+    return (train_df, test_df);
+    // Efeitos inferidos: io, random
+}
+
+fn k_means(data: [[float]], k: int, max_iters: int) -> [[float]] {
+    print "Running K-Means clustering (k=" + k + ")...";
+    
+    // Initialize centroids randomly
+    let centroids = [];
+    for i in range(k) {
+        centroids.push(data[random.int(0, data.length)]);
+    }
+    
+    for iter in range(max_iters) {
+        // Assign points to clusters
+        let clusters = [[] for _ in range(k)];
+        
+        for point in data {
+            let min_dist = infinity;
+            let closest_centroid = 0;
+            
+            for i in range(k) {
+                let dist = euclidean_distance(point, centroids[i]);
+                if dist < min_dist {
+                    min_dist = dist;
+                    closest_centroid = i;
+                }
+            }
+            
+            clusters[closest_centroid].push(point);
+        }
+        
+        // Update centroids
+        let new_centroids = [];
+        for i in range(k) {
+            if clusters[i].length > 0 {
+                new_centroids.push(mean_point(clusters[i]));
+            } else {
+                new_centroids.push(centroids[i]);
+            }
+        }
+        
+        // Check convergence
+        let converged = true;
+        for i in range(k) {
+            if euclidean_distance(centroids[i], new_centroids[i]) > 0.001 {
+                converged = false;
+                break;
+            }
+        }
+        
+        centroids = new_centroids;
+        
+        if converged {
+            print "Converged at iteration " + iter;
+            break;
+        }
+    }
+    
+    return centroids;
+    // Efeitos inferidos: io, random
+}
+
+fn decision_tree(df: DataFrame, target_column: string, max_depth: int) -> Tree {
+    print "Training decision tree (max_depth=" + max_depth + ")...";
+    
+    let target_index = df.columns.index_of(target_column);
+    
+    fn build_tree(data: [[any]], depth: int) -> Tree {
+        // Base cases
+        if depth >= max_depth || data.length < 10 {
+            return Leaf {
+                value: majority_class(data, target_index)
+            };
+        }
+        
+        // Find best split
+        let best_feature = 0;
+        let best_threshold = 0.0;
+        let best_gain = 0.0;
+        
+        for feature in range(df.columns.length) {
+            if feature == target_index {
+                continue;
+            }
+            
+            let values = get_column_values(data, feature);
+            let threshold = median(values);
+            let gain = information_gain(data, feature, threshold, target_index);
+            
+            if gain > best_gain {
+                best_gain = gain;
+                best_feature = feature;
+                best_threshold = threshold;
+            }
+        }
+        
+        // Split data
+        let left_data = [];
+        let right_data = [];
+        
+        for row in data {
+            if parse_float(row[best_feature]) <= best_threshold {
+                left_data.push(row);
+            } else {
+                right_data.push(row);
+            }
+        }
+        
+        // Recursively build subtrees
+        return Node {
+            feature: best_feature,
+            threshold: best_threshold,
+            left: build_tree(left_data, depth + 1),
+            right: build_tree(right_data, depth + 1)
+        };
+    }
+    
+    return build_tree(df.data, 0);
+    // Efeito inferido: io
+}
+
+// ============================================
+// 5. TIME SERIES ANALYSIS
+// ============================================
+
+fn moving_average(data: [float], window: int) -> [float] {
+    let result = [];
+    
+    for i in range(data.length - window + 1) {
+        let sum = 0.0;
+        for j in range(window) {
+            sum = sum + data[i + j];
+        }
+        result.push(sum / window);
+    }
+    
+    return result;
+    // Efeito inferido: pure
+}
+
+fn exponential_smoothing(data: [float], alpha: float) -> [float] {
+    let result = [data[0]];
+    
+    for i in range(1, data.length) {
+        let smoothed = alpha * data[i] + (1.0 - alpha) * result[i - 1];
+        result.push(smoothed);
+    }
+    
+    return result;
+    // Efeito inferido: pure
+}
+
+fn detect_seasonality(data: [float], period: int) -> bool {
+    // Autocorrelation at lag = period
+    let autocorr = autocorrelation(data, period);
+    
+    print "Autocorrelation at lag " + period + ": " + autocorr;
+    
+    return autocorr > 0.5;
+    // Efeito inferido: io
+}
+
+// ============================================
+// 6. DATA VISUALIZATION
+// ============================================
+
+fn plot_scatter(x: [float], y: [float], title: string) -> unit {
+    print "\n=== " + title + " ===";
+    
+    // Normalize to 0-50 range for ASCII plot
+    let x_min = min(x);
+    let x_max = max(x);
+    let y_min = min(y);
+    let y_max = max(y);
+    
+    let grid = [["." for _ in range(50)] for _ in range(20)];
+    
+    for i in range(x.length) {
+        let x_pos = floor((x[i] - x_min) / (x_max - x_min) * 49);
+        let y_pos = 19 - floor((y[i] - y_min) / (y_max - y_min) * 19);
+        grid[y_pos][x_pos] = "●";
+    }
+    
+    // Print grid
+    for row in grid {
+        print row.join("");
+    }
+    
+    print "X: [" + x_min + " - " + x_max + "]";
+    print "Y: [" + y_min + " - " + y_max + "]";
+    // Efeito inferido: io
+}
+
+fn plot_line(data: [float], title: string) -> unit {
+    print "\n=== " + title + " ===";
+    
+    let min_val = min(data);
+    let max_val = max(data);
+    
+    for i in range(data.length) {
+        let normalized = (data[i] - min_val) / (max_val - min_val);
+        let bar_length = floor(normalized * 50);
+        
+        let bar = "";
+        for j in range(bar_length) {
+            bar = bar + "█";
+        }
+        
+        print "[" + i + "] " + bar + " " + data[i];
+    }
+    // Efeito inferido: io
+}
+
+// ============================================
+// 7. BIG DATA PROCESSING
+// ============================================
+
+fn process_large_dataset(path: string) -> unit {
+    with logging, timing {
+        print "Processing large dataset: " + path;
+        
+        // Stream processing (chunk by chunk)
+        let chunk_size = 10000;
+        let total_rows = 0;
+        let sum_values = 0.0;
+        
+        let file = fs.open(path);
+        
+        loop {
+            let chunk = file.read_lines(chunk_size);
+            
+            if chunk.length == 0 {
+                break;
+            }
+            
+            // Process chunk
+            for line in chunk {
+                let values = line.split(",");
+                sum_values = sum_values + parse_float(values[0]);
+                total_rows = total_rows + 1;
+            }
+            
+            print "Processed " + total_rows + " rows...";
+        }
+        
+        file.close();
+        
+        let average = sum_values / total_rows;
+        print "Total rows: " + total_rows;
+        print "Average: " + average;
+    }
+    // Efeitos inferidos: io, fs
+}
+
+fn parallel_processing(data: [[float]]) -> [float] {
+    with timing {
+        print "Processing data in parallel...";
+        
+        let num_workers = 4;
+        let chunk_size = data.length / num_workers;
+        
+        let results = [];
+        
+        for i in range(num_workers) {
+            let start = i * chunk_size;
+            let end = if i == num_workers - 1 { data.length } else { start + chunk_size };
+            let chunk = data[start:end];
+            
+            spawn {
+                let result = process_chunk(chunk);
+                results.push(result);
+            };
+        }
+        
+        wait_all();
+        
+        // Combine results
+        let final_result = [];
+        for result in results {
+            final_result = final_result + result;
+        }
+        
+        return final_result;
+    }
+    // Efeitos inferidos: io, async
+}
+
+// ============================================
+// 8. DATABASE ANALYTICS
+// ============================================
+
+fn analyze_sales_data() -> unit {
+    with logging, cache {
+        print "=== Sales Analytics ===";
+        
+        // Total sales
+        let total = db.query("SELECT SUM(amount) FROM sales");
+        print "Total Sales: $" + total[0][0];
+        
+        // Sales by category
+        let by_category = db.query("SELECT category, SUM(amount) FROM sales GROUP BY category ORDER BY SUM(amount) DESC");
+        print "\nSales by Category:";
+        for row in by_category {
+            print "  " + row[0] + ": $" + row[1];
+        }
+        
+        // Top customers
+        let top_customers = db.query("SELECT customer_id, SUM(amount) FROM sales GROUP BY customer_id ORDER BY SUM(amount) DESC LIMIT 10");
+        print "\nTop 10 Customers:";
+        for row in top_customers {
+            print "  Customer " + row[0] + ": $" + row[1];
+        }
+        
+        // Monthly trend
+        let monthly = db.query("SELECT strftime('%Y-%m', date) as month, SUM(amount) FROM sales GROUP BY month ORDER BY month");
+        print "\nMonthly Trend:";
+        let amounts = [];
+        for row in monthly {
+            print "  " + row[0] + ": $" + row[1];
+            amounts.push(parse_float(row[1]));
+        }
+        
+        // Plot trend
+        plot_line(amounts, "Monthly Sales Trend");
+    }
+    // Efeitos inferidos: io, db
+}
+
+// ============================================
+// MAIN - DATA SCIENCE DEMO
+// ============================================
+
+fn main() -> unit {
+    print "=== Matter Data Science System ===";
+    
+    // 1. Load and clean data
+    let df = load_csv("data/sales.csv");
+    let clean_df = clean_data(df);
+    
+    // 2. EDA
+    describe(clean_df);
+    plot_histogram(clean_df, "amount");
+    
+    // 3. Statistical analysis
+    let x = get_column_by_name(clean_df, "price");
+    let y = get_column_by_name(clean_df, "quantity");
+    let (slope, intercept) = linear_regression(x, y);
+    plot_scatter(x, y, "Price vs Quantity");
+    
+    // 4. Machine Learning
+    let (train, test) = train_test_split(clean_df, test_size: 0.2);
+    let tree = decision_tree(train, target_column: "category", max_depth: 5);
+    
+    // 5. Time series
+    let sales_data = get_column_by_name(clean_df, "amount");
+    let ma = moving_average(sales_data, window: 7);
+    plot_line(ma, "7-Day Moving Average");
+    
+    // 6. Database analytics
+    analyze_sales_data();
+    
+    print "\nData science analysis complete!";
+    // Efeitos inferidos: io, fs, db, random, async
+}
+
+// ============================================
+// FEATURES EM AÇÃO
+// ============================================
+
+// ✅ Effect Inference - Efeitos inferidos automaticamente
+// ✅ Gradual Typing - Tipos opcionais
+// ✅ Effect Handlers - logging, timing, cache
+// ✅ Hot Reload - Modifique código → Atualização instantânea
+// ✅ 3 Backends - Bytecode (dev), LLVM (prod), Native (dist)
+
+// MATTER - DATA SCIENCE MADE EASY! 📊🚀

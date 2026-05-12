@@ -1,0 +1,209 @@
+//! Gradual Typing Demo
+//!
+//! Este programa demonstra o sistema de tipos gradual do Matter.
+//!
+//! Você pode começar sem tipos e adicionar progressivamente!
+
+// ============================================
+// 1. DINÂMICO (Padrão - sem tipos)
+// ============================================
+
+let x = 42;              // Tipo inferido: int
+let name = "Matter";     // Tipo inferido: string
+let active = true;       // Tipo inferido: bool
+
+print "Dinâmico:";
+print x;
+print name;
+print active;
+
+// ============================================
+// 2. TIPADO EXPLÍCITO
+// ============================================
+
+let age: int = 25;
+let price: float = 19.99;
+let message: string = "Hello!";
+let flag: bool = false;
+
+print "Tipado:";
+print age;
+print price;
+print message;
+print flag;
+
+// ============================================
+// 3. TIPOS NULLABLE (?)
+// ============================================
+
+let maybe_value: int? = null;  // Pode ser int ou null
+let optional_name: string? = "John";
+
+print "Nullable:";
+print maybe_value;
+print optional_name;
+
+// Atribuir null é válido
+set maybe_value = 42;
+print maybe_value;
+
+set maybe_value = null;
+print maybe_value;
+
+// ============================================
+// 4. TIPOS NÃO-NULLABLE (!)
+// ============================================
+
+let required_name: string! = "Must have value";
+// let invalid: string! = null;  // ERRO: não pode ser null!
+
+print "Non-nullable:";
+print required_name;
+
+// ============================================
+// 5. FUNÇÕES COM TIPOS
+// ============================================
+
+// Sem tipos (inferido)
+fn add(a, b) {
+    return a + b;
+}
+
+// Com tipos explícitos
+fn multiply(a: int, b: int) -> int {
+    return a * b;
+}
+
+// Com tipos nullable
+fn safe_divide(a: int, b: int) -> int? {
+    if b == 0 {
+        return null;  // Retorna null se divisão por zero
+    }
+    return a / b;
+}
+
+print "Funções:";
+print add(10, 20);
+print multiply(5, 6);
+print safe_divide(10, 2);
+print safe_divide(10, 0);
+
+// ============================================
+// 6. TIPOS GENÉRICOS
+// ============================================
+
+// Função genérica (aceita qualquer tipo)
+fn identity<T>(value: T) -> T {
+    return value;
+}
+
+print "Genéricos:";
+print identity(42);
+print identity("hello");
+print identity(true);
+
+// ============================================
+// 7. UNION TYPES (|)
+// ============================================
+
+// Pode ser int OU string
+let flexible: int | string = 42;
+print "Union:";
+print flexible;
+
+set flexible = "now a string";
+print flexible;
+
+// ============================================
+// 8. LISTAS TIPADAS
+// ============================================
+
+let numbers: list<int> = [1, 2, 3, 4, 5];
+let names: list<string> = ["Alice", "Bob", "Charlie"];
+
+print "Listas tipadas:";
+print numbers;
+print names;
+
+// ============================================
+// 9. MAPS TIPADOS
+// ============================================
+
+let scores: map<string, int> = {
+    "Alice": 95,
+    "Bob": 87,
+    "Charlie": 92
+};
+
+print "Maps tipados:";
+print scores;
+
+// ============================================
+// 10. TYPE ALIASES
+// ============================================
+
+// Define um alias para tipo complexo
+type UserId = int;
+type UserName = string;
+type Score = int;
+
+let user_id: UserId = 12345;
+let user_name: UserName = "Alice";
+let user_score: Score = 95;
+
+print "Type aliases:";
+print user_id;
+print user_name;
+print user_score;
+
+// ============================================
+// 11. STRUCTS TIPADOS
+// ============================================
+
+struct User {
+    id: int,
+    name: string,
+    email: string,
+    active: bool
+}
+
+let user: User = {
+    id: 1,
+    name: "Alice",
+    email: "alice@example.com",
+    active: true
+};
+
+print "Struct tipado:";
+print user.name;
+print user.email;
+
+// ============================================
+// 12. GRADUAL MIGRATION
+// ============================================
+
+// Começa dinâmico
+fn process_data(data) {
+    return data * 2;
+}
+
+// Adiciona tipos gradualmente
+fn process_data_typed(data: int) -> int {
+    return data * 2;
+}
+
+// Adiciona validação
+fn process_data_safe(data: int?) -> int {
+    if data == null {
+        return 0;
+    }
+    return data * 2;
+}
+
+print "Gradual migration:";
+print process_data(21);
+print process_data_typed(21);
+print process_data_safe(21);
+print process_data_safe(null);
+
+print "✅ Gradual Typing Demo Complete!";

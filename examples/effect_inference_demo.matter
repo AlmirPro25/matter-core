@@ -1,0 +1,329 @@
+// ============================================
+// MATTER EFFECT INFERENCE DEMO
+// Sprint 29: Automatic Effect Inference
+// ============================================
+
+// ============================================
+// BEFORE: Manual Effect Annotations
+// ============================================
+
+// Manual annotation (old way)
+fn log_manual(msg: string) -> unit with io {
+    print msg;
+}
+
+fn save_manual(data: string) -> result with io, db {
+    let conn = db.connect();
+    conn.save(data);
+    print "Saved!";
+    return ok;
+}
+
+// ============================================
+// AFTER: Automatic Effect Inference
+// ============================================
+
+// 1. PURE FUNCTION (no effects)
+fn pure_add(a: int, b: int) -> int {
+    return a + b;
+    // Inferred: pure (no effects)
+}
+
+// 2. SINGLE EFFECT (IO)
+fn log(msg: string) -> unit {
+    print msg;
+    // Inferred: io
+}
+
+// 3. MULTIPLE EFFECTS
+fn save(data: string) -> result {
+    let conn = db.connect();  // Infers: db, io
+    conn.save(data);          // Infers: db, io
+    print "Saved!";           // Infers: io
+    return ok;
+    // Inferred: io, db
+}
+
+// 4. NETWORK EFFECT
+fn fetch(url: string) -> string {
+    let response = net.get(url);
+    return response.body;
+    // Inferred: network, io
+}
+
+// 5. COMPOSITION (propagation)
+fn process(data: string) -> result {
+    log("Processing...");     // Propagates: io
+    save(data);               // Propagates: io, db
+    log("Done!");             // Propagates: io
+    return ok;
+    // Inferred: io, db
+}
+
+// 6. CONDITIONAL EFFECTS
+fn maybe_log(condition: bool, msg: string) -> unit {
+    if condition {
+        print msg;  // Infers: io (conditional)
+    }
+    // Inferred: io (because it might print)
+}
+
+// 7. LOOP EFFECTS
+fn log_all(messages: [string]) -> unit {
+    for msg in messages {
+        print msg;  // Infers: io
+    }
+    // Inferred: io
+}
+
+// 8. NESTED CALLS
+fn complex_operation() -> result {
+    let data = fetch("https://api.example.com");  // Propagates: network, io
+    save(data);                                    // Propagates: io, db
+    return ok;
+    // Inferred: io, db, network
+}
+
+// 9. TIME EFFECT
+fn wait_and_log(seconds: int, msg: string) -> unit {
+    time.sleep(seconds);  // Infers: time
+    print msg;            // Infers: io
+    // Inferred: time, io
+}
+
+// 10. RANDOM EFFECT
+fn generate_and_log() -> unit {
+    let id = random.int(1000, 9999);  // Infers: random
+    print "Generated ID: ";           // Infers: io
+    print id;                         // Infers: io
+    // Inferred: random, io
+}
+
+// ============================================
+// ADVANCED: Effect Inference with Handlers
+// ============================================
+
+// 11. HANDLER COMPOSITION
+fn with_handlers(data: string) -> result {
+    // Effects inferred from body
+    log("Starting...");
+    save(data);
+    log("Done!");
+    return ok;
+    // Inferred: io, db
+}
+
+// Usage with handlers (effects already inferred)
+fn main_with_handlers() -> unit {
+    with logging, tracing {
+        // Compiler knows this needs: io, db
+        with_handlers("test data");
+    }
+}
+
+// ============================================
+// INFERENCE CONFIDENCE LEVELS
+// ============================================
+
+// 12. HIGH CONFIDENCE (direct call)
+fn high_confidence() -> unit {
+    print "Hello";  // 100% confidence: io
+    // Inferred: io (confidence: 1.0)
+}
+
+// 13. MEDIUM CONFIDENCE (conditional)
+fn medium_confidence(condition: bool) -> unit {
+    if condition {
+        print "Maybe";  // 50% confidence: io
+    }
+    // Inferred: io (confidence: 0.5)
+}
+
+// 14. LOW CONFIDENCE (complex control flow)
+fn low_confidence(x: int) -> unit {
+    if x > 0 {
+        if x < 10 {
+            print "Low";  // 25% confidence: io
+        }
+    }
+    // Inferred: io (confidence: 0.25)
+}
+
+// ============================================
+// INFERENCE WITH GENERICS
+// ============================================
+
+// 15. GENERIC FUNCTION
+fn map<T, U>(list: [T], f: fn(T) -> U) -> [U] {
+    let result = [];
+    for item in list {
+        result.push(f(item));
+    }
+    return result;
+    // Inferred: pure (no effects in map itself)
+    // Effects depend on 'f'
+}
+
+// Usage with effects
+fn use_map() -> unit {
+    let numbers = [1, 2, 3, 4, 5];
+    
+    // Pure mapper
+    let doubled = map(numbers, fn(x) { return x * 2; });
+    // Inferred: pure
+    
+    // Impure mapper
+    let logged = map(numbers, fn(x) {
+        print x;  // Infers: io
+        return x * 2;
+    });
+    // Inferred: io (from mapper)
+}
+
+// ============================================
+// INFERENCE ERRORS
+// ============================================
+
+// 16. MISSING EFFECT (would be caught)
+fn missing_effect() -> unit {
+    // If we had explicit annotation 'pure':
+    // fn missing_effect() -> unit with pure {
+    //     print "Hello";  // ERROR: uses 'io' but declared 'pure'
+    // }
+    
+    // With inference, no error - just infers 'io'
+    print "Hello";
+    // Inferred: io
+}
+
+// 17. EFFECT MISMATCH (would be caught)
+fn effect_mismatch() -> unit {
+    // If we had explicit annotation:
+    // fn effect_mismatch() -> unit with db {
+    //     print "Hello";  // ERROR: uses 'io' but only 'db' declared
+    // }
+    
+    // With inference, no error - just infers 'io'
+    print "Hello";
+    // Inferred: io
+}
+
+// ============================================
+// INFERENCE SUGGESTIONS
+// ============================================
+
+// 18. COMPILER SUGGESTIONS
+fn needs_annotation() -> unit {
+    // Compiler can suggest:
+    // "This function uses effects: io, db"
+    // "Consider adding: with io, db"
+    
+    print "Processing...";
+    db.query("SELECT * FROM users");
+    // Inferred: io, db
+    // Suggestion: Add 'with io, db' for clarity
+}
+
+// ============================================
+// COMPARISON: BEFORE vs AFTER
+// ============================================
+
+// BEFORE (manual annotations)
+fn before_example(data: string) -> result with io, db, network {
+    let url = "https://api.example.com";
+    let response = net.get(url);
+    
+    let conn = db.connect();
+    conn.save(response);
+    
+    print "Saved!";
+    
+    return ok;
+}
+
+// AFTER (automatic inference)
+fn after_example(data: string) -> result {
+    let url = "https://api.example.com";
+    let response = net.get(url);      // Infers: network, io
+    
+    let conn = db.connect();          // Infers: db, io
+    conn.save(response);              // Infers: db, io
+    
+    print "Saved!";                   // Infers: io
+    
+    return ok;
+    // Inferred: io, db, network (automatically!)
+}
+
+// ============================================
+// BENEFITS
+// ============================================
+
+// 1. LESS BOILERPLATE
+fn less_boilerplate() -> unit {
+    // No need to write 'with io'
+    print "Hello!";
+}
+
+// 2. AUTOMATIC PROPAGATION
+fn automatic_propagation() -> unit {
+    // Effects propagate automatically
+    less_boilerplate();  // Propagates: io
+}
+
+// 3. REFACTORING SAFETY
+fn refactoring_safety() -> unit {
+    // Add new effect - automatically inferred
+    print "Before";
+    db.query("SELECT * FROM users");  // Added later
+    print "After";
+    // Effects updated automatically: io, db
+}
+
+// 4. DOCUMENTATION
+fn documentation() -> unit {
+    // Compiler knows effects even without annotation
+    // IDE can show: "Effects: io, db"
+    print "Processing...";
+    db.query("SELECT * FROM users");
+}
+
+// ============================================
+// MAIN
+// ============================================
+
+fn main() -> unit {
+    print "=== EFFECT INFERENCE DEMO ===";
+    print "";
+    
+    // Pure function
+    let sum = pure_add(10, 20);
+    print "Sum: ";
+    print sum;
+    print "";
+    
+    // Single effect
+    log("Hello, World!");
+    print "";
+    
+    // Multiple effects
+    save("test data");
+    print "";
+    
+    // Network effect
+    let data = fetch("https://api.example.com");
+    print "Fetched: ";
+    print data;
+    print "";
+    
+    // Composition
+    process("important data");
+    print "";
+    
+    // Complex operation
+    complex_operation();
+    print "";
+    
+    print "=== DEMO COMPLETE ===";
+    // Inferred effects for main: io, db, network, time, random
+}

@@ -1,0 +1,10 @@
+[package]
+name = "matter-formatter"
+version = "0.7.0"
+edition = "2021"
+
+[dependencies]
+matter-ast = { path = "../matter-ast" }
+matter-parser = { path = "../matter-parser" }
+matter-lexer = { path = "../matter-lexer" }
+serde = { version = "1.0", features = ["derive"] }

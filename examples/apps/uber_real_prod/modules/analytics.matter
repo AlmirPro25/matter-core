@@ -1,0 +1,30 @@
+fn compute_metrics(drivers, rides, events) {
+    let drivers_online = 0
+    let rides_completed = 0
+    let revenue = 0
+
+    let i = 0
+    while i < drivers.len() {
+        if drivers[i]["online"] {
+            set drivers_online = drivers_online + 1
+        }
+        set i = i + 1
+    }
+
+    let j = 0
+    while j < rides.len() {
+        let r = rides[j]
+        if r["status"] == "completed" {
+            set rides_completed = rides_completed + 1
+            set revenue = revenue + r["fare"]
+        }
+        set j = j + 1
+    }
+
+    return {
+        "drivers_online": drivers_online,
+        "rides_completed": rides_completed,
+        "revenue": revenue,
+        "events_total": events.len()
+    }
+}

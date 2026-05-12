@@ -1,0 +1,58 @@
+# Spawn/Join Example
+
+## Função para calcular fatorial
+fn fatorial(n) {
+    if n <= 1 {
+        return 1
+    }
+    return n * fatorial(n - 1)
+}
+
+## Função para calcular fibonacci
+fn fib(n) {
+    if n <= 1 {
+        return n
+    }
+    return fib(n - 1) + fib(n - 2)
+}
+
+print "Spawning tasks..."
+
+## Spawn múltiplas tasks
+let task1 = spawn fn() {
+    print "Task 1: Calculating factorial(10)"
+    let result = fatorial(10)
+    print "Task 1: Result = " + string.concat("", result)
+    return result
+}
+
+let task2 = spawn fn() {
+    print "Task 2: Calculating fib(20)"
+    let result = fib(20)
+    print "Task 2: Result = " + string.concat("", result)
+    return result
+}
+
+let task3 = spawn fn() {
+    print "Task 3: Calculating sum(1..100)"
+    let sum = 0
+    let i = 1
+    while i <= 100 {
+        set sum = sum + i
+        set i = i + 1
+    }
+    print "Task 3: Result = " + string.concat("", sum)
+    return sum
+}
+
+print "Waiting for tasks to complete..."
+
+## Esperar resultados
+let result1 = join(task1)
+let result2 = join(task2)
+let result3 = join(task3)
+
+print "\nAll tasks completed!"
+print "Factorial(10) = " + string.concat("", result1)
+print "Fib(20) = " + string.concat("", result2)
+print "Sum(1..100) = " + string.concat("", result3)

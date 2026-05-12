@@ -1,0 +1,121 @@
+# Sprint 26 - Phase 2: Functions Test
+# Tests function definitions, calls, parameters, and recursion
+
+# Test 1: Simple function with parameters
+fn add(a, b) {
+    return a + b
+}
+
+print add(10, 20)  # Expected: 30
+
+# Test 2: Function with multiple operations
+fn calculate(x, y) {
+    let sum = x + y
+    let product = x * y
+    return sum + product
+}
+
+print calculate(3, 4)  # Expected: 19 (7 + 12)
+
+# Test 3: Recursive factorial
+fn factorial(n) {
+    if n <= 1 {
+        return 1
+    }
+    return n * factorial(n - 1)
+}
+
+print factorial(5)  # Expected: 120
+
+# Test 4: Recursive fibonacci
+fn fib(n) {
+    if n <= 1 {
+        return n
+    }
+    return fib(n - 1) + fib(n - 2)
+}
+
+print fib(7)  # Expected: 13
+
+# Test 5: Nested function calls
+fn double(x) {
+    return x * 2
+}
+
+fn quadruple(x) {
+    return double(double(x))
+}
+
+print quadruple(5)  # Expected: 20
+
+# Test 6: Function with conditionals
+fn max(a, b) {
+    if a > b {
+        return a
+    } else {
+        return b
+    }
+}
+
+print max(15, 10)  # Expected: 15
+print max(5, 20)   # Expected: 20
+
+# Test 7: Function with loops
+fn sum_to_n(n) {
+    let total = 0
+    let i = 1
+    while i <= n {
+        set total = total + i
+        set i = i + 1
+    }
+    return total
+}
+
+print sum_to_n(10)  # Expected: 55
+
+# Test 8: Multiple parameters
+fn complex(a, b, c) {
+    return (a + b) * c
+}
+
+print complex(2, 3, 4)  # Expected: 20
+
+# Test 9: Function returning boolean
+fn is_even(n) {
+    return (n % 2) == 0
+}
+
+if is_even(4) {
+    print 1  # Expected: 1
+}
+
+if is_even(5) {
+    print 0
+} else {
+    print 1  # Expected: 1
+}
+
+# Test 10: Mutual recursion (advanced)
+fn is_even_mut(n) {
+    if n == 0 {
+        return true
+    }
+    return is_odd_mut(n - 1)
+}
+
+fn is_odd_mut(n) {
+    if n == 0 {
+        return false
+    }
+    return is_even_mut(n - 1)
+}
+
+if is_even_mut(6) {
+    print 1  # Expected: 1
+}
+
+if is_odd_mut(7) {
+    print 1  # Expected: 1
+}
+
+print "All function tests completed!"

@@ -1,0 +1,236 @@
+# 🧮 CALCULADORA DE PONTOS - JOGO MATEMÁTICO 🧮
+
+print "╔════════════════════════════════════════╗"
+print "║    🧮 CALCULADORA DE PONTOS 🧮         ║"
+print "║      Teste suas habilidades!           ║"
+print "╚════════════════════════════════════════╝"
+print ""
+
+# Função para calcular pontos
+fn calcular_pontos(acertos, erros, bonus) {
+    let pontos_base = acertos * 10
+    let penalidade = erros * 5
+    let total = pontos_base - penalidade
+    set total = total + bonus
+    return total
+}
+
+# Função para classificar desempenho
+fn classificar(pontos) {
+    if pontos >= 100 {
+        print "🏆 CLASSIFICAÇÃO: MESTRE!"
+        return 3
+    }
+    if pontos >= 50 {
+        print "⭐ CLASSIFICAÇÃO: AVANÇADO!"
+        return 2
+    }
+    if pontos >= 20 {
+        print "📚 CLASSIFICAÇÃO: INTERMEDIÁRIO!"
+        return 1
+    }
+    print "🌱 CLASSIFICAÇÃO: INICIANTE!"
+    return 0
+}
+
+# Função para mostrar operação
+fn mostrar_operacao(num1, operador, num2, resultado) {
+    print "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    print "Operação: "
+    print num1
+    if operador == 1 {
+        print " + "
+    }
+    if operador == 2 {
+        print " - "
+    }
+    if operador == 3 {
+        print " * "
+    }
+    if operador == 4 {
+        print " / "
+    }
+    print num2
+    print " = "
+    print resultado
+    print ""
+    return 0
+}
+
+print "🎯 DESAFIO MATEMÁTICO!"
+print "Vamos calcular algumas operações..."
+print ""
+
+# Rodada 1: Adição
+print "═══════════════════════════════════════════"
+print "RODADA 1: ADIÇÃO"
+print "═══════════════════════════════════════════"
+let num1 = 15
+let num2 = 25
+let resultado = num1 + num2
+let op = mostrar_operacao(num1, 1, num2, resultado)
+print "✅ Correto! 15 + 25 = 40"
+let acertos = 1
+let erros = 0
+print ""
+
+# Rodada 2: Subtração
+print "═══════════════════════════════════════════"
+print "RODADA 2: SUBTRAÇÃO"
+print "═══════════════════════════════════════════"
+set num1 = 50
+set num2 = 18
+set resultado = num1 - num2
+set op = mostrar_operacao(num1, 2, num2, resultado)
+print "✅ Correto! 50 - 18 = 32"
+set acertos = acertos + 1
+print ""
+
+# Rodada 3: Multiplicação
+print "═══════════════════════════════════════════"
+print "RODADA 3: MULTIPLICAÇÃO"
+print "═══════════════════════════════════════════"
+set num1 = 7
+set num2 = 8
+set resultado = num1 * num2
+set op = mostrar_operacao(num1, 3, num2, resultado)
+print "✅ Correto! 7 * 8 = 56"
+set acertos = acertos + 1
+print ""
+
+# Rodada 4: Divisão
+print "═══════════════════════════════════════════"
+print "RODADA 4: DIVISÃO"
+print "═══════════════════════════════════════════"
+set num1 = 100
+set num2 = 5
+set resultado = num1 / num2
+set op = mostrar_operacao(num1, 4, num2, resultado)
+print "✅ Correto! 100 / 5 = 20"
+set acertos = acertos + 1
+print ""
+
+# Rodada 5: Operação Complexa
+print "═══════════════════════════════════════════"
+print "RODADA 5: OPERAÇÃO COMPLEXA"
+print "═══════════════════════════════════════════"
+print "Calcule: (10 + 5) * 2 - 8"
+let a = 10 + 5
+let b = a * 2
+let c = b - 8
+print "Passo 1: 10 + 5 = "
+print a
+print "Passo 2: 15 * 2 = "
+print b
+print "Passo 3: 30 - 8 = "
+print c
+print "✅ Correto! Resultado final = 22"
+set acertos = acertos + 1
+print ""
+
+# Rodada 6: Sequência
+print "═══════════════════════════════════════════"
+print "RODADA 6: SEQUÊNCIA NUMÉRICA"
+print "═══════════════════════════════════════════"
+print "Calcule a soma: 1 + 2 + 3 + 4 + 5"
+let soma = 1
+set soma = soma + 2
+set soma = soma + 3
+set soma = soma + 4
+set soma = soma + 5
+print "Resultado: "
+print soma
+print "✅ Correto! 1 + 2 + 3 + 4 + 5 = 15"
+set acertos = acertos + 1
+print ""
+
+# Rodada 7: Fatorial Simples
+print "═══════════════════════════════════════════"
+print "RODADA 7: MULTIPLICAÇÃO EM SEQUÊNCIA"
+print "═══════════════════════════════════════════"
+print "Calcule: 5 * 4 * 3 * 2 * 1 (Fatorial de 5)"
+let fatorial = 5
+set fatorial = fatorial * 4
+set fatorial = fatorial * 3
+set fatorial = fatorial * 2
+set fatorial = fatorial * 1
+print "Resultado: "
+print fatorial
+print "✅ Correto! 5! = 120"
+set acertos = acertos + 1
+print ""
+
+# Rodada 8: Potência
+print "═══════════════════════════════════════════"
+print "RODADA 8: POTÊNCIA (2^5)"
+print "═══════════════════════════════════════════"
+print "Calcule: 2 * 2 * 2 * 2 * 2"
+let potencia = 2
+set potencia = potencia * 2
+set potencia = potencia * 2
+set potencia = potencia * 2
+set potencia = potencia * 2
+print "Resultado: "
+print potencia
+print "✅ Correto! 2^5 = 32"
+set acertos = acertos + 1
+print ""
+
+# Calcular pontuação final
+print "╔════════════════════════════════════════╗"
+print "║       📊 RESULTADO FINAL 📊            ║"
+print "╚════════════════════════════════════════╝"
+print ""
+
+let bonus = 20
+let pontos_finais = calcular_pontos(acertos, erros, bonus)
+
+print "✅ Acertos: "
+print acertos
+print "❌ Erros: "
+print erros
+print "🎁 Bônus: "
+print bonus
+print ""
+print "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+print "🏆 PONTUAÇÃO TOTAL: "
+print pontos_finais
+print "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+print ""
+
+# Classificar desempenho
+let nivel = classificar(pontos_finais)
+
+print ""
+print "═══════════════════════════════════════════"
+print "📈 ANÁLISE DE DESEMPENHO"
+print "═══════════════════════════════════════════"
+
+if nivel == 3 {
+    print "🌟 Você domina matemática!"
+    print "🎯 Precisão: 100%"
+    print "💪 Continue assim!"
+}
+
+if nivel == 2 {
+    print "👍 Muito bom desempenho!"
+    print "📚 Continue praticando!"
+}
+
+if nivel == 1 {
+    print "📖 Bom começo!"
+    print "💡 Pratique mais operações!"
+}
+
+if nivel == 0 {
+    print "🌱 Continue estudando!"
+    print "📚 A prática leva à perfeição!"
+}
+
+print ""
+print "╔════════════════════════════════════════╗"
+print "║    Obrigado por jogar! 🧮✨            ║"
+print "╚════════════════════════════════════════╝"
+print ""
+print "💡 DICA: Pratique mais para melhorar!"
+print ""

@@ -1,0 +1,16 @@
+# Exemplo de eventos visuais
+# Demonstra integração de eventos Matter com comandos visuais
+
+on boot {
+    visual.run("pizzaria")
+    visual.surface("main", 1080, 1920)
+    visual.region("button", 100, 100, 200, 50)
+}
+
+on tap {
+    visual.pulse("button")
+}
+
+on shutdown {
+    print "Encerrando aplicação visual"
+}

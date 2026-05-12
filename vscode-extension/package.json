@@ -1,0 +1,191 @@
+{
+  "name": "matter",
+  "displayName": "Matter Language",
+  "description": "Language support for Matter Core - A runtime-oriented language system",
+  "version": "0.7.0",
+  "publisher": "matter-core",
+  "icon": "icons/matter-logo.png",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Formatters",
+    "Debuggers"
+  ],
+  "keywords": [
+    "matter",
+    "matter-core",
+    "runtime",
+    "events",
+    "backends"
+  ],
+  "activationEvents": [
+    "onLanguage:matter"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "matter",
+        "aliases": [
+          "Matter",
+          "matter"
+        ],
+        "extensions": [
+          ".matter"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/matter-file.svg",
+          "dark": "./icons/matter-file.svg"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "matter",
+        "scopeName": "source.matter",
+        "path": "./syntaxes/matter.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "matter",
+        "path": "./snippets/matter.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "matter.runFile",
+        "title": "Matter: Run File",
+        "icon": "$(play)"
+      },
+      {
+        "command": "matter.compileFile",
+        "title": "Matter: Compile File",
+        "icon": "$(package)"
+      },
+      {
+        "command": "matter.runBytecode",
+        "title": "Matter: Run Bytecode",
+        "icon": "$(debug-start)"
+      },
+      {
+        "command": "matter.formatFile",
+        "title": "Matter: Format File",
+        "icon": "$(symbol-color)"
+      },
+      {
+        "command": "matter.lintFile",
+        "title": "Matter: Lint File",
+        "icon": "$(checklist)"
+      },
+      {
+        "command": "matter.debugFile",
+        "title": "Matter: Debug File",
+        "icon": "$(debug)"
+      },
+      {
+        "command": "matter.showBackends",
+        "title": "Matter: Show Available Backends"
+      },
+      {
+        "command": "matter.showExamples",
+        "title": "Matter: Show Examples"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "when": "resourceLangId == matter",
+          "command": "matter.runFile",
+          "group": "matter@1"
+        },
+        {
+          "when": "resourceLangId == matter",
+          "command": "matter.formatFile",
+          "group": "matter@2"
+        },
+        {
+          "when": "resourceLangId == matter",
+          "command": "matter.lintFile",
+          "group": "matter@3"
+        }
+      ],
+      "editor/title": [
+        {
+          "when": "resourceLangId == matter",
+          "command": "matter.runFile",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Matter",
+      "properties": {
+        "matter.lsp.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Matter Language Server Protocol"
+        },
+        "matter.lsp.path": {
+          "type": "string",
+          "default": "matter-cli",
+          "description": "Path to matter-cli executable"
+        },
+        "matter.formatter.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Matter code formatter"
+        },
+        "matter.linter.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Matter code linter"
+        },
+        "matter.debug.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Matter debugger"
+        },
+        "matter.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Traces the communication between VS Code and the language server"
+        }
+      }
+    },
+    "iconThemes": [
+      {
+        "id": "matter-icons",
+        "label": "Matter Icons",
+        "path": "./icons/matter-icon-theme.json"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "node -e \"console.log('Extension compiled')\"",
+    "watch": "node -e \"console.log('Watching...')\"",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^8.1.0"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.75.0",
+    "@vscode/vsce": "^2.19.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/matter-core/matter-core"
+  },
+  "license": "MIT"
+}
