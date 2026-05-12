@@ -68,6 +68,7 @@ jobs:
             .\matter-cli.exe run examples\language_tour.matter
             .\matter-cli.exe studio-native examples\matter_studio_ui.matter
             .\matter-cli.exe studio-native examples\matter_studio_ui.matter --interactive
+            .\matter-cli.exe studio-native-json examples\matter_studio_ui.matter
             cd apps\matter-studio
             npm start
             ```

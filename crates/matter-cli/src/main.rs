@@ -1146,6 +1146,16 @@ fn main() {
             studio_native(input, clear, interactive);
         }
 
+        "studio-native-json" => {
+            let input = args
+                .iter()
+                .skip(2)
+                .find(|arg| !arg.starts_with("--"))
+                .map(String::as_str)
+                .unwrap_or("examples/matter_studio_ui.matter");
+            studio_native_json(input);
+        }
+
         "check" => {
             if args.len() < 3 {
                 eprintln!("Usage: matter-cli check <file.matter|->");
@@ -1565,6 +1575,7 @@ fn print_usage() {
     println!(
         "  matter-cli studio-native [file.matter] [--interactive] [--no-clear] Render native Rust terminal studio"
     );
+    println!("  matter-cli studio-native-json [file.matter] Render native studio model as JSON");
     println!("  matter-cli check <file.matter|->            Parse and compile without running");
     println!("  matter-cli tokens-json <file.matter|->      Tokenize source and print JSON");
     println!("  matter-cli imports-json <file.matter|->     Inspect local imports as JSON");
@@ -1666,6 +1677,7 @@ fn print_capabilities_json() {
             "\"tool-pipeline-demo-json\",",
             "\"visual-step-json\",",
             "\"visual-run-json\",",
+            "\"studio-native-json\",",
             "\"compile-json\",",
             "\"inspect-json\",",
             "\"run-bytecode-json\",",
@@ -8679,10 +8691,29 @@ fn studio_native(path: &str, clear: bool, interactive: bool) {
     }
 }
 
+fn studio_native_json(path: &str) {
+    let source = read_source_or_exit(path);
+    let input = source_label(path);
+    match build_native_studio_model(&source, input) {
+        Ok(model) => println!("{}", native_studio_model_json(&model)),
+        Err(error) => {
+            println!(
+                "{}",
+                json!({
+                    "ok": false,
+                    "input": input,
+                    "error": { "message": error }
+                })
+            );
+            process::exit(1);
+        }
+    }
+}
+
 fn run_native_studio_loop(source: &str, input: &str, clear: bool, model: &mut NativeStudioModel) {
     loop {
         print!("{}", render_native_studio(model, clear));
-        print!("\nCommand [r=run, c=check, v=visual, g=guard, q=quit]> ");
+        print!("\nCommand [r=run, c=check, v=visual, g=guard, tap <region>, q=quit]> ");
         if let Err(error) = io::stdout().flush() {
             eprintln!("studio-native stdout error: {}", error);
             process::exit(1);
@@ -8698,7 +8729,16 @@ fn run_native_studio_loop(source: &str, input: &str, clear: bool, model: &mut Na
             }
         }
 
-        match command.trim().to_ascii_lowercase().as_str() {
+        let trimmed = command.trim();
+        if let Some(target) = trimmed
+            .strip_prefix("tap ")
+            .or_else(|| trimmed.strip_prefix("click "))
+        {
+            model.status = native_studio_tap_status(source, model, target);
+            continue;
+        }
+
+        match trimmed.to_ascii_lowercase().as_str() {
             "q" | "quit" | "exit" => break,
             "r" | "run" => {
                 model.status = native_studio_run_status(source);
@@ -8709,6 +8749,9 @@ fn run_native_studio_loop(source: &str, input: &str, clear: bool, model: &mut Na
             "g" | "guard" => {
                 model.status = native_studio_guard_status(source);
             }
+            "reflect" | "inspect" => {
+                model.status = native_studio_reflect_status(source);
+            }
             "v" | "visual" | "" => match build_native_studio_model(source, input) {
                 Ok(next) => *model = next,
                 Err(error) => model.status = vec![format!("visual refresh failed: {}", error)],
@@ -8718,6 +8761,43 @@ fn run_native_studio_loop(source: &str, input: &str, clear: bool, model: &mut Na
             }
         }
     }
+}
+
+fn native_studio_model_json(model: &NativeStudioModel) -> String {
+    let regions: Vec<JsonValue> = model
+        .regions
+        .iter()
+        .map(|region| {
+            json!({
+                "name": region.name,
+                "x": region.x,
+                "y": region.y,
+                "w": region.w,
+                "h": region.h,
+                "text": region.text,
+                "semantic": region.semantic,
+                "event": region.event,
+                "state": region.state
+            })
+        })
+        .collect();
+    json!({
+        "ok": true,
+        "input": model.input,
+        "surface": {
+            "name": model.surface_name,
+            "width": model.surface_width,
+            "height": model.surface_height
+        },
+        "regions": regions,
+        "output": model.output,
+        "status": model.status,
+        "energy": {
+            "instruction_cost": model.instruction_cost,
+            "backend_cost": model.backend_cost
+        }
+    })
+    .to_string()
 }
 
 fn build_native_studio_model(source: &str, input: &str) -> Result<NativeStudioModel, String> {
@@ -8866,6 +8946,90 @@ fn native_studio_guard_status(source: &str) -> Vec<String> {
         }
         Err(error) => vec![format!("guard failed: {}", error)],
     }
+}
+
+fn native_studio_reflect_status(source: &str) -> Vec<String> {
+    match parse_and_build_native_source(source) {
+        Ok((program, bytecode)) => {
+            let ast: JsonValue =
+                serde_json::from_str(&ast_reflection_json(&program)).unwrap_or_else(|_| json!({}));
+            let bytecode_json: JsonValue =
+                serde_json::from_str(&bytecode_reflection_json(&bytecode))
+                    .unwrap_or_else(|_| json!({}));
+            vec![
+                "reflect ok".to_string(),
+                format!(
+                    "total_statements={}",
+                    ast["total_statements"].as_u64().unwrap_or(0)
+                ),
+                format!(
+                    "top_level_statements={}",
+                    ast["top_level_statements"].as_u64().unwrap_or(0)
+                ),
+                format!(
+                    "bytecode_functions={}",
+                    bytecode_json["summary"]["functions"].as_u64().unwrap_or(0)
+                ),
+                format!(
+                    "bytecode_instructions={}",
+                    bytecode_json["summary"]["instructions"]
+                        .as_u64()
+                        .unwrap_or(0)
+                ),
+            ]
+        }
+        Err(error) => vec![format!("reflect failed: {}", error)],
+    }
+}
+
+fn native_studio_tap_status(source: &str, model: &NativeStudioModel, target: &str) -> Vec<String> {
+    let Some(region) = find_native_studio_region(model, target) else {
+        return vec![format!("tap target not found: {}", target)];
+    };
+    let action = first_non_empty(&[&region.event, &region.semantic, &region.name]);
+    let mut lines = vec![format!(
+        "tap {} -> {}",
+        if region.text.is_empty() {
+            &region.name
+        } else {
+            &region.text
+        },
+        action
+    )];
+    let mut result = match action.as_str() {
+        "run_source" | "primary_action" => native_studio_run_status(source),
+        "reflect_source" => native_studio_reflect_status(source),
+        "guard_source" => native_studio_guard_status(source),
+        "check_source" => native_studio_check_status(source),
+        _ => vec![format!("no native action bound for {}", action)],
+    };
+    lines.append(&mut result);
+    lines
+}
+
+fn find_native_studio_region<'a>(
+    model: &'a NativeStudioModel,
+    target: &str,
+) -> Option<&'a NativeStudioRegion> {
+    let normalized = normalize_native_studio_key(target);
+    model.regions.iter().find(|region| {
+        [
+            region.name.as_str(),
+            region.text.as_str(),
+            region.event.as_str(),
+            region.semantic.as_str(),
+        ]
+        .iter()
+        .any(|candidate| normalize_native_studio_key(candidate) == normalized)
+    })
+}
+
+fn normalize_native_studio_key(value: &str) -> String {
+    value
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .flat_map(|ch| ch.to_lowercase())
+        .collect()
 }
 
 fn parse_native_studio_region(value: &JsonValue) -> NativeStudioRegion {
@@ -13612,6 +13776,59 @@ print 2
         assert!(frame.contains("Run"));
         assert!(frame.contains("primary_action"));
         assert!(frame.contains("declared"));
+    }
+
+    #[test]
+    fn native_studio_tap_dispatches_region_action() {
+        let source = r#"
+visual.surface("matter_studio", 1280, 720)
+visual.region("button_run", 940, 520, 76, 34)
+visual.set("button_run", "text", "Run")
+visual.set("button_run", "semantic", "primary_action")
+visual.set("button_run", "event", "run_source")
+print "declared"
+"#;
+        let model = build_native_studio_model(source, "tap-test.matter").unwrap();
+
+        let status = native_studio_tap_status(source, &model, "Run");
+
+        assert!(status
+            .iter()
+            .any(|line| line.contains("tap Run -> run_source")));
+        assert!(status.iter().any(|line| line.contains("run ok")));
+        assert!(status.iter().any(|line| line.contains("out: declared")));
+    }
+
+    #[test]
+    fn native_studio_model_json_contains_regions_contract() {
+        let model = NativeStudioModel {
+            input: "demo.matter".to_string(),
+            output: vec![],
+            status: vec!["visual model ready".to_string()],
+            surface_name: "matter_studio".to_string(),
+            surface_width: 1280,
+            surface_height: 720,
+            regions: vec![NativeStudioRegion {
+                name: "button_guard".to_string(),
+                x: 1,
+                y: 2,
+                w: 3,
+                h: 4,
+                text: "Guard".to_string(),
+                semantic: "".to_string(),
+                event: "guard_source".to_string(),
+                state: "".to_string(),
+            }],
+            instruction_cost: 1.0,
+            backend_cost: 2.0,
+        };
+
+        let payload: JsonValue = serde_json::from_str(&native_studio_model_json(&model)).unwrap();
+
+        assert_eq!(payload["ok"], true);
+        assert_eq!(payload["surface"]["name"], "matter_studio");
+        assert_eq!(payload["regions"][0]["text"], "Guard");
+        assert_eq!(payload["regions"][0]["event"], "guard_source");
     }
 
     #[test]

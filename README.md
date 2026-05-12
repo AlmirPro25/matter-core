@@ -37,6 +37,7 @@ Launch the native Rust terminal studio:
 ```powershell
 .\matter-cli.exe studio-native examples\matter_studio_ui.matter
 .\matter-cli.exe studio-native examples\matter_studio_ui.matter --interactive
+.\matter-cli.exe studio-native-json examples\matter_studio_ui.matter
 ```
 
 ## Build From Source
@@ -150,6 +151,7 @@ The native path is `studio-native`: a Rust CLI shell that renders a Matter `visu
 ```
 
 Use `--interactive` to keep the native shell open with commands for run, check, visual refresh, and guard.
+Inside the interactive shell, `tap Run`, `tap Reflect`, and `tap Guard` dispatch actions from Matter-declared visual regions.
 
 ## Who This Is For
 
