@@ -1142,7 +1142,8 @@ fn main() {
                 .map(String::as_str)
                 .unwrap_or("examples/matter_studio_ui.matter");
             let clear = !args.iter().skip(2).any(|arg| arg == "--no-clear");
-            studio_native(input, clear);
+            let interactive = args.iter().skip(2).any(|arg| arg == "--interactive");
+            studio_native(input, clear, interactive);
         }
 
         "check" => {
@@ -1562,7 +1563,7 @@ fn print_usage() {
     println!("  matter-cli visual-step-json <file.matter|-> <events.json> <delta_ms> [--with-energy] Run one visual frame + bridge events to VM");
     println!("  matter-cli visual-run-json <file.matter|-> <events.json> <frames> <delta_ms> [--with-energy] Run multi-frame visual loop + bridge events");
     println!(
-        "  matter-cli studio-native [file.matter] [--no-clear] Render native Rust terminal studio"
+        "  matter-cli studio-native [file.matter] [--interactive] [--no-clear] Render native Rust terminal studio"
     );
     println!("  matter-cli check <file.matter|->            Parse and compile without running");
     println!("  matter-cli tokens-json <file.matter|->      Tokenize source and print JSON");
@@ -8641,6 +8642,7 @@ fn visual_run_json(
 struct NativeStudioModel {
     input: String,
     output: Vec<String>,
+    status: Vec<String>,
     surface_name: String,
     surface_width: i64,
     surface_height: i64,
@@ -8662,29 +8664,78 @@ struct NativeStudioRegion {
     state: String,
 }
 
-fn studio_native(path: &str, clear: bool) {
+fn studio_native(path: &str, clear: bool, interactive: bool) {
     let source = read_source_or_exit(path);
     let input = source_label(path);
-    let model = build_native_studio_model(&source, input).unwrap_or_else(|error| {
+    let mut model = build_native_studio_model(&source, input).unwrap_or_else(|error| {
         eprintln!("studio-native error: {}", error);
         process::exit(1);
     });
-    let frame = render_native_studio(&model, clear);
-    print!("{}", frame);
+    if interactive {
+        run_native_studio_loop(&source, input, clear, &mut model);
+    } else {
+        let frame = render_native_studio(&model, clear);
+        print!("{}", frame);
+    }
+}
+
+fn run_native_studio_loop(source: &str, input: &str, clear: bool, model: &mut NativeStudioModel) {
+    loop {
+        print!("{}", render_native_studio(model, clear));
+        print!("\nCommand [r=run, c=check, v=visual, g=guard, q=quit]> ");
+        if let Err(error) = io::stdout().flush() {
+            eprintln!("studio-native stdout error: {}", error);
+            process::exit(1);
+        }
+
+        let mut command = String::new();
+        match io::stdin().read_line(&mut command) {
+            Ok(0) => break,
+            Ok(_) => {}
+            Err(error) => {
+                eprintln!("studio-native input error: {}", error);
+                process::exit(1);
+            }
+        }
+
+        match command.trim().to_ascii_lowercase().as_str() {
+            "q" | "quit" | "exit" => break,
+            "r" | "run" => {
+                model.status = native_studio_run_status(source);
+            }
+            "c" | "check" => {
+                model.status = native_studio_check_status(source);
+            }
+            "g" | "guard" => {
+                model.status = native_studio_guard_status(source);
+            }
+            "v" | "visual" | "" => match build_native_studio_model(source, input) {
+                Ok(next) => *model = next,
+                Err(error) => model.status = vec![format!("visual refresh failed: {}", error)],
+            },
+            other => {
+                model.status = vec![format!("unknown command: {}", other)];
+            }
+        }
+    }
 }
 
 fn build_native_studio_model(source: &str, input: &str) -> Result<NativeStudioModel, String> {
-    let mut parser = Parser::from_source(source);
-    let program = parser.parse().map_err(|error| format!("{:?}", error))?;
-    let bytecode = BytecodeBuilder::new()
-        .build_checked(&program)
-        .map_err(|error| error.to_string())?;
+    let (_program, bytecode) = parse_and_build_native_source(source)?;
 
     let mut runtime = Runtime::new_silent(bytecode);
     runtime.set_stdout_enabled(false);
     runtime.run().map_err(|error| error.to_string())?;
 
-    let events_path = std::env::temp_dir().join("matter_studio_native_events.json");
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    let events_path = std::env::temp_dir().join(format!(
+        "matter_studio_native_events_{}_{}.json",
+        process::id(),
+        nonce
+    ));
     fs::write(
         &events_path,
         "{\"format\":\"PXL_EVENT_QUEUE\",\"version\":1,\"events\":[]}",
@@ -8729,6 +8780,7 @@ fn build_native_studio_model(source: &str, input: &str) -> Result<NativeStudioMo
     Ok(NativeStudioModel {
         input: input.to_string(),
         output: runtime.take_output(),
+        status: vec!["visual model ready".to_string()],
         surface_name,
         surface_width,
         surface_height,
@@ -8736,6 +8788,84 @@ fn build_native_studio_model(source: &str, input: &str) -> Result<NativeStudioMo
         instruction_cost: runtime.vm().estimated_instruction_cost(),
         backend_cost: runtime.vm().estimated_backend_cost(),
     })
+}
+
+fn parse_and_build_native_source(source: &str) -> Result<(Program, Bytecode), String> {
+    let mut parser = Parser::from_source(source);
+    let program = parser.parse().map_err(|error| format!("{:?}", error))?;
+    let bytecode = BytecodeBuilder::new()
+        .build_checked(&program)
+        .map_err(|error| error.to_string())?;
+    Ok((program, bytecode))
+}
+
+fn native_studio_run_status(source: &str) -> Vec<String> {
+    match parse_and_build_native_source(source) {
+        Ok((_program, bytecode)) => {
+            let mut runtime = Runtime::new_silent(bytecode);
+            runtime.set_stdout_enabled(false);
+            match runtime.run() {
+                Ok(()) => {
+                    let mut lines = vec![format!(
+                        "run ok | instr={:.2} backend={:.2}",
+                        runtime.vm().estimated_instruction_cost(),
+                        runtime.vm().estimated_backend_cost()
+                    )];
+                    lines.extend(
+                        runtime
+                            .take_output()
+                            .into_iter()
+                            .map(|line| format!("out: {}", line)),
+                    );
+                    lines
+                }
+                Err(error) => vec![format!("run failed: {}", error)],
+            }
+        }
+        Err(error) => vec![format!("run blocked: {}", error)],
+    }
+}
+
+fn native_studio_check_status(source: &str) -> Vec<String> {
+    match parse_and_build_native_source(source) {
+        Ok((program, bytecode)) => vec![
+            "check ok".to_string(),
+            format!("top_level_statements={}", program.statements.len()),
+            format!("constants={}", bytecode.constants.len()),
+            format!("functions={}", bytecode.functions.len()),
+            format!("event_handlers={}", bytecode.event_handlers.len()),
+            format!("main_instructions={}", bytecode.main_instructions.len()),
+        ],
+        Err(error) => vec![format!("check failed: {}", error)],
+    }
+}
+
+fn native_studio_guard_status(source: &str) -> Vec<String> {
+    match parse_and_build_native_source(source) {
+        Ok((program, bytecode)) => {
+            let report =
+                reflexive_guard_report(&program, &bytecode, &ReflexiveGuardOptions::default());
+            vec![
+                format!(
+                    "guard status={}",
+                    report["status"].as_str().unwrap_or("unknown")
+                ),
+                format!(
+                    "statements={}",
+                    report["metrics"]["total_statements"].as_u64().unwrap_or(0)
+                ),
+                format!(
+                    "functions={}",
+                    report["metrics"]["functions"].as_u64().unwrap_or(0)
+                ),
+                format!(
+                    "backend_calls={}",
+                    report["metrics"]["backend_calls"].as_u64().unwrap_or(0)
+                ),
+            ]
+        }
+        Err(error) => vec![format!("guard failed: {}", error)],
+    }
 }
 
 fn parse_native_studio_region(value: &JsonValue) -> NativeStudioRegion {
@@ -8798,6 +8928,14 @@ fn render_native_studio(model: &NativeStudioModel, clear: bool) -> String {
     out.push_str("| [G] Guard reflexive  |");
     out.push_str(&format!("{:<37}|\n", " ready for native event loop"));
     out.push_str("+----------------------+-------------------------------------+\n\n");
+    out.push_str("Status\n");
+    out.push_str("------\n");
+    for line in &model.status {
+        out.push_str("- ");
+        out.push_str(line);
+        out.push('\n');
+    }
+    out.push('\n');
     out.push_str(&render_native_region_map(model, 68, 18));
     out.push_str("\nRegions\n");
     out.push_str("-------\n");
@@ -13448,6 +13586,7 @@ print 2
         let model = NativeStudioModel {
             input: "demo.matter".to_string(),
             output: vec!["declared".to_string()],
+            status: vec!["visual model ready".to_string()],
             surface_name: "matter_studio".to_string(),
             surface_width: 1280,
             surface_height: 720,

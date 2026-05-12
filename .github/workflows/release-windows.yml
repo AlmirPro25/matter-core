@@ -67,6 +67,7 @@ jobs:
             .\matter-cli.exe reflexive-guard-json examples\first_run.matter
             .\matter-cli.exe run examples\language_tour.matter
             .\matter-cli.exe studio-native examples\matter_studio_ui.matter
+            .\matter-cli.exe studio-native examples\matter_studio_ui.matter --interactive
             cd apps\matter-studio
             npm start
             ```
