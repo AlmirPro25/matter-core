@@ -1971,6 +1971,7 @@ dependencies = [
  "matter-native",
  "matter-parser",
  "matter-runtime",
+ "matter-sentinel-abi",
  "matter-vm",
  "serde_json",
  "tokio",
@@ -2370,6 +2371,10 @@ dependencies = [
  "tempfile",
  "thiserror",
 ]
+
+[[package]]
+name = "matter-sentinel-abi"
+version = "0.1.0"
 
 [[package]]
 name = "matter-smart-inference"

@@ -1,0 +1,6 @@
+[package]
+name = "matter-sentinel-abi"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
