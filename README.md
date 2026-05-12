@@ -32,6 +32,12 @@ To learn the syntax, run the executable tour:
 .\matter-cli.exe run examples\language_tour.matter
 ```
 
+Launch the native Rust terminal studio:
+
+```powershell
+.\matter-cli.exe studio-native examples\matter_studio_ui.matter
+```
+
 ## Build From Source
 
 If you are developing Matter itself:
@@ -62,6 +68,7 @@ cargo build -p matter-cli --release
 - benchmark programs and gate performance budgets
 - run a local visual AI workbench through Matter Studio
 - declare UI layouts in Matter with `visual.*` and preview them in Matter Studio
+- render a native Rust terminal studio with `studio-native`
 
 ## Example
 
@@ -132,6 +139,14 @@ http://127.0.0.1:4177
 ```
 
 API keys stay in `apps/matter-studio/.env`; they are not sent to the browser as raw keys.
+
+## Native Studio
+
+The native path is `studio-native`: a Rust CLI shell that renders a Matter `visual.*` program directly in the terminal. This is the foundation for a non-web Matter interface.
+
+```powershell
+.\matter-cli.exe studio-native examples\matter_studio_ui.matter
+```
 
 ## Who This Is For
 

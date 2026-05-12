@@ -1134,6 +1134,17 @@ fn main() {
             visual_run_json(&args[2], &args[3], &args[4], &args[5], with_energy);
         }
 
+        "studio-native" => {
+            let input = args
+                .iter()
+                .skip(2)
+                .find(|arg| !arg.starts_with("--"))
+                .map(String::as_str)
+                .unwrap_or("examples/matter_studio_ui.matter");
+            let clear = !args.iter().skip(2).any(|arg| arg == "--no-clear");
+            studio_native(input, clear);
+        }
+
         "check" => {
             if args.len() < 3 {
                 eprintln!("Usage: matter-cli check <file.matter|->");
@@ -1550,6 +1561,9 @@ fn print_usage() {
     println!("  matter-cli init-json [dir] [--name name] [--template basic|event] Create a new Matter project as JSON");
     println!("  matter-cli visual-step-json <file.matter|-> <events.json> <delta_ms> [--with-energy] Run one visual frame + bridge events to VM");
     println!("  matter-cli visual-run-json <file.matter|-> <events.json> <frames> <delta_ms> [--with-energy] Run multi-frame visual loop + bridge events");
+    println!(
+        "  matter-cli studio-native [file.matter] [--no-clear] Render native Rust terminal studio"
+    );
     println!("  matter-cli check <file.matter|->            Parse and compile without running");
     println!("  matter-cli tokens-json <file.matter|->      Tokenize source and print JSON");
     println!("  matter-cli imports-json <file.matter|->     Inspect local imports as JSON");
@@ -1662,6 +1676,7 @@ fn print_capabilities_json() {
             "\"eval\",",
             "\"emit\",",
             "\"check\",",
+            "\"studio-native\",",
             "\"init\",",
             "\"compile\"",
             "],",
@@ -8622,6 +8637,264 @@ fn visual_run_json(
     );
 }
 
+#[derive(Debug, Clone)]
+struct NativeStudioModel {
+    input: String,
+    output: Vec<String>,
+    surface_name: String,
+    surface_width: i64,
+    surface_height: i64,
+    regions: Vec<NativeStudioRegion>,
+    instruction_cost: f64,
+    backend_cost: f64,
+}
+
+#[derive(Debug, Clone)]
+struct NativeStudioRegion {
+    name: String,
+    x: i64,
+    y: i64,
+    w: i64,
+    h: i64,
+    text: String,
+    semantic: String,
+    event: String,
+    state: String,
+}
+
+fn studio_native(path: &str, clear: bool) {
+    let source = read_source_or_exit(path);
+    let input = source_label(path);
+    let model = build_native_studio_model(&source, input).unwrap_or_else(|error| {
+        eprintln!("studio-native error: {}", error);
+        process::exit(1);
+    });
+    let frame = render_native_studio(&model, clear);
+    print!("{}", frame);
+}
+
+fn build_native_studio_model(source: &str, input: &str) -> Result<NativeStudioModel, String> {
+    let mut parser = Parser::from_source(source);
+    let program = parser.parse().map_err(|error| format!("{:?}", error))?;
+    let bytecode = BytecodeBuilder::new()
+        .build_checked(&program)
+        .map_err(|error| error.to_string())?;
+
+    let mut runtime = Runtime::new_silent(bytecode);
+    runtime.set_stdout_enabled(false);
+    runtime.run().map_err(|error| error.to_string())?;
+
+    let events_path = std::env::temp_dir().join("matter_studio_native_events.json");
+    fs::write(
+        &events_path,
+        "{\"format\":\"PXL_EVENT_QUEUE\",\"version\":1,\"events\":[]}",
+    )
+    .map_err(|error| error.to_string())?;
+    let events_path = events_path
+        .to_str()
+        .ok_or_else(|| "temporary event path is not UTF-8".to_string())?;
+
+    let result = runtime
+        .visual_app_run(events_path, 1, 16)
+        .map_err(|error| error.to_string())?;
+    let result_json: JsonValue =
+        serde_json::from_str(&value_to_json(&result)).map_err(|error| error.to_string())?;
+    let snapshot_raw = result_json
+        .get("app")
+        .and_then(|app| app.get("snapshot"))
+        .and_then(JsonValue::as_str)
+        .ok_or_else(|| "visual backend did not return a PXL snapshot".to_string())?;
+    let snapshot: JsonValue =
+        serde_json::from_str(snapshot_raw).map_err(|error| error.to_string())?;
+
+    let surface = snapshot
+        .get("surfaces")
+        .and_then(JsonValue::as_array)
+        .and_then(|items| items.first())
+        .ok_or_else(|| "PXL snapshot has no surface".to_string())?;
+    let surface_name = json_field_string(surface, "name", "surface");
+    let surface_width = json_field_i64(surface, "width", 1);
+    let surface_height = json_field_i64(surface, "height", 1);
+    let regions = snapshot
+        .get("regions")
+        .and_then(JsonValue::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .map(parse_native_studio_region)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    Ok(NativeStudioModel {
+        input: input.to_string(),
+        output: runtime.take_output(),
+        surface_name,
+        surface_width,
+        surface_height,
+        regions,
+        instruction_cost: runtime.vm().estimated_instruction_cost(),
+        backend_cost: runtime.vm().estimated_backend_cost(),
+    })
+}
+
+fn parse_native_studio_region(value: &JsonValue) -> NativeStudioRegion {
+    let props = value.get("properties").unwrap_or(&JsonValue::Null);
+    NativeStudioRegion {
+        name: json_field_string(value, "name", "region"),
+        x: json_field_i64(value, "x", 0),
+        y: json_field_i64(value, "y", 0),
+        w: json_field_i64(value, "w", 1),
+        h: json_field_i64(value, "h", 1),
+        text: json_field_string(props, "text", ""),
+        semantic: json_field_string(props, "semantic", ""),
+        event: json_field_string(props, "event", ""),
+        state: json_field_string(props, "state", ""),
+    }
+}
+
+fn json_field_string(value: &JsonValue, key: &str, default: &str) -> String {
+    value
+        .get(key)
+        .and_then(JsonValue::as_str)
+        .unwrap_or(default)
+        .to_string()
+}
+
+fn json_field_i64(value: &JsonValue, key: &str, default: i64) -> i64 {
+    value
+        .get(key)
+        .and_then(JsonValue::as_i64)
+        .unwrap_or(default)
+}
+
+fn render_native_studio(model: &NativeStudioModel, clear: bool) -> String {
+    let mut out = String::new();
+    if clear {
+        out.push_str("\x1b[2J\x1b[H");
+    }
+    out.push_str("Matter Studio Native - Rust terminal shell\n");
+    out.push_str("============================================================\n");
+    out.push_str(&format!("Input: {}\n", model.input));
+    out.push_str(&format!(
+        "Surface: {} {}x{} | regions={} | energy instr={:.2} backend={:.2}\n",
+        model.surface_name,
+        model.surface_width,
+        model.surface_height,
+        model.regions.len(),
+        model.instruction_cost,
+        model.backend_cost
+    ));
+    out.push_str("Mode: native Rust CLI, no browser, no HTML, no Node runtime\n\n");
+    out.push_str("+----------------------+-------------------------------------+\n");
+    out.push_str("| Matter Controls      | Native Visual Surface               |\n");
+    out.push_str("+----------------------+-------------------------------------+\n");
+    out.push_str("| [R] Run VM           |");
+    out.push_str(&format!("{:<37}|\n", format!(" {}", model.surface_name)));
+    out.push_str("| [C] Check source     |");
+    out.push_str(&format!("{:<37}|\n", " PXL regions rendered below"));
+    out.push_str("| [V] Visual preview   |");
+    out.push_str(&format!("{:<37}|\n", " generated by visual.* calls"));
+    out.push_str("| [G] Guard reflexive  |");
+    out.push_str(&format!("{:<37}|\n", " ready for native event loop"));
+    out.push_str("+----------------------+-------------------------------------+\n\n");
+    out.push_str(&render_native_region_map(model, 68, 18));
+    out.push_str("\nRegions\n");
+    out.push_str("-------\n");
+    for region in &model.regions {
+        let label = if region.text.is_empty() {
+            &region.name
+        } else {
+            &region.text
+        };
+        let behavior = first_non_empty(&[&region.semantic, &region.event, &region.state]);
+        out.push_str(&format!(
+            "- {:<18} {:>4},{:<4} {:>4}x{:<4} {}\n",
+            truncate(label, 18),
+            region.x,
+            region.y,
+            region.w,
+            region.h,
+            behavior
+        ));
+    }
+    if !model.output.is_empty() {
+        out.push_str("\nVM Output\n");
+        out.push_str("---------\n");
+        for line in &model.output {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    out
+}
+
+fn render_native_region_map(model: &NativeStudioModel, width: usize, height: usize) -> String {
+    let mut grid = vec![vec![' '; width]; height];
+    let surface_width = model.surface_width.max(1) as f64;
+    let surface_height = model.surface_height.max(1) as f64;
+    for region in &model.regions {
+        let marker = region_marker(region);
+        let x0 = ((region.x.max(0) as f64 / surface_width) * width as f64).floor() as usize;
+        let y0 = ((region.y.max(0) as f64 / surface_height) * height as f64).floor() as usize;
+        let x1 =
+            (((region.x + region.w).max(1) as f64 / surface_width) * width as f64).ceil() as usize;
+        let y1 = (((region.y + region.h).max(1) as f64 / surface_height) * height as f64).ceil()
+            as usize;
+        for row in grid.iter_mut().take(y1.min(height)).skip(y0.min(height)) {
+            for cell in row.iter_mut().take(x1.min(width)).skip(x0.min(width)) {
+                *cell = marker;
+            }
+        }
+    }
+
+    let mut out = String::new();
+    out.push('+');
+    out.push_str(&"-".repeat(width));
+    out.push_str("+\n");
+    for row in grid {
+        out.push('|');
+        for cell in row {
+            out.push(cell);
+        }
+        out.push_str("|\n");
+    }
+    out.push('+');
+    out.push_str(&"-".repeat(width));
+    out.push_str("+\n");
+    out
+}
+
+fn region_marker(region: &NativeStudioRegion) -> char {
+    let label = if !region.text.is_empty() {
+        &region.text
+    } else {
+        &region.name
+    };
+    label
+        .chars()
+        .find(|ch| ch.is_ascii_alphanumeric())
+        .unwrap_or('#')
+}
+
+fn first_non_empty(values: &[&str]) -> String {
+    values
+        .iter()
+        .find(|value| !value.is_empty())
+        .copied()
+        .unwrap_or("")
+        .to_string()
+}
+
+fn truncate(value: &str, width: usize) -> String {
+    let mut text = value.chars().take(width).collect::<String>();
+    if value.chars().count() > width && width >= 1 {
+        text.pop();
+        text.push('~');
+    }
+    text
+}
+
 fn check_file(path: &str) {
     let source = read_source_or_exit(path);
 
@@ -13168,6 +13441,38 @@ print 2
         assert!(payload.contains("\"energy\":{"));
         assert!(payload.contains("\"instruction_cost\":9.00"));
         assert!(payload.contains("\"backend_cost\":15.00"));
+    }
+
+    #[test]
+    fn native_studio_renderer_contains_surface_regions_and_output() {
+        let model = NativeStudioModel {
+            input: "demo.matter".to_string(),
+            output: vec!["declared".to_string()],
+            surface_name: "matter_studio".to_string(),
+            surface_width: 1280,
+            surface_height: 720,
+            regions: vec![NativeStudioRegion {
+                name: "button_run".to_string(),
+                x: 940,
+                y: 520,
+                w: 76,
+                h: 34,
+                text: "Run".to_string(),
+                semantic: "primary_action".to_string(),
+                event: "run_source".to_string(),
+                state: "active".to_string(),
+            }],
+            instruction_cost: 1.0,
+            backend_cost: 2.0,
+        };
+
+        let frame = render_native_studio(&model, false);
+
+        assert!(frame.contains("Matter Studio Native"));
+        assert!(frame.contains("matter_studio 1280x720"));
+        assert!(frame.contains("Run"));
+        assert!(frame.contains("primary_action"));
+        assert!(frame.contains("declared"));
     }
 
     #[test]
