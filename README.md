@@ -60,6 +60,7 @@ cargo build -p matter-cli --release
 - inspect source structure with `reflect-json`
 - evaluate guarded reflexive workflows with `reflexive-guard-json`
 - benchmark programs and gate performance budgets
+- run a local visual AI workbench through Matter Studio
 
 ## Example
 
@@ -112,6 +113,24 @@ Machine-readable capabilities:
 ```powershell
 .\matter-cli.exe capabilities-json
 ```
+
+## Matter Studio
+
+Matter Studio is a local visual interface for the language. It provides a dark chat/workbench UI, calls Matter CLI locally, and can connect to OpenAI-compatible or Gemini APIs through server-side environment variables.
+
+```powershell
+cd apps\matter-studio
+copy .env.example .env
+npm start
+```
+
+Open:
+
+```text
+http://127.0.0.1:4177
+```
+
+API keys stay in `apps/matter-studio/.env`; they are not sent to the browser as raw keys.
 
 ## Who This Is For
 
