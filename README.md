@@ -38,6 +38,7 @@ Launch the native Rust terminal studio:
 .\matter-cli.exe studio-native examples\matter_studio_ui.matter
 .\matter-cli.exe studio-native examples\matter_studio_ui.matter --interactive
 .\matter-cli.exe studio-native-json examples\matter_studio_ui.matter
+.\matter-cli.exe sentinel-pvmbc examples\matter_studio_ui.matter -o target\matter-studio.pvmbc --name matter-studio
 ```
 
 ## Build From Source
@@ -71,6 +72,7 @@ cargo build -p matter-cli --release
 - run a local visual AI workbench through Matter Studio
 - declare UI layouts in Matter with `visual.*` and preview them in Matter Studio
 - render a native Rust terminal studio with `studio-native`
+- export Matter visual layouts to Sentinel OS PVM2 bytecode with `sentinel-pvmbc`
 
 ## Example
 
@@ -152,6 +154,16 @@ The native path is `studio-native`: a Rust CLI shell that renders a Matter `visu
 
 Use `--interactive` to keep the native shell open with commands for run, check, visual refresh, and guard.
 Inside the interactive shell, `tap Run`, `tap Reflect`, and `tap Guard` dispatch actions from Matter-declared visual regions.
+
+## Sentinel OS Bridge
+
+Matter can export a `visual.*` interface as Sentinel-compatible `PVM2` bytecode. This is the bridge between the language and the native operating system: Matter describes the surface, Sentinel loads the `.pvmbc`.
+
+```powershell
+.\matter-cli.exe sentinel-pvmbc examples\matter_studio_ui.matter -o target\matter-studio.pvmbc --name matter-studio
+```
+
+The generated file can be copied into a Sentinel disk image and loaded from the Sentinel PVM shell with its `installpvmbc` / `loadpvmbc` flow.
 
 ## Who This Is For
 

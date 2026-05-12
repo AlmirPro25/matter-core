@@ -1156,6 +1156,16 @@ fn main() {
             studio_native_json(input);
         }
 
+        "sentinel-pvmbc" => {
+            let input = first_positional_arg(&args[2..], &["-o", "--output", "--name"])
+                .unwrap_or("examples/matter_studio_ui.matter");
+            let output = option_value(&args[2..], "-o")
+                .or_else(|| option_value(&args[2..], "--output"))
+                .unwrap_or("target/matter-studio.pvmbc");
+            let name = option_value(&args[2..], "--name").unwrap_or("matter-studio");
+            sentinel_pvmbc(input, output, name);
+        }
+
         "check" => {
             if args.len() < 3 {
                 eprintln!("Usage: matter-cli check <file.matter|->");
@@ -1576,6 +1586,7 @@ fn print_usage() {
         "  matter-cli studio-native [file.matter] [--interactive] [--no-clear] Render native Rust terminal studio"
     );
     println!("  matter-cli studio-native-json [file.matter] Render native studio model as JSON");
+    println!("  matter-cli sentinel-pvmbc [file.matter] [-o out.pvmbc] [--name app] Export visual model to Sentinel PVM2 bytecode");
     println!("  matter-cli check <file.matter|->            Parse and compile without running");
     println!("  matter-cli tokens-json <file.matter|->      Tokenize source and print JSON");
     println!("  matter-cli imports-json <file.matter|->     Inspect local imports as JSON");
@@ -1678,6 +1689,7 @@ fn print_capabilities_json() {
             "\"visual-step-json\",",
             "\"visual-run-json\",",
             "\"studio-native-json\",",
+            "\"sentinel-pvmbc\",",
             "\"compile-json\",",
             "\"inspect-json\",",
             "\"run-bytecode-json\",",
@@ -1690,6 +1702,7 @@ fn print_capabilities_json() {
             "\"emit\",",
             "\"check\",",
             "\"studio-native\",",
+            "\"sentinel-pvmbc\",",
             "\"init\",",
             "\"compile\"",
             "],",
@@ -8710,6 +8723,230 @@ fn studio_native_json(path: &str) {
     }
 }
 
+fn sentinel_pvmbc(path: &str, output: &str, name: &str) {
+    let source = read_source_or_exit(path);
+    let input = source_label(path);
+    let model = build_native_studio_model(&source, input).unwrap_or_else(|error| {
+        eprintln!("sentinel-pvmbc error: {}", error);
+        process::exit(1);
+    });
+    let app_name = sanitize_sentinel_app_name(name);
+    let bytes = encode_sentinel_pvmbc(&model, &app_name);
+    let output_path = Path::new(output);
+    if let Some(parent) = output_path.parent() {
+        if !parent.as_os_str().is_empty() {
+            if let Err(error) = fs::create_dir_all(parent) {
+                eprintln!("sentinel-pvmbc mkdir error: {}", error);
+                process::exit(1);
+            }
+        }
+    }
+    if let Err(error) = fs::write(output_path, &bytes) {
+        eprintln!("sentinel-pvmbc write error: {}", error);
+        process::exit(1);
+    }
+    println!(
+        "{}",
+        json!({
+            "ok": true,
+            "input": model.input,
+            "output": output,
+            "format": "PVM2",
+            "name": app_name,
+            "bytes": bytes.len(),
+            "surface": {
+                "name": model.surface_name,
+                "width": model.surface_width,
+                "height": model.surface_height
+            },
+            "regions": model.regions.len()
+        })
+    );
+}
+
+fn option_value<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
+    args.windows(2)
+        .find(|window| window[0] == name)
+        .map(|window| window[1].as_str())
+}
+
+fn first_positional_arg<'a>(args: &'a [String], value_options: &[&str]) -> Option<&'a str> {
+    let mut skip_next = false;
+    for arg in args {
+        if skip_next {
+            skip_next = false;
+            continue;
+        }
+        if value_options.contains(&arg.as_str()) {
+            skip_next = true;
+            continue;
+        }
+        if !arg.starts_with('-') {
+            return Some(arg.as_str());
+        }
+    }
+    None
+}
+
+fn encode_sentinel_pvmbc(model: &NativeStudioModel, app_name: &str) -> Vec<u8> {
+    const PVM2_FORMAT_VERSION: u16 = 2;
+    const OP_CLEAR: u8 = 0;
+    const OP_FILL_RECT: u8 = 1;
+    const OP_PULSE: u8 = 2;
+    const OP_SET_BEHAVIOR: u8 = 3;
+    const OP_FRAME: u8 = 4;
+
+    let name = sanitize_sentinel_app_name(app_name);
+    let name_bytes = name.as_bytes();
+    let width = sentinel_dimension(model.surface_width);
+    let height = sentinel_dimension(model.surface_height);
+    let mut opcodes = Vec::new();
+
+    opcodes.push(OP_CLEAR);
+    push_u32(&mut opcodes, 0xff07111e);
+
+    for region in &model.regions {
+        opcodes.push(OP_FILL_RECT);
+        push_sentinel_region(&mut opcodes, region);
+        push_u32(&mut opcodes, sentinel_region_color(region));
+
+        let behavior_id = sentinel_behavior_id(region);
+        if behavior_id > 0 {
+            opcodes.push(OP_SET_BEHAVIOR);
+            push_sentinel_region(&mut opcodes, region);
+            push_u16(&mut opcodes, behavior_id);
+        }
+
+        if sentinel_region_pulse_energy(region) > 0 {
+            opcodes.push(OP_PULSE);
+            push_sentinel_region(&mut opcodes, region);
+            opcodes.push(sentinel_region_pulse_energy(region));
+        }
+    }
+
+    opcodes.push(OP_FRAME);
+
+    let opcode_count = sentinel_opcode_count(&opcodes);
+    let mut bytes = Vec::with_capacity(40 + name_bytes.len() + opcodes.len());
+    bytes.extend_from_slice(b"PVM2");
+    push_u16(&mut bytes, PVM2_FORMAT_VERSION);
+    push_u16(&mut bytes, name_bytes.len() as u16);
+    push_u32(&mut bytes, 1);
+    push_u64(&mut bytes, 0);
+    push_u32(&mut bytes, 0);
+    push_u32(&mut bytes, width);
+    push_u32(&mut bytes, height);
+    push_u32(&mut bytes, opcode_count);
+    bytes.extend_from_slice(name_bytes);
+    bytes.extend_from_slice(&opcodes);
+    bytes
+}
+
+fn sentinel_opcode_count(bytes: &[u8]) -> u32 {
+    let mut index = 0;
+    let mut count = 0;
+    while index < bytes.len() {
+        count += 1;
+        index += match bytes[index] {
+            0 => 1 + 4,
+            1 => 1 + 16 + 4,
+            2 => 1 + 16 + 1,
+            3 => 1 + 16 + 2,
+            4 => 1,
+            _ => break,
+        };
+    }
+    count
+}
+
+fn push_sentinel_region(bytes: &mut Vec<u8>, region: &NativeStudioRegion) {
+    push_u32(bytes, sentinel_coord(region.x));
+    push_u32(bytes, sentinel_coord(region.y));
+    push_u32(bytes, sentinel_dimension(region.w));
+    push_u32(bytes, sentinel_dimension(region.h));
+}
+
+fn sentinel_region_color(region: &NativeStudioRegion) -> u32 {
+    let signal = format!(
+        "{} {} {} {}",
+        region.name, region.text, region.semantic, region.event
+    )
+    .to_ascii_lowercase();
+    if signal.contains("run") || signal.contains("primary") || region.state == "active" {
+        0xffff7a45
+    } else if signal.contains("guard") {
+        0xffe7b95e
+    } else if signal.contains("reflect") {
+        0xff77c98d
+    } else if signal.contains("editor") || signal.contains("code") || signal.contains("source") {
+        0xff151a24
+    } else if signal.contains("conversation") || signal.contains("chat") {
+        0xff1e2b3d
+    } else if signal.contains("input") || signal.contains("prompt") {
+        0xff25435f
+    } else if signal.contains("sidebar") || signal.contains("nav") {
+        0xff202a38
+    } else if signal.contains("topbar") || signal.contains("header") {
+        0xff113b5f
+    } else {
+        0xff2b3443
+    }
+}
+
+fn sentinel_behavior_id(region: &NativeStudioRegion) -> u16 {
+    let action = first_non_empty(&[&region.event, &region.semantic, &region.name]);
+    match action.as_str() {
+        "run_source" | "primary_action" => 101,
+        "reflect_source" => 102,
+        "guard_source" => 103,
+        "send_prompt" | "input" => 104,
+        "source_editor" | "code_editor" => 105,
+        "conversation" | "chat" => 106,
+        _ if region.state == "active" => 1,
+        _ => 0,
+    }
+}
+
+fn sentinel_region_pulse_energy(region: &NativeStudioRegion) -> u8 {
+    if region.state == "active" || sentinel_behavior_id(region) >= 101 {
+        64
+    } else {
+        0
+    }
+}
+
+fn sanitize_sentinel_app_name(name: &str) -> String {
+    let mut out: String = name
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric() || *ch == '-' || *ch == '_')
+        .take(64)
+        .collect();
+    if out.is_empty() {
+        out.push_str("matter-app");
+    }
+    out
+}
+
+fn sentinel_coord(value: i64) -> u32 {
+    value.clamp(0, 8192) as u32
+}
+
+fn sentinel_dimension(value: i64) -> u32 {
+    value.clamp(1, 8192) as u32
+}
+
+fn push_u16(bytes: &mut Vec<u8>, value: u16) {
+    bytes.extend_from_slice(&value.to_le_bytes());
+}
+
+fn push_u32(bytes: &mut Vec<u8>, value: u32) {
+    bytes.extend_from_slice(&value.to_le_bytes());
+}
+
+fn push_u64(bytes: &mut Vec<u8>, value: u64) {
+    bytes.extend_from_slice(&value.to_le_bytes());
+}
+
 fn run_native_studio_loop(source: &str, input: &str, clear: bool, model: &mut NativeStudioModel) {
     loop {
         print!("{}", render_native_studio(model, clear));
@@ -13829,6 +14066,55 @@ print "declared"
         assert_eq!(payload["surface"]["name"], "matter_studio");
         assert_eq!(payload["regions"][0]["text"], "Guard");
         assert_eq!(payload["regions"][0]["event"], "guard_source");
+    }
+
+    #[test]
+    fn sentinel_pvmbc_encoder_emits_pvm2_manifest_and_opcodes() {
+        let model = NativeStudioModel {
+            input: "demo.matter".to_string(),
+            output: vec![],
+            status: vec![],
+            surface_name: "matter_studio".to_string(),
+            surface_width: 1280,
+            surface_height: 720,
+            regions: vec![NativeStudioRegion {
+                name: "button_run".to_string(),
+                x: 940,
+                y: 520,
+                w: 76,
+                h: 34,
+                text: "Run".to_string(),
+                semantic: "primary_action".to_string(),
+                event: "run_source".to_string(),
+                state: "active".to_string(),
+            }],
+            instruction_cost: 0.0,
+            backend_cost: 0.0,
+        };
+
+        let bytes = encode_sentinel_pvmbc(&model, "matter-studio");
+
+        assert_eq!(&bytes[0..4], b"PVM2");
+        assert_eq!(u16::from_le_bytes([bytes[4], bytes[5]]), 2);
+        assert_eq!(u16::from_le_bytes([bytes[6], bytes[7]]), 13);
+        assert_eq!(
+            u32::from_le_bytes([bytes[24], bytes[25], bytes[26], bytes[27]]),
+            1280
+        );
+        assert_eq!(
+            u32::from_le_bytes([bytes[28], bytes[29], bytes[30], bytes[31]]),
+            720
+        );
+        assert_eq!(
+            u32::from_le_bytes([bytes[32], bytes[33], bytes[34], bytes[35]]),
+            5
+        );
+        assert_eq!(&bytes[36..49], b"matter-studio");
+        assert_eq!(bytes[49], 0);
+        assert_eq!(bytes[54], 1);
+        assert!(bytes.contains(&3));
+        assert!(bytes.contains(&2));
+        assert_eq!(*bytes.last().unwrap(), 4);
     }
 
     #[test]
