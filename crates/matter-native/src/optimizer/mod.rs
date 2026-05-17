@@ -10,6 +10,10 @@ use crate::OptLevel;
 
 /// Optimize machine code based on optimization level
 pub fn optimize(code: &[u8], level: OptLevel) -> Result<Vec<u8>, String> {
+    if level != OptLevel::O0 && has_relative_control_flow(code) {
+        return Ok(code.to_vec());
+    }
+
     let mut optimized = code.to_vec();
 
     match level {
@@ -40,6 +44,22 @@ pub fn optimize(code: &[u8], level: OptLevel) -> Result<Vec<u8>, String> {
     }
 
     Ok(optimized)
+}
+
+fn has_relative_control_flow(code: &[u8]) -> bool {
+    let mut i = 0;
+
+    while i < code.len() {
+        match code[i] {
+            0xE8 | 0xE9 | 0xEB => return true,
+            0x0F if i + 1 < code.len() && (0x80..=0x8F).contains(&code[i + 1]) => return true,
+            _ => {
+                i += 1;
+            }
+        }
+    }
+
+    false
 }
 
 /// Peephole optimization - optimize small instruction sequences
@@ -488,6 +508,18 @@ mod tests {
         // O3 - aggressive optimization
         let o3 = optimize(&code, OptLevel::O3).unwrap();
         assert_eq!(o3.len(), 0);
+    }
+
+    #[test]
+    fn test_optimize_preserves_relative_control_flow() {
+        let code = vec![
+            0x48, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0, // mov rax, 0
+            0x0F, 0x84, 0x0A, 0, 0, 0, // je +10
+            0x50, 0x58, // push rax; pop rax
+        ];
+
+        let optimized = optimize(&code, OptLevel::O3).unwrap();
+        assert_eq!(optimized, code);
     }
 
     #[test]

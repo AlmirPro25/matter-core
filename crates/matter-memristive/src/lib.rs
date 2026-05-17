@@ -184,15 +184,15 @@ impl CrossbarArray {
 
         let mut output = vec![0.0; self.rows];
 
-        for row in 0..self.rows {
+        for (row, out) in output.iter_mut().enumerate().take(self.rows) {
             let mut sum = 0.0;
-            for col in 0..self.cols {
+            for (col, input_v) in input.iter().enumerate().take(self.cols) {
                 // Analog multiplication via Ohm's law
-                let voltage = input[col] * self.v_read;
+                let voltage = *input_v * self.v_read;
                 let current = self.memristors[row][col].read_current(voltage);
                 sum += current;
             }
-            output[row] = sum;
+            *out = sum;
         }
 
         output
@@ -203,10 +203,10 @@ impl CrossbarArray {
         assert_eq!(weights.len(), self.rows, "Weight matrix size mismatch");
         assert_eq!(weights[0].len(), self.cols, "Weight matrix size mismatch");
 
-        for row in 0..self.rows {
-            for col in 0..self.cols {
+        for (row, weight_row) in weights.iter().enumerate().take(self.rows) {
+            for (col, weight) in weight_row.iter().enumerate().take(self.cols) {
                 // Normalize weights to 0.0-1.0 range
-                let normalized = (weights[row][col] + 1.0) / 2.0; // Assume weights in [-1, 1]
+                let normalized = (*weight + 1.0) / 2.0; // Assume weights in [-1, 1]
                 self.write_cell(row, col, normalized);
             }
         }
@@ -379,10 +379,10 @@ impl MemristiveLayer {
             .collect();
 
         // Update weights (simplified gradient descent)
-        for row in 0..self.output_size {
-            for col in 0..self.input_size {
+        for (row, error) in errors.iter().enumerate().take(self.output_size) {
+            for (col, input_v) in input.iter().enumerate().take(self.input_size) {
                 let current_weight = self.crossbar.read_cell(row, col);
-                let delta = learning_rate * errors[row] * input[col];
+                let delta = learning_rate * *error * *input_v;
                 let new_weight = (current_weight + delta).clamp(0.0, 1.0);
                 self.crossbar.write_cell(row, col, new_weight);
             }

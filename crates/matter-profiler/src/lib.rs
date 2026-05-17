@@ -285,7 +285,7 @@ impl Profiler {
             .collect();
 
         // Sort by total time
-        hotspots.sort_by(|a, b| b.total_time.cmp(&a.total_time));
+        hotspots.sort_by_key(|hotspot| std::cmp::Reverse(hotspot.total_time));
 
         ProfilingReport {
             total_duration,
@@ -342,28 +342,6 @@ pub enum ProfilerError {
 
     #[error("Trace export failed: {0}")]
     TraceExportError(String),
-}
-
-// UUID stub (in production, use uuid crate)
-mod uuid {
-    pub struct Uuid;
-    impl Uuid {
-        pub fn new_v4() -> Self {
-            Self
-        }
-        pub fn to_string(&self) -> String {
-            format!("{:016x}", crate::rand::random::<u64>())
-        }
-    }
-}
-
-mod rand {
-    pub fn random<T>() -> T
-    where
-        T: Default,
-    {
-        T::default()
-    }
 }
 
 #[cfg(test)]

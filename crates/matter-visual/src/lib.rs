@@ -2077,7 +2077,7 @@ mod tests {
                 assert_eq!(state.get("timeMs"), Some(&Value::Int(16)));
                 assert_eq!(state.get("running"), Some(&Value::Bool(true)));
             }
-            _ => assert!(false, "visual.tick must return loop state map"),
+            _ => panic!("visual.tick must return loop state map"),
         }
 
         let result = backend
@@ -2089,7 +2089,7 @@ mod tests {
                 assert_eq!(state.get("timeMs"), Some(&Value::Int(64)));
                 assert_eq!(state.get("running"), Some(&Value::Bool(true)));
             }
-            _ => assert!(false, "visual.loop must return loop state map"),
+            _ => panic!("visual.loop must return loop state map"),
         }
 
         let snapshot = backend
@@ -2288,10 +2288,10 @@ mod tests {
                 );
                 match result.get("files") {
                     Some(Value::List(files)) => assert_eq!(files.len(), 4),
-                    _ => assert!(false, "visual.verify_web must return verified files"),
+                    _ => panic!("visual.verify_web must return verified files"),
                 }
             }
-            _ => assert!(false, "visual.verify_web must return a map"),
+            _ => panic!("visual.verify_web must return a map"),
         }
         let _ = fs::remove_dir_all(dir);
     }
@@ -2542,7 +2542,7 @@ mod tests {
                 );
                 assert_eq!(event.get("layer"), Some(&Value::Int(4)));
             }
-            _ => assert!(false, "visual.load_events event must be a map"),
+            _ => panic!("visual.load_events event must be a map"),
         }
         let _ = fs::remove_file(path);
     }
@@ -2588,7 +2588,7 @@ mod tests {
                     Some(&Value::new_string("checkout".to_string()))
                 );
             }
-            _ => assert!(false, "visual.dispatch_events must return a map"),
+            _ => panic!("visual.dispatch_events must return a map"),
         }
 
         let snapshot = backend
@@ -2646,7 +2646,7 @@ mod tests {
                             Some(&Value::new_string("play".to_string()))
                         );
                     }
-                    _ => assert!(false, "visual.app_step must return dispatch map"),
+                    _ => panic!("visual.app_step must return dispatch map"),
                 }
                 match result.get("loop") {
                     Some(Value::Map(loop_state)) => {
@@ -2654,7 +2654,7 @@ mod tests {
                         assert_eq!(loop_state.get("timeMs"), Some(&Value::Int(33)));
                         assert_eq!(loop_state.get("running"), Some(&Value::Bool(true)));
                     }
-                    _ => assert!(false, "visual.app_step must return loop map"),
+                    _ => panic!("visual.app_step must return loop map"),
                 }
                 match result.get("snapshot") {
                     Some(Value::String(snapshot)) => {
@@ -2662,10 +2662,10 @@ mod tests {
                         assert!(snapshot
                             .contains("\"loop\":{\"frame\":1,\"timeMs\":33,\"running\":true}"));
                     }
-                    _ => assert!(false, "visual.app_step must return snapshot"),
+                    _ => panic!("visual.app_step must return snapshot"),
                 }
             }
-            _ => assert!(false, "visual.app_step must return a map"),
+            _ => panic!("visual.app_step must return a map"),
         }
 
         let _ = fs::remove_file(path);
@@ -2715,7 +2715,7 @@ mod tests {
                             Some(&Value::new_string("game".to_string()))
                         );
                     }
-                    _ => assert!(false, "visual.app_run must return dispatch map"),
+                    _ => panic!("visual.app_run must return dispatch map"),
                 }
                 match result.get("loop") {
                     Some(Value::Map(loop_state)) => {
@@ -2723,7 +2723,7 @@ mod tests {
                         assert_eq!(loop_state.get("timeMs"), Some(&Value::Int(64)));
                         assert_eq!(loop_state.get("running"), Some(&Value::Bool(true)));
                     }
-                    _ => assert!(false, "visual.app_run must return loop map"),
+                    _ => panic!("visual.app_run must return loop map"),
                 }
                 match result.get("snapshot") {
                     Some(Value::String(snapshot)) => {
@@ -2732,10 +2732,10 @@ mod tests {
                         assert!(snapshot
                             .contains("\"loop\":{\"frame\":4,\"timeMs\":64,\"running\":true}"));
                     }
-                    _ => assert!(false, "visual.app_run must return snapshot"),
+                    _ => panic!("visual.app_run must return snapshot"),
                 }
             }
-            _ => assert!(false, "visual.app_run must return a map"),
+            _ => panic!("visual.app_run must return a map"),
         }
 
         let _ = fs::remove_file(path);

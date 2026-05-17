@@ -14,6 +14,7 @@ inferno = "0.11"  # Flamegraph generation
 opentelemetry = "0.21"
 opentelemetry-otlp = "0.14"
 thiserror = "1.0"
+uuid = { version = "1.11", features = ["v4"] }
 
 [dev-dependencies]
 criterion = "0.5"

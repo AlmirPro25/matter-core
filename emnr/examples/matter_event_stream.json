@@ -1,0 +1,67 @@
+[
+  {
+    "module": "matter-parser",
+    "phase": "Parse",
+    "cpu_cost": 18.0,
+    "memory_pressure": 12.0,
+    "error_rate": 0.01,
+    "latency_ms": 24.0,
+    "cache_hit_rate": 0.76,
+    "optimization_confidence": 0.31,
+    "security_risk": 0.03,
+    "novelty_score": 0.22,
+    "label": "parse_main"
+  },
+  {
+    "module": "matter-native::optimizer",
+    "phase": "Optimize",
+    "cpu_cost": 32.0,
+    "memory_pressure": 28.0,
+    "error_rate": 0.03,
+    "latency_ms": 85.0,
+    "cache_hit_rate": 0.88,
+    "optimization_confidence": 0.91,
+    "security_risk": 0.05,
+    "novelty_score": 0.48,
+    "label": "vectorization_candidate"
+  },
+  {
+    "module": "matter-scheduler",
+    "phase": "Schedule",
+    "cpu_cost": 67.0,
+    "memory_pressure": 52.0,
+    "error_rate": 0.08,
+    "latency_ms": 180.0,
+    "cache_hit_rate": 0.64,
+    "optimization_confidence": 0.52,
+    "security_risk": 0.16,
+    "novelty_score": 0.58,
+    "label": "parallel_batch"
+  },
+  {
+    "module": "matter-bridge-nodejs",
+    "phase": "Bridge",
+    "cpu_cost": 86.0,
+    "memory_pressure": 78.0,
+    "error_rate": 0.37,
+    "latency_ms": 690.0,
+    "cache_hit_rate": 0.18,
+    "optimization_confidence": 0.12,
+    "security_risk": 0.94,
+    "novelty_score": 0.74,
+    "label": "foreign_call_spike"
+  },
+  {
+    "module": "matter-vm",
+    "phase": "Execute",
+    "cpu_cost": 49.0,
+    "memory_pressure": 41.0,
+    "error_rate": 0.04,
+    "latency_ms": 110.0,
+    "cache_hit_rate": 0.81,
+    "optimization_confidence": 0.67,
+    "security_risk": 0.08,
+    "novelty_score": 0.36,
+    "label": "post_isolation_execute"
+  }
+]

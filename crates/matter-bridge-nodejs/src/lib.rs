@@ -77,10 +77,11 @@ console.log(JSON.stringify({{
         format!(
             r#"
 const module = require('{}');
-const result = module.{}({});
+const matterArgs = {};
+const result = module.{}(...matterArgs);
 console.log(JSON.stringify(result));
 "#,
-            module, function, args
+            module, args, function
         )
     }
 }
@@ -195,8 +196,27 @@ mod tests {
         let bridge = NodeJSBridge::new();
         let result = bridge.execute_js("console.log('Hello from Node.js')");
         // Pode falhar se Node.js não estiver instalado, mas não é erro crítico
-        if result.is_ok() {
-            assert!(result.unwrap().contains("Hello"));
+        if let Ok(output) = result {
+            assert!(output.contains("Hello"));
         }
+    }
+
+    #[test]
+    fn test_import_and_call_builtin_module_function() {
+        let mut bridge = NodeJSBridge::new();
+        if bridge.initialize().is_err() {
+            return;
+        }
+
+        bridge.import_module("path").unwrap();
+        let result = bridge
+            .call_function(
+                "path",
+                "basename",
+                vec![Value::new_string("a/b.txt".to_string())],
+            )
+            .unwrap();
+
+        assert_eq!(result, Value::new_string("b.txt".to_string()));
     }
 }

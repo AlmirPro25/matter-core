@@ -9,7 +9,60 @@
 // - Quantitative diagnostics when relevant: "needed N, available M"
 use super::Register;
 use matter_bytecode::{Bytecode, Constant, Instruction};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PeImport {
+    ExitProcess,
+    GetStdHandle,
+    WriteFile,
+    GetProcessHeap,
+    HeapAlloc,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NativeValueKind {
+    Int,
+    String,
+    ListInt,
+    ListString,
+}
+
+const RUNTIME_PTR_STACK_OFFSET: i32 = -40;
+
+#[derive(Debug, Clone)]
+struct ValueShape {
+    kind: NativeValueKind,
+    string_value: Option<String>,
+    fields: HashMap<String, NativeValueKind>,
+    field_shapes: HashMap<String, ValueShape>,
+    key_kinds: Vec<NativeValueKind>,
+    value_kinds: Vec<NativeValueKind>,
+}
+
+impl ValueShape {
+    fn new(kind: NativeValueKind) -> Self {
+        Self {
+            kind,
+            string_value: None,
+            fields: HashMap::new(),
+            field_shapes: HashMap::new(),
+            key_kinds: Vec::new(),
+            value_kinds: Vec::new(),
+        }
+    }
+
+    fn string(value: String) -> Self {
+        Self {
+            kind: NativeValueKind::String,
+            string_value: Some(value),
+            fields: HashMap::new(),
+            field_shapes: HashMap::new(),
+            key_kinds: vec![NativeValueKind::String],
+            value_kinds: Vec::new(),
+        }
+    }
+}
 
 /// x86-64 code generator
 pub struct X86CodeGen {
@@ -21,6 +74,12 @@ pub struct X86CodeGen {
 
     /// Variable stack offsets (name -> rbp-relative offset)
     variables: HashMap<String, i32>,
+
+    /// Best-effort compile-time value kinds for locals.
+    variable_kinds: HashMap<String, NativeValueKind>,
+
+    /// Best-effort compile-time value kinds for generated stack values.
+    value_stack: Vec<NativeValueKind>,
 
     /// Current stack frame offset for locals
     stack_offset: i32,
@@ -37,8 +96,50 @@ pub struct X86CodeGen {
     /// Pending data relative patches (code offset -> data offset)
     pending_data_patches: Vec<(usize, usize)>,
 
+    /// Pending RIP-relative function address patches (code offset -> function name)
+    pending_function_address_patches: Vec<(usize, String)>,
+
     /// Function addresses (name -> code offset)
     function_addresses: HashMap<String, usize>,
+
+    /// Best-effort return kinds inferred before lowering function callsites.
+    function_return_kinds: HashMap<String, NativeValueKind>,
+
+    /// Best-effort return shapes inferred before lowering function callsites.
+    function_return_shapes: HashMap<String, ValueShape>,
+
+    /// Best-effort parameter kinds inferred from named callsites.
+    function_param_kinds: HashMap<String, Vec<NativeValueKind>>,
+
+    /// Function currently being lowered, used to refine return kinds.
+    current_function_name: Option<String>,
+
+    /// Treat unresolved globals as frame locals for standalone executables.
+    standalone_executable: bool,
+
+    /// Standalone print callsites that target the emitted native stdout helper.
+    pending_standalone_print_calls: Vec<usize>,
+
+    /// Standalone print string callsites that target the emitted native stdout helper.
+    pending_standalone_print_string_calls: Vec<usize>,
+
+    /// Standalone string equality callsites that target the emitted native helper.
+    pending_standalone_string_eq_calls: Vec<usize>,
+
+    /// RIP-relative calls to PE imports that need final .idata RVAs.
+    pending_pe_import_calls: Vec<(usize, PeImport)>,
+
+    /// Interned standalone string data offsets, used for stable string identity in native maps.
+    standalone_string_offsets: HashMap<String, usize>,
+
+    /// Predicted result kinds for dynamic standalone index reads.
+    predicted_load_index_kinds: VecDeque<NativeValueKind>,
+
+    /// Predicted result kinds for dynamic standalone field reads.
+    predicted_load_field_kinds: VecDeque<NativeValueKind>,
+
+    /// Predicted list kinds for standalone map key/value materialization.
+    predicted_map_view_kinds: VecDeque<NativeValueKind>,
 }
 
 impl X86CodeGen {
@@ -54,30 +155,988 @@ impl X86CodeGen {
         format!("operands={}", operands)
     }
 
+    fn has_empty_top_level(instructions: &[Instruction]) -> bool {
+        instructions.is_empty() || matches!(instructions, [Instruction::Halt])
+    }
+
+    fn constant_kind(constants: &[Constant], id: usize) -> NativeValueKind {
+        match constants.get(id) {
+            Some(Constant::String(_)) => NativeValueKind::String,
+            _ => NativeValueKind::Int,
+        }
+    }
+
+    fn merge_value_kind(target: &mut NativeValueKind, candidate: NativeValueKind) {
+        if *target == NativeValueKind::Int && candidate != NativeValueKind::Int {
+            *target = candidate;
+        } else if candidate == NativeValueKind::String {
+            *target = NativeValueKind::String;
+        }
+    }
+
+    fn list_kind_from_elements(elements: &[NativeValueKind]) -> NativeValueKind {
+        if !elements.is_empty() && elements.iter().all(|kind| *kind == NativeValueKind::String) {
+            NativeValueKind::ListString
+        } else {
+            NativeValueKind::ListInt
+        }
+    }
+
+    fn list_element_kind(kind: NativeValueKind) -> NativeValueKind {
+        match kind {
+            NativeValueKind::ListString => NativeValueKind::String,
+            _ => NativeValueKind::Int,
+        }
+    }
+
+    fn list_kind_after_push(
+        list_kind: NativeValueKind,
+        value_kind: NativeValueKind,
+    ) -> NativeValueKind {
+        if list_kind == NativeValueKind::ListString || value_kind == NativeValueKind::String {
+            NativeValueKind::ListString
+        } else {
+            NativeValueKind::ListInt
+        }
+    }
+
+    fn function_return_shape(&self, name: &str) -> ValueShape {
+        self.function_return_shapes
+            .get(name)
+            .cloned()
+            .unwrap_or_else(|| {
+                ValueShape::new(
+                    self.function_return_kinds
+                        .get(name)
+                        .copied()
+                        .unwrap_or(NativeValueKind::Int),
+                )
+            })
+    }
+
+    fn infer_dynamic_load_kinds_for_instructions(
+        &self,
+        instructions: &[Instruction],
+        constants: &[Constant],
+        current_params: &[NativeValueKind],
+    ) -> (
+        Vec<NativeValueKind>,
+        Vec<NativeValueKind>,
+        Vec<NativeValueKind>,
+    ) {
+        let mut stack: Vec<ValueShape> = Vec::new();
+        let mut locals: HashMap<String, ValueShape> = HashMap::new();
+        let mut load_index_kinds = Vec::new();
+        let mut load_field_kinds = Vec::new();
+        let mut map_view_kinds = Vec::new();
+
+        for instruction in instructions {
+            match instruction {
+                Instruction::LoadConst(id) => match constants.get(*id) {
+                    Some(Constant::String(value)) => stack.push(ValueShape::string(value.clone())),
+                    _ => stack.push(ValueShape::new(Self::constant_kind(constants, *id))),
+                },
+                Instruction::LoadLocal(name) | Instruction::LoadGlobal(name) => {
+                    stack.push(
+                        locals
+                            .get(name)
+                            .cloned()
+                            .unwrap_or_else(|| ValueShape::new(NativeValueKind::Int)),
+                    );
+                }
+                Instruction::LoadParam(index) => {
+                    stack.push(ValueShape::new(
+                        current_params
+                            .get(*index)
+                            .copied()
+                            .unwrap_or(NativeValueKind::Int),
+                    ));
+                }
+                Instruction::StoreLocal(name)
+                | Instruction::StoreGlobal(name)
+                | Instruction::StoreExisting(name) => {
+                    let shape = stack
+                        .pop()
+                        .unwrap_or_else(|| ValueShape::new(NativeValueKind::Int));
+                    locals.insert(name.clone(), shape);
+                }
+                Instruction::NewList(count) => {
+                    let mut elements = Vec::new();
+                    for _ in 0..*count {
+                        elements.push(
+                            stack
+                                .pop()
+                                .unwrap_or_else(|| ValueShape::new(NativeValueKind::Int))
+                                .kind,
+                        );
+                    }
+                    stack.push(ValueShape::new(Self::list_kind_from_elements(&elements)));
+                }
+                Instruction::NewMap(count) | Instruction::NewStruct(_, count) => {
+                    let mut fields = HashMap::new();
+                    let mut field_shapes = HashMap::new();
+                    let mut key_kinds = Vec::new();
+                    let mut value_kinds = Vec::new();
+                    for _ in 0..*count {
+                        let value = stack
+                            .pop()
+                            .unwrap_or_else(|| ValueShape::new(NativeValueKind::Int));
+                        let key = stack
+                            .pop()
+                            .unwrap_or_else(|| ValueShape::new(NativeValueKind::Int));
+                        key_kinds.push(key.kind);
+                        value_kinds.push(value.kind);
+                        if let Some(key) = key.string_value {
+                            fields.insert(key.clone(), value.kind);
+                            field_shapes.insert(key, value);
+                        }
+                    }
+                    let mut shape = ValueShape::new(NativeValueKind::Int);
+                    shape.fields = fields;
+                    shape.field_shapes = field_shapes;
+                    shape.key_kinds = key_kinds;
+                    shape.value_kinds = value_kinds;
+                    stack.push(shape);
+                }
+                Instruction::LoadIndex => {
+                    let index = stack
+                        .pop()
+                        .unwrap_or_else(|| ValueShape::new(NativeValueKind::Int));
+                    let collection = stack
+                        .pop()
+                        .unwrap_or_else(|| ValueShape::new(NativeValueKind::Int));
+                    let kind = index
+                        .string_value
+                        .as_ref()
+                        .and_then(|key| collection.fields.get(key))
+                        .copied()
+                        .unwrap_or_else(|| Self::list_element_kind(collection.kind));
+                    load_index_kinds.push(kind);
+                    let shape = index
+                        .string_value
+                        .as_ref()
+                        .and_then(|key| collection.field_shapes.get(key))
+                        .cloned()
+                        .unwrap_or_else(|| ValueShape::new(kind));
+                    stack.push(shape);
+                }
+                Instruction::LoadField(field) => {
+                    let target = stack
+                        .pop()
+                        .unwrap_or_else(|| ValueShape::new(NativeValueKind::Int));
+                    let kind = target
+                        .fields
+                        .get(field)
+                        .copied()
+                        .unwrap_or(NativeValueKind::Int);
+                    load_field_kinds.push(kind);
+                    stack.push(
+                        target
+                            .field_shapes
+                            .get(field)
+                            .cloned()
+                            .unwrap_or_else(|| ValueShape::new(kind)),
+                    );
+                }
+                Instruction::StoreIndexVar(name) => {
+                    let value = stack
+                        .pop()
+                        .unwrap_or_else(|| ValueShape::new(NativeValueKind::Int));
+                    let index = stack
+                        .pop()
+                        .unwrap_or_else(|| ValueShape::new(NativeValueKind::Int));
+                    if let (Some(target), Some(key)) = (locals.get_mut(name), index.string_value) {
+                        target.fields.insert(key.clone(), value.kind);
+                        target.field_shapes.insert(key, value.clone());
+                        target.key_kinds.push(NativeValueKind::String);
+                        target.value_kinds.push(value.kind);
+                    }
+                }
+                Instruction::StoreFieldVar { target, field } => {
+                    let value = stack
+                        .pop()
+                        .unwrap_or_else(|| ValueShape::new(NativeValueKind::Int));
+                    if let Some(target) = locals.get_mut(target) {
+                        target.fields.insert(field.clone(), value.kind);
+                        target.field_shapes.insert(field.clone(), value.clone());
+                        target.key_kinds.push(NativeValueKind::String);
+                        target.value_kinds.push(value.kind);
+                    }
+                }
+                Instruction::ListPush => {
+                    let value = stack
+                        .pop()
+                        .unwrap_or_else(|| ValueShape::new(NativeValueKind::Int));
+                    let list = stack
+                        .pop()
+                        .unwrap_or_else(|| ValueShape::new(NativeValueKind::Int));
+                    let kind = Self::list_kind_after_push(list.kind, value.kind);
+                    stack.push(ValueShape::new(kind));
+                }
+                Instruction::ListPushVar(name) => {
+                    let value = stack
+                        .pop()
+                        .unwrap_or_else(|| ValueShape::new(NativeValueKind::Int));
+                    if let Some(target) = locals.get_mut(name) {
+                        target.kind = Self::list_kind_after_push(target.kind, value.kind);
+                    }
+                    stack.push(ValueShape::new(NativeValueKind::Int));
+                }
+                Instruction::ListPop => {
+                    let list = stack
+                        .pop()
+                        .unwrap_or_else(|| ValueShape::new(NativeValueKind::Int));
+                    stack.push(ValueShape::new(Self::list_element_kind(list.kind)));
+                    stack.push(list);
+                }
+                Instruction::ListPopVar(name) => {
+                    let list_kind = locals
+                        .get(name)
+                        .map(|shape| shape.kind)
+                        .unwrap_or(NativeValueKind::Int);
+                    stack.push(ValueShape::new(Self::list_element_kind(list_kind)));
+                }
+                Instruction::ListLen | Instruction::MapHas => {
+                    let _ = stack.pop();
+                    if matches!(instruction, Instruction::MapHas) {
+                        let _ = stack.pop();
+                    }
+                    stack.push(ValueShape::new(NativeValueKind::Int));
+                }
+                Instruction::MapKeys => {
+                    let map = stack
+                        .pop()
+                        .unwrap_or_else(|| ValueShape::new(NativeValueKind::Int));
+                    let kind = Self::list_kind_from_elements(&map.key_kinds);
+                    map_view_kinds.push(kind);
+                    stack.push(ValueShape::new(kind));
+                }
+                Instruction::MapValues => {
+                    let map = stack
+                        .pop()
+                        .unwrap_or_else(|| ValueShape::new(NativeValueKind::Int));
+                    let kind = Self::list_kind_from_elements(&map.value_kinds);
+                    map_view_kinds.push(kind);
+                    stack.push(ValueShape::new(kind));
+                }
+                Instruction::CallNamed { name, arg_count } => {
+                    for _ in 0..*arg_count {
+                        let _ = stack.pop();
+                    }
+                    stack.push(self.function_return_shape(name));
+                }
+                Instruction::Call(arg_count) => {
+                    for _ in 0..=*arg_count {
+                        let _ = stack.pop();
+                    }
+                    stack.push(ValueShape::new(NativeValueKind::Int));
+                }
+                Instruction::Print | Instruction::Pop | Instruction::JumpIfFalse(_) => {
+                    let _ = stack.pop();
+                }
+                Instruction::Add
+                | Instruction::Sub
+                | Instruction::Mul
+                | Instruction::Div
+                | Instruction::Mod
+                | Instruction::And
+                | Instruction::Or
+                | Instruction::Eq
+                | Instruction::NotEq
+                | Instruction::Lt
+                | Instruction::Gt
+                | Instruction::LtEq
+                | Instruction::GtEq => {
+                    let _ = stack.pop();
+                    let _ = stack.pop();
+                    stack.push(ValueShape::new(NativeValueKind::Int));
+                }
+                Instruction::Neg | Instruction::Not => {
+                    let _ = stack.pop();
+                    stack.push(ValueShape::new(NativeValueKind::Int));
+                }
+                Instruction::Return => {
+                    let _ = stack.pop();
+                }
+                Instruction::BackendCall { arg_count, .. } => {
+                    for _ in 0..*arg_count {
+                        let _ = stack.pop();
+                    }
+                    stack.push(ValueShape::new(NativeValueKind::Int));
+                }
+                Instruction::StoreIndex
+                | Instruction::PushScope
+                | Instruction::PopScope
+                | Instruction::Jump(_)
+                | Instruction::SpawnEvent(_)
+                | Instruction::Halt => {}
+            }
+        }
+
+        (load_index_kinds, load_field_kinds, map_view_kinds)
+    }
+
+    fn infer_function_param_kinds(
+        &self,
+        bytecode: &Bytecode,
+    ) -> HashMap<String, Vec<NativeValueKind>> {
+        let mut params: HashMap<String, Vec<NativeValueKind>> = bytecode
+            .functions
+            .iter()
+            .map(|(name, function)| {
+                (
+                    name.clone(),
+                    vec![NativeValueKind::Int; function.param_count],
+                )
+            })
+            .collect();
+
+        for _ in 0..4 {
+            self.infer_call_argument_kinds_for_instructions(
+                &bytecode.main_instructions,
+                &bytecode.constants,
+                &[],
+                &mut params,
+            );
+
+            for (name, function) in &bytecode.functions {
+                let local_params = params.get(name).cloned().unwrap_or_default();
+                self.infer_call_argument_kinds_for_instructions(
+                    &function.instructions,
+                    &bytecode.constants,
+                    &local_params,
+                    &mut params,
+                );
+            }
+        }
+
+        params
+    }
+
+    fn infer_call_argument_kinds_for_instructions(
+        &self,
+        instructions: &[Instruction],
+        constants: &[Constant],
+        current_params: &[NativeValueKind],
+        inferred_params: &mut HashMap<String, Vec<NativeValueKind>>,
+    ) {
+        let mut stack = Vec::new();
+        let mut locals = HashMap::new();
+
+        for instruction in instructions {
+            match instruction {
+                Instruction::LoadConst(id) => stack.push(Self::constant_kind(constants, *id)),
+                Instruction::LoadLocal(name) | Instruction::LoadGlobal(name) => {
+                    stack.push(*locals.get(name).unwrap_or(&NativeValueKind::Int));
+                }
+                Instruction::LoadParam(index) => {
+                    stack.push(
+                        current_params
+                            .get(*index)
+                            .copied()
+                            .unwrap_or(NativeValueKind::Int),
+                    );
+                }
+                Instruction::StoreLocal(name)
+                | Instruction::StoreGlobal(name)
+                | Instruction::StoreExisting(name) => {
+                    let kind = stack.pop().unwrap_or(NativeValueKind::Int);
+                    locals.insert(name.clone(), kind);
+                }
+                Instruction::CallNamed { name, arg_count } => {
+                    let mut args = Vec::new();
+                    for _ in 0..*arg_count {
+                        args.push(stack.pop().unwrap_or(NativeValueKind::Int));
+                    }
+                    args.reverse();
+                    if let Some(param_kinds) = inferred_params.get_mut(name) {
+                        for (index, kind) in args.into_iter().enumerate() {
+                            if let Some(param_kind) = param_kinds.get_mut(index) {
+                                Self::merge_value_kind(param_kind, kind);
+                            }
+                        }
+                    }
+                    stack.push(
+                        self.function_return_kinds
+                            .get(name)
+                            .copied()
+                            .unwrap_or(NativeValueKind::Int),
+                    );
+                }
+                Instruction::Call(arg_count) => {
+                    for _ in 0..=*arg_count {
+                        let _ = stack.pop();
+                    }
+                    stack.push(NativeValueKind::Int);
+                }
+                Instruction::Print | Instruction::Pop | Instruction::JumpIfFalse(_) => {
+                    let _ = stack.pop();
+                }
+                Instruction::Add
+                | Instruction::Sub
+                | Instruction::Mul
+                | Instruction::Div
+                | Instruction::Mod
+                | Instruction::And
+                | Instruction::Or
+                | Instruction::Eq
+                | Instruction::NotEq
+                | Instruction::Lt
+                | Instruction::Gt
+                | Instruction::LtEq
+                | Instruction::GtEq => {
+                    let _ = stack.pop();
+                    let _ = stack.pop();
+                    stack.push(NativeValueKind::Int);
+                }
+                Instruction::Neg | Instruction::Not => {
+                    let _ = stack.pop();
+                    stack.push(NativeValueKind::Int);
+                }
+                Instruction::Return => {
+                    let _ = stack.pop();
+                }
+                Instruction::NewList(count) => {
+                    let mut elements = Vec::new();
+                    for _ in 0..*count {
+                        elements.push(stack.pop().unwrap_or(NativeValueKind::Int));
+                    }
+                    stack.push(Self::list_kind_from_elements(&elements));
+                }
+                Instruction::LoadIndex => {
+                    let _ = stack.pop();
+                    let list_kind = stack.pop().unwrap_or(NativeValueKind::Int);
+                    stack.push(Self::list_element_kind(list_kind));
+                }
+                Instruction::ListPop => {
+                    let list_kind = stack.pop().unwrap_or(NativeValueKind::Int);
+                    stack.push(Self::list_element_kind(list_kind));
+                    stack.push(list_kind);
+                }
+                Instruction::ListLen
+                | Instruction::NewMap(_)
+                | Instruction::MapHas
+                | Instruction::MapKeys
+                | Instruction::MapValues
+                | Instruction::NewStruct(_, _)
+                | Instruction::LoadField(_) => stack.push(NativeValueKind::Int),
+                Instruction::ListPopVar(name) => {
+                    let list_kind = locals.get(name).copied().unwrap_or(NativeValueKind::Int);
+                    stack.push(Self::list_element_kind(list_kind));
+                }
+                Instruction::BackendCall { arg_count, .. } => {
+                    for _ in 0..*arg_count {
+                        let _ = stack.pop();
+                    }
+                    stack.push(NativeValueKind::Int);
+                }
+                Instruction::StoreIndex
+                | Instruction::StoreIndexVar(_)
+                | Instruction::ListPush
+                | Instruction::ListPushVar(_)
+                | Instruction::StoreFieldVar { .. }
+                | Instruction::PushScope
+                | Instruction::PopScope
+                | Instruction::Jump(_)
+                | Instruction::SpawnEvent(_)
+                | Instruction::Halt => {}
+            }
+        }
+    }
+
+    fn infer_function_return_kinds(&self, bytecode: &Bytecode) -> HashMap<String, NativeValueKind> {
+        let mut known = HashMap::new();
+        for _ in 0..4 {
+            for (name, function) in &bytecode.functions {
+                let kind = self.infer_return_kind_for_instructions(
+                    name,
+                    &function.instructions,
+                    &bytecode.constants,
+                    &known,
+                );
+                known.insert(name.clone(), kind);
+            }
+        }
+        known
+    }
+
+    fn infer_function_return_shapes(&self, bytecode: &Bytecode) -> HashMap<String, ValueShape> {
+        let mut shapes = HashMap::new();
+        for _ in 0..4 {
+            for (name, function) in &bytecode.functions {
+                let params = self
+                    .function_param_kinds
+                    .get(name)
+                    .cloned()
+                    .unwrap_or_default();
+                let shape = self.infer_return_shape_for_instructions(
+                    &function.instructions,
+                    &bytecode.constants,
+                    &params,
+                );
+                shapes.insert(name.clone(), shape);
+            }
+        }
+        shapes
+    }
+
+    fn infer_return_shape_for_instructions(
+        &self,
+        instructions: &[Instruction],
+        constants: &[Constant],
+        current_params: &[NativeValueKind],
+    ) -> ValueShape {
+        let mut stack: Vec<ValueShape> = Vec::new();
+        let mut locals: HashMap<String, ValueShape> = HashMap::new();
+
+        for instruction in instructions {
+            match instruction {
+                Instruction::LoadConst(id) => match constants.get(*id) {
+                    Some(Constant::String(value)) => stack.push(ValueShape::string(value.clone())),
+                    _ => stack.push(ValueShape::new(Self::constant_kind(constants, *id))),
+                },
+                Instruction::LoadLocal(name) | Instruction::LoadGlobal(name) => {
+                    stack.push(
+                        locals
+                            .get(name)
+                            .cloned()
+                            .unwrap_or_else(|| ValueShape::new(NativeValueKind::Int)),
+                    );
+                }
+                Instruction::LoadParam(index) => {
+                    stack.push(ValueShape::new(
+                        current_params
+                            .get(*index)
+                            .copied()
+                            .unwrap_or(NativeValueKind::Int),
+                    ));
+                }
+                Instruction::StoreLocal(name)
+                | Instruction::StoreGlobal(name)
+                | Instruction::StoreExisting(name) => {
+                    let shape = stack
+                        .pop()
+                        .unwrap_or_else(|| ValueShape::new(NativeValueKind::Int));
+                    locals.insert(name.clone(), shape);
+                }
+                Instruction::NewList(count) => {
+                    let mut elements = Vec::new();
+                    for _ in 0..*count {
+                        elements.push(
+                            stack
+                                .pop()
+                                .unwrap_or_else(|| ValueShape::new(NativeValueKind::Int))
+                                .kind,
+                        );
+                    }
+                    stack.push(ValueShape::new(Self::list_kind_from_elements(&elements)));
+                }
+                Instruction::NewMap(count) | Instruction::NewStruct(_, count) => {
+                    let mut fields = HashMap::new();
+                    let mut field_shapes = HashMap::new();
+                    let mut key_kinds = Vec::new();
+                    let mut value_kinds = Vec::new();
+                    for _ in 0..*count {
+                        let value = stack
+                            .pop()
+                            .unwrap_or_else(|| ValueShape::new(NativeValueKind::Int));
+                        let key = stack
+                            .pop()
+                            .unwrap_or_else(|| ValueShape::new(NativeValueKind::Int));
+                        key_kinds.push(key.kind);
+                        value_kinds.push(value.kind);
+                        if let Some(key) = key.string_value {
+                            fields.insert(key.clone(), value.kind);
+                            field_shapes.insert(key, value);
+                        }
+                    }
+                    let mut shape = ValueShape::new(NativeValueKind::Int);
+                    shape.fields = fields;
+                    shape.field_shapes = field_shapes;
+                    shape.key_kinds = key_kinds;
+                    shape.value_kinds = value_kinds;
+                    stack.push(shape);
+                }
+                Instruction::LoadIndex => {
+                    let index = stack
+                        .pop()
+                        .unwrap_or_else(|| ValueShape::new(NativeValueKind::Int));
+                    let collection = stack
+                        .pop()
+                        .unwrap_or_else(|| ValueShape::new(NativeValueKind::Int));
+                    let kind = index
+                        .string_value
+                        .as_ref()
+                        .and_then(|key| collection.fields.get(key))
+                        .copied()
+                        .unwrap_or_else(|| Self::list_element_kind(collection.kind));
+                    stack.push(
+                        index
+                            .string_value
+                            .as_ref()
+                            .and_then(|key| collection.field_shapes.get(key))
+                            .cloned()
+                            .unwrap_or_else(|| ValueShape::new(kind)),
+                    );
+                }
+                Instruction::LoadField(field) => {
+                    let target = stack
+                        .pop()
+                        .unwrap_or_else(|| ValueShape::new(NativeValueKind::Int));
+                    let kind = target
+                        .fields
+                        .get(field)
+                        .copied()
+                        .unwrap_or(NativeValueKind::Int);
+                    stack.push(
+                        target
+                            .field_shapes
+                            .get(field)
+                            .cloned()
+                            .unwrap_or_else(|| ValueShape::new(kind)),
+                    );
+                }
+                Instruction::StoreIndexVar(name) => {
+                    let value = stack
+                        .pop()
+                        .unwrap_or_else(|| ValueShape::new(NativeValueKind::Int));
+                    let index = stack
+                        .pop()
+                        .unwrap_or_else(|| ValueShape::new(NativeValueKind::Int));
+                    if let (Some(target), Some(key)) = (locals.get_mut(name), index.string_value) {
+                        target.fields.insert(key.clone(), value.kind);
+                        target.field_shapes.insert(key, value.clone());
+                        target.key_kinds.push(NativeValueKind::String);
+                        target.value_kinds.push(value.kind);
+                    }
+                }
+                Instruction::StoreFieldVar { target, field } => {
+                    let value = stack
+                        .pop()
+                        .unwrap_or_else(|| ValueShape::new(NativeValueKind::Int));
+                    if let Some(target) = locals.get_mut(target) {
+                        target.fields.insert(field.clone(), value.kind);
+                        target.field_shapes.insert(field.clone(), value.clone());
+                        target.key_kinds.push(NativeValueKind::String);
+                        target.value_kinds.push(value.kind);
+                    }
+                }
+                Instruction::ListPush => {
+                    let value = stack
+                        .pop()
+                        .unwrap_or_else(|| ValueShape::new(NativeValueKind::Int));
+                    let list = stack
+                        .pop()
+                        .unwrap_or_else(|| ValueShape::new(NativeValueKind::Int));
+                    stack.push(ValueShape::new(Self::list_kind_after_push(
+                        list.kind, value.kind,
+                    )));
+                }
+                Instruction::ListPushVar(name) => {
+                    let value = stack
+                        .pop()
+                        .unwrap_or_else(|| ValueShape::new(NativeValueKind::Int));
+                    if let Some(target) = locals.get_mut(name) {
+                        target.kind = Self::list_kind_after_push(target.kind, value.kind);
+                    }
+                    stack.push(ValueShape::new(NativeValueKind::Int));
+                }
+                Instruction::ListPop => {
+                    let list = stack
+                        .pop()
+                        .unwrap_or_else(|| ValueShape::new(NativeValueKind::Int));
+                    stack.push(ValueShape::new(Self::list_element_kind(list.kind)));
+                    stack.push(list);
+                }
+                Instruction::ListPopVar(name) => {
+                    let list_kind = locals
+                        .get(name)
+                        .map(|shape| shape.kind)
+                        .unwrap_or(NativeValueKind::Int);
+                    stack.push(ValueShape::new(Self::list_element_kind(list_kind)));
+                }
+                Instruction::ListLen | Instruction::MapHas => {
+                    let _ = stack.pop();
+                    if matches!(instruction, Instruction::MapHas) {
+                        let _ = stack.pop();
+                    }
+                    stack.push(ValueShape::new(NativeValueKind::Int));
+                }
+                Instruction::MapKeys => {
+                    let map = stack
+                        .pop()
+                        .unwrap_or_else(|| ValueShape::new(NativeValueKind::Int));
+                    stack.push(ValueShape::new(Self::list_kind_from_elements(
+                        &map.key_kinds,
+                    )));
+                }
+                Instruction::MapValues => {
+                    let map = stack
+                        .pop()
+                        .unwrap_or_else(|| ValueShape::new(NativeValueKind::Int));
+                    stack.push(ValueShape::new(Self::list_kind_from_elements(
+                        &map.value_kinds,
+                    )));
+                }
+                Instruction::CallNamed { name, arg_count } => {
+                    for _ in 0..*arg_count {
+                        let _ = stack.pop();
+                    }
+                    stack.push(self.function_return_shape(name));
+                }
+                Instruction::Call(arg_count) => {
+                    for _ in 0..=*arg_count {
+                        let _ = stack.pop();
+                    }
+                    stack.push(ValueShape::new(NativeValueKind::Int));
+                }
+                Instruction::Return => {
+                    return stack
+                        .pop()
+                        .unwrap_or_else(|| ValueShape::new(NativeValueKind::Int));
+                }
+                Instruction::Print | Instruction::Pop | Instruction::JumpIfFalse(_) => {
+                    let _ = stack.pop();
+                }
+                Instruction::Add
+                | Instruction::Sub
+                | Instruction::Mul
+                | Instruction::Div
+                | Instruction::Mod
+                | Instruction::And
+                | Instruction::Or
+                | Instruction::Eq
+                | Instruction::NotEq
+                | Instruction::Lt
+                | Instruction::Gt
+                | Instruction::LtEq
+                | Instruction::GtEq => {
+                    let _ = stack.pop();
+                    let _ = stack.pop();
+                    stack.push(ValueShape::new(NativeValueKind::Int));
+                }
+                Instruction::Neg | Instruction::Not => {
+                    let _ = stack.pop();
+                    stack.push(ValueShape::new(NativeValueKind::Int));
+                }
+                Instruction::BackendCall { arg_count, .. } => {
+                    for _ in 0..*arg_count {
+                        let _ = stack.pop();
+                    }
+                    stack.push(ValueShape::new(NativeValueKind::Int));
+                }
+                Instruction::StoreIndex
+                | Instruction::PushScope
+                | Instruction::PopScope
+                | Instruction::Jump(_)
+                | Instruction::SpawnEvent(_)
+                | Instruction::Halt => {}
+            }
+        }
+
+        ValueShape::new(NativeValueKind::Int)
+    }
+
+    fn infer_return_kind_for_instructions(
+        &self,
+        function_name: &str,
+        instructions: &[Instruction],
+        constants: &[Constant],
+        known_functions: &HashMap<String, NativeValueKind>,
+    ) -> NativeValueKind {
+        let mut stack = Vec::new();
+        let mut locals = HashMap::new();
+
+        for instruction in instructions {
+            match instruction {
+                Instruction::LoadConst(id) => stack.push(Self::constant_kind(constants, *id)),
+                Instruction::LoadLocal(name) | Instruction::LoadGlobal(name) => {
+                    stack.push(*locals.get(name).unwrap_or(&NativeValueKind::Int));
+                }
+                Instruction::LoadParam(index) => {
+                    let kind = self
+                        .function_param_kinds
+                        .get(function_name)
+                        .and_then(|params| params.get(*index))
+                        .copied()
+                        .unwrap_or(NativeValueKind::Int);
+                    stack.push(kind);
+                }
+                Instruction::StoreLocal(name)
+                | Instruction::StoreGlobal(name)
+                | Instruction::StoreExisting(name) => {
+                    let kind = stack.pop().unwrap_or(NativeValueKind::Int);
+                    locals.insert(name.clone(), kind);
+                }
+                Instruction::CallNamed { name, arg_count } => {
+                    for _ in 0..*arg_count {
+                        let _ = stack.pop();
+                    }
+                    stack.push(*known_functions.get(name).unwrap_or(&NativeValueKind::Int));
+                }
+                Instruction::Call(arg_count) => {
+                    for _ in 0..=*arg_count {
+                        let _ = stack.pop();
+                    }
+                    stack.push(NativeValueKind::Int);
+                }
+                Instruction::Return => return stack.pop().unwrap_or(NativeValueKind::Int),
+                Instruction::Print | Instruction::Pop | Instruction::JumpIfFalse(_) => {
+                    let _ = stack.pop();
+                }
+                Instruction::Add
+                | Instruction::Sub
+                | Instruction::Mul
+                | Instruction::Div
+                | Instruction::Mod
+                | Instruction::And
+                | Instruction::Or
+                | Instruction::Eq
+                | Instruction::NotEq
+                | Instruction::Lt
+                | Instruction::Gt
+                | Instruction::LtEq
+                | Instruction::GtEq => {
+                    let _ = stack.pop();
+                    let _ = stack.pop();
+                    stack.push(NativeValueKind::Int);
+                }
+                Instruction::Neg | Instruction::Not => {
+                    let _ = stack.pop();
+                    stack.push(NativeValueKind::Int);
+                }
+                Instruction::NewList(count) => {
+                    let mut elements = Vec::new();
+                    for _ in 0..*count {
+                        elements.push(stack.pop().unwrap_or(NativeValueKind::Int));
+                    }
+                    stack.push(Self::list_kind_from_elements(&elements));
+                }
+                Instruction::LoadIndex => {
+                    let _ = stack.pop();
+                    let list_kind = stack.pop().unwrap_or(NativeValueKind::Int);
+                    stack.push(Self::list_element_kind(list_kind));
+                }
+                Instruction::ListPop => {
+                    let list_kind = stack.pop().unwrap_or(NativeValueKind::Int);
+                    stack.push(Self::list_element_kind(list_kind));
+                    stack.push(list_kind);
+                }
+                Instruction::ListLen
+                | Instruction::NewMap(_)
+                | Instruction::MapHas
+                | Instruction::MapKeys
+                | Instruction::MapValues
+                | Instruction::NewStruct(_, _)
+                | Instruction::LoadField(_) => stack.push(NativeValueKind::Int),
+                Instruction::ListPopVar(name) => {
+                    let list_kind = locals.get(name).copied().unwrap_or(NativeValueKind::Int);
+                    stack.push(Self::list_element_kind(list_kind));
+                }
+                Instruction::BackendCall { arg_count, .. } => {
+                    for _ in 0..*arg_count {
+                        let _ = stack.pop();
+                    }
+                    stack.push(NativeValueKind::Int);
+                }
+                Instruction::StoreIndex
+                | Instruction::StoreIndexVar(_)
+                | Instruction::ListPush
+                | Instruction::ListPushVar(_)
+                | Instruction::StoreFieldVar { .. }
+                | Instruction::PushScope
+                | Instruction::PopScope
+                | Instruction::Jump(_)
+                | Instruction::SpawnEvent(_)
+                | Instruction::Halt => {}
+            }
+        }
+
+        NativeValueKind::Int
+    }
+
     /// Create a new x86-64 code generator
     pub fn new() -> Self {
         Self {
             code: Vec::new(),
             data: Vec::new(),
             variables: HashMap::new(),
+            variable_kinds: HashMap::new(),
+            value_stack: Vec::new(),
             stack_offset: 0,
             stack_depth: 0,
             jump_targets: HashMap::new(),
             pending_jumps: Vec::new(),
             pending_data_patches: Vec::new(),
+            pending_function_address_patches: Vec::new(),
             function_addresses: HashMap::new(),
+            function_return_kinds: HashMap::new(),
+            function_return_shapes: HashMap::new(),
+            function_param_kinds: HashMap::new(),
+            current_function_name: None,
+            standalone_executable: false,
+            pending_standalone_print_calls: Vec::new(),
+            pending_standalone_print_string_calls: Vec::new(),
+            pending_standalone_string_eq_calls: Vec::new(),
+            pending_pe_import_calls: Vec::new(),
+            standalone_string_offsets: HashMap::new(),
+            predicted_load_index_kinds: VecDeque::new(),
+            predicted_load_field_kinds: VecDeque::new(),
+            predicted_map_view_kinds: VecDeque::new(),
         }
+    }
+
+    /// Create a code generator for standalone executable output.
+    pub fn new_standalone_executable() -> Self {
+        let mut codegen = Self::new();
+        codegen.standalone_executable = true;
+        codegen
     }
 
     /// Compile Matter bytecode to x86-64 machine code
     pub fn compile(&mut self, bytecode: &Bytecode) -> Result<Vec<u8>, String> {
+        let entry_patch = if self.standalone_executable {
+            Some(self.emit_standalone_process_entry())
+        } else {
+            None
+        };
+
+        self.function_param_kinds.clear();
+        self.function_return_kinds.clear();
+        self.function_return_shapes.clear();
+        for _ in 0..4 {
+            self.function_param_kinds = self.infer_function_param_kinds(bytecode);
+            self.function_return_kinds = self.infer_function_return_kinds(bytecode);
+            self.function_return_shapes = self.infer_function_return_shapes(bytecode);
+        }
+
         // First pass: compile all functions
         for (name, function) in &bytecode.functions {
             self.compile_function(name, function, &bytecode.constants)?;
         }
 
+        let standalone_named_main_entry = if self.standalone_executable
+            && Self::has_empty_top_level(&bytecode.main_instructions)
+            && bytecode.functions.contains_key("main")
+        {
+            Some(
+                *self
+                    .function_addresses
+                    .get("main")
+                    .ok_or_else(|| "Compiled main function address is missing".to_string())?,
+            )
+        } else {
+            None
+        };
+
         // Record main function start
-        let _main_start = self.code.len();
+        let main_start = self.code.len();
+        if let Some(entry_patch) = entry_patch {
+            self.patch_call_rel32(
+                entry_patch,
+                standalone_named_main_entry.unwrap_or(main_start),
+            );
+        }
 
         // Emit main function prologue
         self.emit_prologue();
@@ -93,6 +1152,16 @@ impl X86CodeGen {
         }
 
         // Third pass: compile main instructions
+        let (load_index_kinds, load_field_kinds, map_view_kinds) = self
+            .infer_dynamic_load_kinds_for_instructions(
+                &bytecode.main_instructions,
+                &bytecode.constants,
+                &[],
+            );
+        self.predicted_load_index_kinds.extend(load_index_kinds);
+        self.predicted_load_field_kinds.extend(load_field_kinds);
+        self.predicted_map_view_kinds.extend(map_view_kinds);
+
         for (ip, instr) in bytecode.main_instructions.iter().enumerate() {
             // Mark jump target
             if self.jump_targets.contains_key(&ip) {
@@ -105,11 +1174,40 @@ impl X86CodeGen {
         // Emit main function epilogue
         self.emit_epilogue();
 
+        if self.standalone_executable && !self.pending_standalone_print_calls.is_empty() {
+            let helper_offset = self.emit_standalone_print_i64_helper()?;
+            let calls = std::mem::take(&mut self.pending_standalone_print_calls);
+            for call_pos in calls {
+                self.patch_call_rel32(call_pos, helper_offset);
+            }
+        }
+
+        if self.standalone_executable && !self.pending_standalone_print_string_calls.is_empty() {
+            let helper_offset = self.emit_standalone_print_string_helper()?;
+            let calls = std::mem::take(&mut self.pending_standalone_print_string_calls);
+            for call_pos in calls {
+                self.patch_call_rel32(call_pos, helper_offset);
+            }
+        }
+
+        if self.standalone_executable && !self.pending_standalone_string_eq_calls.is_empty() {
+            let helper_offset = self.emit_standalone_string_eq_helper();
+            let calls = std::mem::take(&mut self.pending_standalone_string_eq_calls);
+            for call_pos in calls {
+                self.patch_call_rel32(call_pos, helper_offset);
+            }
+        }
+
         // Fourth pass: patch jumps
         self.patch_jumps()?;
+        self.patch_function_address_patches()?;
 
-        // Capture code length for data patching
+        // Capture code length for data patching. PE import calls must use the
+        // final .text payload size because this generator appends literal data
+        // to .text before the linker places .idata.
         let code_len = self.code.len();
+        let text_len = code_len + self.data.len();
+        self.patch_pe_import_calls(text_len)?;
 
         // Append data section at the end
         self.code.extend_from_slice(&self.data);
@@ -133,12 +1231,20 @@ impl X86CodeGen {
 
         // Save current state
         let saved_variables = self.variables.clone();
+        let saved_variable_kinds = self.variable_kinds.clone();
+        let saved_value_stack = self.value_stack.clone();
+        let saved_current_function_name = self.current_function_name.clone();
         let saved_stack_offset = self.stack_offset;
+        let saved_stack_depth = self.stack_depth;
         let saved_jump_targets = self.jump_targets.clone();
         let saved_pending_jumps = self.pending_jumps.clone();
 
         // Reset for function compilation
         self.variables.clear();
+        self.variable_kinds.clear();
+        self.value_stack.clear();
+        self.stack_depth = 0;
+        self.current_function_name = Some(name.to_string());
         self.jump_targets.clear();
         self.pending_jumps.clear();
 
@@ -170,6 +1276,13 @@ impl X86CodeGen {
             let param_name = format!("__param_{}", i);
             self.stack_offset -= 8;
             self.variables.insert(param_name.clone(), self.stack_offset);
+            let param_kind = self
+                .function_param_kinds
+                .get(name)
+                .and_then(|params| params.get(i))
+                .copied()
+                .unwrap_or(NativeValueKind::Int);
+            self.variable_kinds.insert(param_name.clone(), param_kind);
 
             // Store parameter from register or load from caller stack.
             let reg_idx = i + 1; // Skip first register (runtime pointer)
@@ -197,6 +1310,21 @@ impl X86CodeGen {
         }
 
         // Second pass: compile instructions
+        let param_kinds = self
+            .function_param_kinds
+            .get(name)
+            .cloned()
+            .unwrap_or_default();
+        let (load_index_kinds, load_field_kinds, map_view_kinds) = self
+            .infer_dynamic_load_kinds_for_instructions(
+                &function.instructions,
+                constants,
+                &param_kinds,
+            );
+        self.predicted_load_index_kinds.extend(load_index_kinds);
+        self.predicted_load_field_kinds.extend(load_field_kinds);
+        self.predicted_map_view_kinds.extend(map_view_kinds);
+
         for (ip, instr) in function.instructions.iter().enumerate() {
             if self.jump_targets.contains_key(&ip) {
                 self.jump_targets.insert(ip, self.code.len());
@@ -216,7 +1344,11 @@ impl X86CodeGen {
 
         // Restore state
         self.variables = saved_variables;
+        self.variable_kinds = saved_variable_kinds;
+        self.value_stack = saved_value_stack;
+        self.current_function_name = saved_current_function_name;
         self.stack_offset = saved_stack_offset;
+        self.stack_depth = saved_stack_depth;
         self.jump_targets = saved_jump_targets;
         self.pending_jumps = saved_pending_jumps;
 
@@ -246,19 +1378,19 @@ impl X86CodeGen {
                 self.compile_div()?;
             }
             Instruction::Mod => {
-                return Err("Mod not supported in native yet".to_string());
+                self.compile_mod()?;
             }
             Instruction::Neg => {
-                return Err("Neg not supported in native yet".to_string());
+                self.compile_neg()?;
             }
             Instruction::And => {
-                return Err("And not supported in native yet".to_string());
+                self.compile_and()?;
             }
             Instruction::Or => {
-                return Err("Or not supported in native yet".to_string());
+                self.compile_or()?;
             }
             Instruction::Not => {
-                return Err("Not not supported in native yet".to_string());
+                self.compile_not()?;
             }
             Instruction::Eq => {
                 self.compile_eq()?;
@@ -314,8 +1446,8 @@ impl X86CodeGen {
                 // For now, we assume the call is to a name we can lookup.
                 self.compile_call(*arg_count)?;
             }
-            Instruction::CallNamed { arg_count, .. } => {
-                self.compile_call(*arg_count)?;
+            Instruction::CallNamed { name, arg_count } => {
+                self.compile_named_call(name, *arg_count)?;
             }
             Instruction::Halt | Instruction::Return => {
                 self.compile_return()?;
@@ -416,6 +1548,15 @@ impl X86CodeGen {
                 self.emit_push(Register::RAX);
             }
             Constant::String(s) => {
+                if self.standalone_executable {
+                    let string_offset = self.add_data_standalone_string(s);
+                    let patch_pos = self.code.len() + 3; // Offset in lea rax, [rip + disp32]
+                    self.emit_lea_rip(Register::RAX, 0);
+                    self.pending_data_patches.push((patch_pos, string_offset));
+                    self.emit_push_typed(Register::RAX, NativeValueKind::String);
+                    return Ok(());
+                }
+
                 // Native path currently represents values as i64.
                 // Use a stable hash for string constants so map keys are not all zero.
                 let hash = self.hash_type_name(s);
@@ -484,10 +1625,91 @@ impl X86CodeGen {
         Ok(())
     }
 
+    fn compile_mod(&mut self) -> Result<(), String> {
+        self.emit_pop_checked(Register::RBX, "Mod")?; // Divisor
+        self.emit_pop_checked(Register::RAX, "Mod")?; // Dividend
+
+        self.emit_cqo();
+        self.emit_div_reg(Register::RBX);
+        self.emit_push(Register::RDX);
+
+        Ok(())
+    }
+
+    fn compile_neg(&mut self) -> Result<(), String> {
+        self.emit_pop_checked(Register::RAX, "Neg")?;
+        self.code.extend_from_slice(&[0x48, 0xF7, 0xD8]); // neg rax
+        self.emit_push(Register::RAX);
+
+        Ok(())
+    }
+
+    fn compile_and(&mut self) -> Result<(), String> {
+        self.emit_pop_checked(Register::RBX, "And")?;
+        self.emit_pop_checked(Register::RAX, "And")?;
+        self.emit_boolize(Register::RAX);
+        self.emit_boolize(Register::RBX);
+        self.code.extend_from_slice(&[0x48, 0x21, 0xD8]); // and rax, rbx
+        self.emit_push(Register::RAX);
+
+        Ok(())
+    }
+
+    fn compile_or(&mut self) -> Result<(), String> {
+        self.emit_pop_checked(Register::RBX, "Or")?;
+        self.emit_pop_checked(Register::RAX, "Or")?;
+        self.emit_boolize(Register::RAX);
+        self.emit_boolize(Register::RBX);
+        self.code.extend_from_slice(&[0x48, 0x09, 0xD8]); // or rax, rbx
+        self.emit_push(Register::RAX);
+
+        Ok(())
+    }
+
+    fn compile_not(&mut self) -> Result<(), String> {
+        self.emit_pop_checked(Register::RAX, "Not")?;
+        self.emit_boolize(Register::RAX);
+        self.code.extend_from_slice(&[0x48, 0x83, 0xF0, 0x01]); // xor rax, 1
+        self.emit_push(Register::RAX);
+
+        Ok(())
+    }
+
     /// Compile comparison instruction
     fn compile_comparison(&mut self, predicate: &str) -> Result<(), String> {
-        self.emit_pop_checked(Register::RBX, predicate)?; // Right
-        self.emit_pop_checked(Register::RAX, predicate)?; // Left
+        let right_kind = self.emit_pop_checked(Register::RBX, predicate)?; // Right
+        let left_kind = self.emit_pop_checked(Register::RAX, predicate)?; // Left
+
+        if left_kind == NativeValueKind::String || right_kind == NativeValueKind::String {
+            if !self.standalone_executable {
+                return Err(format!(
+                    "String comparison is only supported in standalone native executables for predicate {}",
+                    predicate
+                ));
+            }
+            if left_kind != NativeValueKind::String || right_kind != NativeValueKind::String {
+                return Err(format!(
+                    "Cannot compare string and non-string values with predicate {}",
+                    predicate
+                ));
+            }
+            if predicate != "e" && predicate != "ne" {
+                return Err(format!(
+                    "Standalone native string comparison only supports equality and inequality, got {}",
+                    predicate
+                ));
+            }
+
+            let call_pos = self.code.len();
+            self.code.push(0xE8); // call rel32
+            self.code.extend_from_slice(&0i32.to_le_bytes());
+            self.pending_standalone_string_eq_calls.push(call_pos);
+            if predicate == "ne" {
+                self.code.extend_from_slice(&[0x48, 0x83, 0xF0, 0x01]); // xor rax, 1
+            }
+            self.emit_push(Register::RAX);
+            return Ok(());
+        }
 
         // cmp rax, rbx
         self.emit_cmp_reg(Register::RAX, Register::RBX);
@@ -529,13 +1751,14 @@ impl X86CodeGen {
 
     /// Compile StoreLocal instruction
     fn compile_store_local(&mut self, name: &str) -> Result<(), String> {
-        self.emit_pop_checked(Register::RAX, "StoreLocal")?;
+        let kind = self.emit_pop_checked(Register::RAX, "StoreLocal")?;
 
         // Allocate stack space if variable doesn't exist
         if !self.variables.contains_key(name) {
             self.stack_offset -= 8;
             self.variables.insert(name.to_string(), self.stack_offset);
         }
+        self.variable_kinds.insert(name.to_string(), kind);
 
         let offset = self.variables[name];
 
@@ -550,11 +1773,17 @@ impl X86CodeGen {
         let offset = self
             .variables
             .get(name)
+            .copied()
             .ok_or_else(|| format!("Undefined variable: {}", name))?;
 
         // mov rax, [rbp + offset]
-        self.emit_mov_from_stack(Register::RAX, *offset);
-        self.emit_push(Register::RAX);
+        self.emit_mov_from_stack(Register::RAX, offset);
+        let kind = self
+            .variable_kinds
+            .get(name)
+            .copied()
+            .unwrap_or(NativeValueKind::Int);
+        self.emit_push_typed(Register::RAX, kind);
 
         Ok(())
     }
@@ -562,11 +1791,13 @@ impl X86CodeGen {
     /// Compile LoadGlobal instruction
     fn compile_load_global(&mut self, name: &str) -> Result<(), String> {
         // Check if this is a function name
-        if let Some(&func_addr) = self.function_addresses.get(name) {
-            // Load function address directly
-            self.emit_mov_imm(Register::RAX, func_addr as i64);
-            self.emit_push(Register::RAX);
+        if self.function_addresses.contains_key(name) {
+            self.emit_function_address(name)?;
             return Ok(());
+        }
+
+        if self.standalone_executable {
+            return self.compile_load_local(name);
         }
 
         // Otherwise, load from runtime globals
@@ -578,7 +1809,7 @@ impl X86CodeGen {
         #[cfg(not(windows))]
         let arg1_reg = Register::RDI;
 
-        self.emit_mov_from_stack(arg1_reg, -8);
+        self.emit_mov_from_stack(arg1_reg, RUNTIME_PTR_STACK_OFFSET);
 
         // 2. Load name address into RDX/RSI using LEA RIP-relative
         #[cfg(windows)]
@@ -603,6 +1834,10 @@ impl X86CodeGen {
 
     /// Compile StoreGlobal instruction
     fn compile_store_global(&mut self, name: &str) -> Result<(), String> {
+        if self.standalone_executable {
+            return self.compile_store_local(name);
+        }
+
         let name_offset = self.add_data_string(name);
 
         // 1. Pop value to store into R8/RDX (3rd arg)
@@ -618,7 +1853,7 @@ impl X86CodeGen {
         let arg1_reg = Register::RCX;
         #[cfg(not(windows))]
         let arg1_reg = Register::RDI;
-        self.emit_mov_from_stack(arg1_reg, -8);
+        self.emit_mov_from_stack(arg1_reg, RUNTIME_PTR_STACK_OFFSET);
 
         // 3. Load name address into RDX/RSI (2nd arg)
         #[cfg(windows)]
@@ -643,6 +1878,18 @@ impl X86CodeGen {
         let offset = self.data.len();
         self.data.extend_from_slice(s.as_bytes());
         self.data.push(0); // Null terminator
+        offset
+    }
+
+    fn add_data_standalone_string(&mut self, s: &str) -> usize {
+        if let Some(offset) = self.standalone_string_offsets.get(s) {
+            return *offset;
+        }
+
+        let offset = self.data.len();
+        self.data.extend_from_slice(&(s.len() as u64).to_le_bytes());
+        self.data.extend_from_slice(s.as_bytes());
+        self.standalone_string_offsets.insert(s.to_string(), offset);
         offset
     }
 
@@ -673,6 +1920,25 @@ impl X86CodeGen {
 
     /// Compile Print instruction
     fn compile_print(&mut self) -> Result<(), String> {
+        if self.standalone_executable {
+            let kind = self.emit_pop_checked(Register::RAX, "Print")?;
+            let call_pos = self.code.len();
+            self.code.push(0xE8); // call rel32
+            self.code.extend_from_slice(&0i32.to_le_bytes());
+            match kind {
+                NativeValueKind::Int => self.pending_standalone_print_calls.push(call_pos),
+                NativeValueKind::String => {
+                    self.pending_standalone_print_string_calls.push(call_pos)
+                }
+                NativeValueKind::ListInt | NativeValueKind::ListString => {
+                    return Err(
+                        "Standalone native Print does not support list values yet".to_string()
+                    )
+                }
+            }
+            return Ok(());
+        }
+
         self.emit_pop_checked(Register::RAX, "Print")?; // Value to print
 
         // Move value to first argument register (Windows: RCX, Linux: RDI)
@@ -692,6 +1958,14 @@ impl X86CodeGen {
 
     /// Compile Call instruction
     fn compile_call(&mut self, arg_count: usize) -> Result<(), String> {
+        self.compile_call_with_return_kind(arg_count, NativeValueKind::Int)
+    }
+
+    fn compile_call_with_return_kind(
+        &mut self,
+        arg_count: usize,
+        return_kind: NativeValueKind,
+    ) -> Result<(), String> {
         // System V AMD64 ABI calling convention:
         // Arguments in: RDI, RSI, RDX, RCX, R8, R9, then stack (Linux/macOS)
         // Windows x64: RCX, RDX, R8, R9, then stack
@@ -729,7 +2003,7 @@ impl X86CodeGen {
         }
 
         // Load runtime pointer into first argument register
-        self.emit_mov_from_stack(arg_regs[0], -8);
+        self.emit_mov_from_stack(arg_regs[0], RUNTIME_PTR_STACK_OFFSET);
 
         // Load arguments from temporary storage into registers
         let mut current_offset = temp_stack_offset;
@@ -780,7 +2054,7 @@ impl X86CodeGen {
         }
 
         // Push return value
-        self.emit_push(Register::RAX);
+        self.emit_push_typed(Register::RAX, return_kind);
 
         Ok(())
     }
@@ -788,17 +2062,21 @@ impl X86CodeGen {
     /// Compile Return instruction
     fn compile_return(&mut self) -> Result<(), String> {
         // Pop return value from stack if present
-        if self.stack_depth > 0 {
-            self.emit_pop(Register::RAX);
+        let return_kind = if self.stack_depth > 0 {
+            self.emit_pop(Register::RAX)
         } else {
             // Default return 0 (Unit)
             self.emit_mov_imm(Register::RAX, 0);
+            NativeValueKind::Int
+        };
+
+        if let Some(name) = &self.current_function_name {
+            self.function_return_kinds.insert(name.clone(), return_kind);
         }
 
-        // Emit function epilogue (restores RBP and returns)
-        // Note: Don't call emit_epilogue here as it's already called at the end of main
-        // Instead, just emit the return instruction
-        self.code.push(0xC3); // ret
+        // Restore the native stack frame before returning to either the Matter
+        // executable shim or another generated function.
+        self.emit_epilogue();
 
         Ok(())
     }
@@ -807,6 +2085,255 @@ impl X86CodeGen {
     fn compile_pop(&mut self) -> Result<(), String> {
         self.emit_pop_checked(Register::RAX, "Pop")?;
         Ok(())
+    }
+
+    fn compile_named_call(&mut self, name: &str, arg_count: usize) -> Result<(), String> {
+        let return_kind = self
+            .function_return_kinds
+            .get(name)
+            .copied()
+            .unwrap_or(NativeValueKind::Int);
+        self.emit_function_address(name)?;
+        self.compile_call_with_return_kind(arg_count, return_kind)
+    }
+
+    fn emit_function_address(&mut self, name: &str) -> Result<(), String> {
+        let patch_pos = self.code.len() + 3;
+        self.emit_lea_rip(Register::RAX, 0);
+        if let Some(&func_addr) = self.function_addresses.get(name) {
+            self.patch_rip_relative_disp32(patch_pos, func_addr)
+                .map_err(|_| format!("Function address out of range: {}", name))?;
+        } else {
+            self.pending_function_address_patches
+                .push((patch_pos, name.to_string()));
+        }
+        self.emit_push(Register::RAX);
+        Ok(())
+    }
+
+    fn emit_standalone_process_entry(&mut self) -> usize {
+        self.code.extend_from_slice(&[0x48, 0x83, 0xEC, 0x28]); // sub rsp, 40
+        self.code.extend_from_slice(&[0x48, 0x31, 0xC9]); // xor rcx, rcx
+
+        let call_pos = self.code.len();
+        self.code.push(0xE8); // call Matter main
+        self.code.extend_from_slice(&0i32.to_le_bytes());
+
+        self.code.extend_from_slice(&[0x31, 0xC9]); // xor ecx, ecx
+        self.emit_call_pe_import(PeImport::ExitProcess);
+        self.code.push(0xF4); // hlt, unreachable after ExitProcess
+
+        call_pos
+    }
+
+    #[cfg(windows)]
+    fn emit_standalone_print_i64_helper(&mut self) -> Result<usize, String> {
+        let helper_offset = self.code.len();
+
+        self.code.push(0x55); // push rbp
+        self.code.extend_from_slice(&[0x48, 0x89, 0xE5]); // mov rbp, rsp
+        self.code.extend_from_slice(&[0x48, 0x83, 0xEC, 0x60]); // sub rsp, 96
+
+        self.code
+            .extend_from_slice(&[0x4C, 0x8D, 0x95, 0xFF, 0xFF, 0xFF, 0xFF]); // lea r10, [rbp - 1]
+        self.code.extend_from_slice(&[0x41, 0xC6, 0x02, 0x0A]); // mov byte ptr [r10], '\n'
+        self.emit_mov_imm(Register::R8, 1); // bytes to write
+        self.code.extend_from_slice(&[0x45, 0x31, 0xC9]); // xor r9d, r9d (negative flag)
+
+        self.emit_test_reg(Register::RAX);
+        let nonzero_jump = self.code.len();
+        self.emit_jne(0);
+        self.emit_standalone_decimal_digit(b'0');
+        let zero_done_jump = self.code.len();
+        self.emit_jmp(0);
+
+        let nonzero_pos = self.code.len();
+        self.patch_jcc_rel32(nonzero_jump, nonzero_pos);
+        self.emit_test_reg(Register::RAX);
+        let positive_jump = self.code.len();
+        self.emit_jge(0);
+        self.code.extend_from_slice(&[0x48, 0xF7, 0xD8]); // neg rax
+        self.emit_mov_imm(Register::R9, 1);
+
+        let convert_pos = self.code.len();
+        self.patch_jcc_rel32(positive_jump, convert_pos);
+        self.emit_mov_imm(Register::RCX, 10);
+        let loop_pos = self.code.len();
+        self.code.extend_from_slice(&[0x31, 0xD2]); // xor edx, edx
+        self.code.extend_from_slice(&[0x48, 0xF7, 0xF1]); // div rcx
+        self.code.extend_from_slice(&[0x80, 0xC2, b'0']); // add dl, '0'
+        self.code.extend_from_slice(&[0x49, 0xFF, 0xCA]); // dec r10
+        self.code.extend_from_slice(&[0x41, 0x88, 0x12]); // mov [r10], dl
+        self.code.extend_from_slice(&[0x49, 0xFF, 0xC0]); // inc r8
+        self.emit_test_reg(Register::RAX);
+        let loop_jump = self.code.len();
+        self.emit_jne(0);
+        self.patch_jcc_rel32(loop_jump, loop_pos);
+
+        self.code.extend_from_slice(&[0x4D, 0x85, 0xC9]); // test r9, r9
+        let write_jump = self.code.len();
+        self.emit_je(0);
+        self.emit_standalone_decimal_digit(b'-');
+
+        let write_pos = self.code.len();
+        self.patch_jmp_rel32(zero_done_jump, write_pos);
+        self.patch_jcc_rel32(write_jump, write_pos);
+
+        self.code.extend_from_slice(&[0xB9, 0xF5, 0xFF, 0xFF, 0xFF]); // mov ecx, -11
+        self.emit_call_pe_import(PeImport::GetStdHandle);
+        self.code.extend_from_slice(&[0x48, 0x89, 0xC1]); // mov rcx, rax
+        self.code.extend_from_slice(&[0x4C, 0x89, 0xD2]); // mov rdx, r10
+        self.code
+            .extend_from_slice(&[0x4C, 0x8D, 0x8D, 0xF0, 0xFF, 0xFF, 0xFF]); // lea r9, [rbp - 16]
+        self.code
+            .extend_from_slice(&[0x48, 0xC7, 0x44, 0x24, 0x20, 0, 0, 0, 0]); // overlapped = null
+        self.emit_call_pe_import(PeImport::WriteFile);
+
+        self.emit_epilogue();
+        Ok(helper_offset)
+    }
+
+    #[cfg(not(windows))]
+    fn emit_standalone_print_i64_helper(&mut self) -> Result<usize, String> {
+        Err("Standalone native Print is only implemented for Windows x86-64 PE output".to_string())
+    }
+
+    #[cfg(windows)]
+    fn emit_standalone_print_string_helper(&mut self) -> Result<usize, String> {
+        let helper_offset = self.code.len();
+
+        self.code.push(0x55); // push rbp
+        self.code.extend_from_slice(&[0x48, 0x89, 0xE5]); // mov rbp, rsp
+        self.code.extend_from_slice(&[0x48, 0x83, 0xEC, 0x60]); // sub rsp, 96
+
+        self.emit_mov_to_stack(-24, Register::RAX); // Preserve [len][bytes] pointer.
+
+        self.code.extend_from_slice(&[0xB9, 0xF5, 0xFF, 0xFF, 0xFF]); // mov ecx, -11
+        self.emit_call_pe_import(PeImport::GetStdHandle);
+        self.code.extend_from_slice(&[0x48, 0x89, 0xC1]); // mov rcx, rax
+        self.emit_mov_from_stack(Register::R11, -24);
+        self.code.extend_from_slice(&[0x49, 0x8D, 0x53, 0x08]); // lea rdx, [r11 + 8]
+        self.code.extend_from_slice(&[0x4D, 0x8B, 0x03]); // mov r8, [r11]
+        self.code
+            .extend_from_slice(&[0x4C, 0x8D, 0x8D, 0xF0, 0xFF, 0xFF, 0xFF]); // lea r9, [rbp - 16]
+        self.code
+            .extend_from_slice(&[0x48, 0xC7, 0x44, 0x24, 0x20, 0, 0, 0, 0]); // overlapped = null
+        self.emit_call_pe_import(PeImport::WriteFile);
+
+        self.code
+            .extend_from_slice(&[0xC6, 0x85, 0xEF, 0xFF, 0xFF, 0xFF, 0x0A]); // mov byte [rbp - 17], '\n'
+        self.code.extend_from_slice(&[0xB9, 0xF5, 0xFF, 0xFF, 0xFF]); // mov ecx, -11
+        self.emit_call_pe_import(PeImport::GetStdHandle);
+        self.code.extend_from_slice(&[0x48, 0x89, 0xC1]); // mov rcx, rax
+        self.code
+            .extend_from_slice(&[0x48, 0x8D, 0x95, 0xEF, 0xFF, 0xFF, 0xFF]); // lea rdx, [rbp - 17]
+        self.emit_mov_imm(Register::R8, 1);
+        self.code
+            .extend_from_slice(&[0x4C, 0x8D, 0x8D, 0xF0, 0xFF, 0xFF, 0xFF]); // lea r9, [rbp - 16]
+        self.code
+            .extend_from_slice(&[0x48, 0xC7, 0x44, 0x24, 0x20, 0, 0, 0, 0]); // overlapped = null
+        self.emit_call_pe_import(PeImport::WriteFile);
+
+        self.emit_epilogue();
+        Ok(helper_offset)
+    }
+
+    #[cfg(not(windows))]
+    fn emit_standalone_print_string_helper(&mut self) -> Result<usize, String> {
+        Err("Standalone native Print is only implemented for Windows x86-64 PE output".to_string())
+    }
+
+    fn emit_standalone_string_eq_helper(&mut self) -> usize {
+        let helper_offset = self.code.len();
+
+        self.code.push(0x55); // push rbp
+        self.code.extend_from_slice(&[0x48, 0x89, 0xE5]); // mov rbp, rsp
+
+        self.code.extend_from_slice(&[0x48, 0x8B, 0x10]); // mov rdx, [rax]
+        self.code.extend_from_slice(&[0x48, 0x3B, 0x13]); // cmp rdx, [rbx]
+        let length_mismatch_jump = self.code.len();
+        self.emit_jne(0);
+
+        self.code.extend_from_slice(&[0x4C, 0x8D, 0x40, 0x08]); // lea r8, [rax + 8]
+        self.code.extend_from_slice(&[0x4C, 0x8D, 0x4B, 0x08]); // lea r9, [rbx + 8]
+        self.emit_test_reg(Register::RDX);
+        let empty_string_jump = self.code.len();
+        self.emit_je(0);
+
+        let loop_pos = self.code.len();
+        self.code.extend_from_slice(&[0x41, 0x8A, 0x08]); // mov cl, [r8]
+        self.code.extend_from_slice(&[0x41, 0x3A, 0x09]); // cmp cl, [r9]
+        let byte_mismatch_jump = self.code.len();
+        self.emit_jne(0);
+        self.code.extend_from_slice(&[0x49, 0xFF, 0xC0]); // inc r8
+        self.code.extend_from_slice(&[0x49, 0xFF, 0xC1]); // inc r9
+        self.code.extend_from_slice(&[0x48, 0xFF, 0xCA]); // dec rdx
+        let loop_jump = self.code.len();
+        self.emit_jne(0);
+        self.patch_jcc_rel32(loop_jump, loop_pos);
+
+        let equal_pos = self.code.len();
+        self.patch_jcc_rel32(empty_string_jump, equal_pos);
+        self.emit_mov_imm(Register::RAX, 1);
+        let done_jump = self.code.len();
+        self.emit_jmp(0);
+
+        let not_equal_pos = self.code.len();
+        self.patch_jcc_rel32(length_mismatch_jump, not_equal_pos);
+        self.patch_jcc_rel32(byte_mismatch_jump, not_equal_pos);
+        self.code.extend_from_slice(&[0x48, 0x31, 0xC0]); // xor rax, rax
+
+        let done_pos = self.code.len();
+        self.patch_jmp_rel32(done_jump, done_pos);
+        self.emit_epilogue();
+
+        helper_offset
+    }
+
+    fn emit_standalone_decimal_digit(&mut self, byte: u8) {
+        self.code.extend_from_slice(&[0x49, 0xFF, 0xCA]); // dec r10
+        self.code.extend_from_slice(&[0x41, 0xC6, 0x02, byte]); // mov byte ptr [r10], byte
+        self.code.extend_from_slice(&[0x49, 0xFF, 0xC0]); // inc r8
+    }
+
+    fn emit_call_pe_import(&mut self, import: PeImport) {
+        let call_pos = self.code.len();
+        self.code.extend_from_slice(&[0xFF, 0x15]);
+        self.code.extend_from_slice(&0i32.to_le_bytes());
+        self.pending_pe_import_calls.push((call_pos, import));
+    }
+
+    #[cfg(windows)]
+    fn emit_standalone_heap_alloc(&mut self, size: usize) {
+        self.emit_sub_imm(Register::RSP, 32);
+        self.emit_call_pe_import(PeImport::GetProcessHeap);
+        self.emit_mov_reg(Register::RCX, Register::RAX);
+        self.code.extend_from_slice(&[0x31, 0xD2]); // xor edx, edx
+        self.emit_mov_imm(Register::R8, size as i64);
+        self.emit_call_pe_import(PeImport::HeapAlloc);
+        self.emit_add_imm(Register::RSP, 32);
+    }
+
+    #[cfg(windows)]
+    fn emit_standalone_heap_alloc_reg(&mut self, size: Register) {
+        self.emit_mov_reg(Register::RBX, size);
+        self.emit_sub_imm(Register::RSP, 32);
+        self.emit_call_pe_import(PeImport::GetProcessHeap);
+        self.emit_mov_reg(Register::RCX, Register::RAX);
+        self.code.extend_from_slice(&[0x31, 0xD2]); // xor edx, edx
+        self.emit_mov_reg(Register::R8, Register::RBX);
+        self.emit_call_pe_import(PeImport::HeapAlloc);
+        self.emit_add_imm(Register::RSP, 32);
+    }
+
+    #[cfg(not(windows))]
+    fn emit_standalone_heap_alloc(&mut self, _size: usize) {
+        self.emit_mov_imm(Register::RAX, 0);
+    }
+
+    #[cfg(not(windows))]
+    fn emit_standalone_heap_alloc_reg(&mut self, _size: Register) {
+        self.emit_mov_imm(Register::RAX, 0);
     }
 
     /// Compile BackendCall instruction
@@ -826,10 +2353,30 @@ impl X86CodeGen {
 
         let expected_math_arity = match (backend, method) {
             ("math", "add" | "sub" | "mul" | "div") => Some(2),
-            ("math", "neg") => Some(1),
+            ("math", "abs" | "neg") => Some(1),
+            ("math", "clamp") => Some(3),
+            ("math", "max" | "min" | "mod" | "pow") => Some(2),
+            ("math", "sqrt") => Some(1),
             _ => None,
         };
         if let Some(expected_arity) = expected_math_arity {
+            if arg_count != expected_arity {
+                self.pop_n_for_backend_call(arg_count, backend, method)?;
+                let panic_msg = format!(
+                    "Invalid arity for backend call {}.{}: expected {}, got {}",
+                    backend, method, expected_arity, arg_count
+                );
+                self.emit_panic_message(&panic_msg);
+                return Ok(());
+            }
+        }
+
+        let expected_string_arity = match (backend, method) {
+            ("string", "contains") => Some(2),
+            ("string", "len") => Some(1),
+            _ => None,
+        };
+        if let Some(expected_arity) = expected_string_arity {
             if arg_count != expected_arity {
                 self.pop_n_for_backend_call(arg_count, backend, method)?;
                 let panic_msg = format!(
@@ -963,6 +2510,329 @@ impl X86CodeGen {
                     self.patch_jmp_rel32(end_jump_pos, end_pos);
                     return Ok(());
                 }
+                ("abs", 1) => {
+                    self.pop_for_backend_call(Register::RAX, backend, method)?;
+
+                    self.emit_mov_imm(Register::RCX, i64::MIN);
+                    self.emit_cmp_reg(Register::RAX, Register::RCX);
+                    let abs_overflow_jump_pos = self.code.len();
+                    self.emit_je(0);
+
+                    self.emit_test_reg(Register::RAX);
+                    let non_negative_jump_pos = self.code.len();
+                    self.emit_jge(0);
+                    self.code.extend_from_slice(&[0x48, 0xF7, 0xD8]); // neg rax
+
+                    let push_pos = self.code.len();
+                    self.patch_jcc_rel32(non_negative_jump_pos, push_pos);
+                    self.emit_push(Register::RAX);
+
+                    let end_jump_pos = self.code.len();
+                    self.emit_jmp(0);
+
+                    let panic_pos = self.code.len();
+                    self.patch_jcc_rel32(abs_overflow_jump_pos, panic_pos);
+                    self.emit_panic_message("Overflow in math.abs");
+
+                    let end_pos = self.code.len();
+                    self.patch_jmp_rel32(end_jump_pos, end_pos);
+                    return Ok(());
+                }
+                ("min", 2) => {
+                    self.pop_for_backend_call(Register::RBX, backend, method)?; // rhs
+                    self.pop_for_backend_call(Register::RAX, backend, method)?; // lhs
+
+                    self.emit_cmp_reg(Register::RAX, Register::RBX);
+                    let lhs_is_min_jump_pos = self.code.len();
+                    self.emit_jl(0);
+                    self.emit_mov_reg(Register::RAX, Register::RBX);
+
+                    let push_pos = self.code.len();
+                    self.patch_jcc_rel32(lhs_is_min_jump_pos, push_pos);
+                    self.emit_push(Register::RAX);
+                    return Ok(());
+                }
+                ("max", 2) => {
+                    self.pop_for_backend_call(Register::RBX, backend, method)?; // rhs
+                    self.pop_for_backend_call(Register::RAX, backend, method)?; // lhs
+
+                    self.emit_cmp_reg(Register::RAX, Register::RBX);
+                    let lhs_is_max_jump_pos = self.code.len();
+                    self.emit_jge(0);
+                    self.emit_mov_reg(Register::RAX, Register::RBX);
+
+                    let push_pos = self.code.len();
+                    self.patch_jcc_rel32(lhs_is_max_jump_pos, push_pos);
+                    self.emit_push(Register::RAX);
+                    return Ok(());
+                }
+                ("mod", 2) => {
+                    self.pop_for_backend_call(Register::RBX, backend, method)?; // rhs
+                    self.pop_for_backend_call(Register::RAX, backend, method)?; // lhs
+
+                    self.emit_test_reg(Register::RBX);
+                    let div_zero_jump_pos = self.code.len();
+                    self.emit_je(0);
+
+                    self.emit_mov_imm(Register::RCX, i64::MIN);
+                    self.emit_cmp_reg(Register::RAX, Register::RCX);
+                    let maybe_overflow_jump_pos = self.code.len();
+                    self.emit_jne(0);
+                    self.emit_cmp_imm(Register::RBX, -1);
+                    let div_overflow_jump_pos = self.code.len();
+                    self.emit_je(0);
+
+                    let continue_div_pos = self.code.len();
+                    self.emit_cqo();
+                    self.emit_div_reg(Register::RBX);
+                    self.emit_push(Register::RDX);
+
+                    let end_jump_pos = self.code.len();
+                    self.emit_jmp(0);
+
+                    let div_zero_panic_pos = self.code.len();
+                    self.patch_jcc_rel32(div_zero_jump_pos, div_zero_panic_pos);
+                    self.patch_jcc_rel32(maybe_overflow_jump_pos, continue_div_pos);
+                    self.emit_panic_message("Division by zero in math.mod");
+
+                    let div_overflow_panic_pos = self.code.len();
+                    self.patch_jcc_rel32(div_overflow_jump_pos, div_overflow_panic_pos);
+                    self.emit_panic_message("Overflow in math.mod");
+
+                    let end_pos = self.code.len();
+                    self.patch_jmp_rel32(end_jump_pos, end_pos);
+                    return Ok(());
+                }
+                ("clamp", 3) => {
+                    self.pop_for_backend_call(Register::RDX, backend, method)?; // max
+                    self.pop_for_backend_call(Register::RBX, backend, method)?; // min
+                    self.pop_for_backend_call(Register::RAX, backend, method)?; // value
+
+                    self.emit_cmp_reg(Register::RDX, Register::RBX);
+                    let invalid_range_jump_pos = self.code.len();
+                    self.emit_jl(0);
+
+                    self.emit_cmp_reg(Register::RAX, Register::RBX);
+                    let above_min_jump_pos = self.code.len();
+                    self.emit_jge(0);
+                    self.emit_mov_reg(Register::RAX, Register::RBX);
+
+                    let upper_check_pos = self.code.len();
+                    self.patch_jcc_rel32(above_min_jump_pos, upper_check_pos);
+                    self.emit_cmp_reg(Register::RAX, Register::RDX);
+                    let below_max_jump_pos = self.code.len();
+                    self.emit_jl(0);
+                    self.emit_mov_reg(Register::RAX, Register::RDX);
+
+                    let push_pos = self.code.len();
+                    self.patch_jcc_rel32(below_max_jump_pos, push_pos);
+                    self.emit_push(Register::RAX);
+
+                    let end_jump_pos = self.code.len();
+                    self.emit_jmp(0);
+
+                    let panic_pos = self.code.len();
+                    self.patch_jcc_rel32(invalid_range_jump_pos, panic_pos);
+                    self.emit_panic_message("Invalid range in math.clamp");
+
+                    let end_pos = self.code.len();
+                    self.patch_jmp_rel32(end_jump_pos, end_pos);
+                    return Ok(());
+                }
+                ("pow", 2) => {
+                    self.pop_for_backend_call(Register::RBX, backend, method)?; // exponent
+                    self.pop_for_backend_call(Register::RAX, backend, method)?; // base
+
+                    self.emit_cmp_imm(Register::RBX, 0);
+                    let negative_exponent_jump_pos = self.code.len();
+                    self.emit_jl(0);
+
+                    self.emit_mov_imm(Register::RCX, 1);
+                    let loop_pos = self.code.len();
+                    self.emit_cmp_imm(Register::RBX, 0);
+                    let done_jump_pos = self.code.len();
+                    self.emit_je(0);
+                    self.emit_mul_reg(Register::RCX, Register::RAX);
+                    let overflow_jump_pos = self.code.len();
+                    self.emit_jo(0);
+                    self.emit_sub_imm(Register::RBX, 1);
+                    let loop_jump_pos = self.code.len();
+                    self.emit_jmp(0);
+
+                    let done_pos = self.code.len();
+                    self.patch_jcc_rel32(done_jump_pos, done_pos);
+                    self.emit_push(Register::RCX);
+
+                    let end_jump_pos = self.code.len();
+                    self.emit_jmp(0);
+
+                    let negative_exponent_panic_pos = self.code.len();
+                    self.patch_jcc_rel32(negative_exponent_jump_pos, negative_exponent_panic_pos);
+                    self.emit_panic_message("Negative exponent in math.pow");
+
+                    let overflow_panic_pos = self.code.len();
+                    self.patch_jcc_rel32(overflow_jump_pos, overflow_panic_pos);
+                    self.emit_panic_message("Overflow in math.pow");
+
+                    let end_pos = self.code.len();
+                    self.patch_jmp_rel32(loop_jump_pos, loop_pos);
+                    self.patch_jmp_rel32(end_jump_pos, end_pos);
+                    return Ok(());
+                }
+                ("sqrt", 1) => {
+                    self.pop_for_backend_call(Register::RAX, backend, method)?;
+
+                    self.emit_cmp_imm(Register::RAX, 0);
+                    let negative_input_jump_pos = self.code.len();
+                    self.emit_jl(0);
+
+                    self.emit_cmp_imm(Register::RAX, 2);
+                    let small_input_jump_pos = self.code.len();
+                    self.emit_jl(0);
+
+                    self.emit_mov_reg(Register::R12, Register::RAX); // n
+                    self.emit_mov_reg(Register::RBX, Register::RAX); // x
+                    let loop_pos = self.code.len();
+                    self.emit_mov_reg(Register::RAX, Register::R12);
+                    self.emit_cqo();
+                    self.emit_div_reg(Register::RBX); // n / x
+                    self.emit_add_reg(Register::RAX, Register::RBX);
+                    self.emit_mov_imm(Register::RCX, 2);
+                    self.emit_cqo();
+                    self.emit_div_reg(Register::RCX); // y = (x + n / x) / 2
+                    self.emit_cmp_reg(Register::RAX, Register::RBX);
+                    let done_jump_pos = self.code.len();
+                    self.emit_jge(0);
+                    self.emit_mov_reg(Register::RBX, Register::RAX);
+                    let loop_jump_pos = self.code.len();
+                    self.emit_jmp(0);
+
+                    let done_pos = self.code.len();
+                    self.patch_jcc_rel32(done_jump_pos, done_pos);
+                    self.emit_push(Register::RBX);
+
+                    let end_jump_pos = self.code.len();
+                    self.emit_jmp(0);
+
+                    let small_input_pos = self.code.len();
+                    self.patch_jcc_rel32(small_input_jump_pos, small_input_pos);
+                    self.emit_push(Register::RAX);
+                    let small_end_jump_pos = self.code.len();
+                    self.emit_jmp(0);
+
+                    let panic_pos = self.code.len();
+                    self.patch_jcc_rel32(negative_input_jump_pos, panic_pos);
+                    self.emit_panic_message("Negative input in math.sqrt");
+
+                    let end_pos = self.code.len();
+                    self.patch_jmp_rel32(loop_jump_pos, loop_pos);
+                    self.patch_jmp_rel32(end_jump_pos, end_pos);
+                    self.patch_jmp_rel32(small_end_jump_pos, end_pos);
+                    return Ok(());
+                }
+                _ => {}
+            }
+        }
+
+        if backend == "string" {
+            match (method, arg_count) {
+                ("len", 1) => {
+                    self.pop_for_backend_call(Register::RAX, backend, method)?;
+                    if self.standalone_executable {
+                        self.emit_mov_from_mem(Register::RAX, Register::RAX, 0);
+                        self.emit_push(Register::RAX);
+                    } else {
+                        self.emit_panic_message(
+                            "BackendCall not supported in native runtime: string.len",
+                        );
+                    }
+                    return Ok(());
+                }
+                ("contains", 2) => {
+                    self.pop_for_backend_call(Register::RDX, backend, method)?; // needle
+                    self.pop_for_backend_call(Register::RAX, backend, method)?; // haystack
+                    if !self.standalone_executable {
+                        self.emit_panic_message(
+                            "BackendCall not supported in native runtime: string.contains",
+                        );
+                        return Ok(());
+                    }
+
+                    self.emit_mov_reg(Register::R8, Register::RAX); // haystack ptr
+                    self.emit_mov_reg(Register::R9, Register::RDX); // needle ptr
+                    self.emit_mov_from_mem(Register::RAX, Register::R8, 0); // haystack len
+                    self.emit_mov_from_mem(Register::RDX, Register::R9, 0); // needle len
+
+                    self.emit_test_reg(Register::RDX);
+                    let empty_needle_jump_pos = self.code.len();
+                    self.emit_je(0);
+
+                    self.emit_cmp_reg(Register::RAX, Register::RDX);
+                    let too_long_jump_pos = self.code.len();
+                    self.emit_jl(0);
+
+                    self.emit_sub_reg(Register::RAX, Register::RDX); // max start index
+                    self.emit_mov_imm(Register::RCX, 0); // outer index
+
+                    let outer_loop_pos = self.code.len();
+                    self.emit_cmp_reg(Register::RCX, Register::RAX);
+                    let not_found_jump_pos = self.code.len();
+                    self.emit_jg(0);
+
+                    self.emit_mov_imm(Register::R11, 0); // inner index
+                    let inner_loop_pos = self.code.len();
+                    self.emit_cmp_reg(Register::R11, Register::RDX);
+                    let found_jump_pos = self.code.len();
+                    self.emit_je(0);
+
+                    self.emit_mov_reg(Register::RBX, Register::RCX);
+                    self.emit_add_reg(Register::RBX, Register::R11);
+                    self.emit_movzx_byte_from_base_index(
+                        Register::R10,
+                        Register::R8,
+                        Register::RBX,
+                        8,
+                    );
+                    self.emit_movzx_byte_from_base_index(
+                        Register::RBX,
+                        Register::R9,
+                        Register::R11,
+                        8,
+                    );
+                    self.emit_cmp_reg(Register::R10, Register::RBX);
+                    let next_outer_jump_pos = self.code.len();
+                    self.emit_jne(0);
+
+                    self.emit_add_imm(Register::R11, 1);
+                    let inner_loop_jump_pos = self.code.len();
+                    self.emit_jmp(0);
+
+                    let next_outer_pos = self.code.len();
+                    self.patch_jcc_rel32(next_outer_jump_pos, next_outer_pos);
+                    self.emit_add_imm(Register::RCX, 1);
+                    let outer_loop_jump_pos = self.code.len();
+                    self.emit_jmp(0);
+
+                    let found_pos = self.code.len();
+                    self.patch_jcc_rel32(empty_needle_jump_pos, found_pos);
+                    self.patch_jcc_rel32(found_jump_pos, found_pos);
+                    self.emit_mov_imm(Register::RAX, 1);
+                    self.emit_push(Register::RAX);
+                    let end_jump_pos = self.code.len();
+                    self.emit_jmp(0);
+
+                    let not_found_pos = self.code.len();
+                    self.patch_jcc_rel32(too_long_jump_pos, not_found_pos);
+                    self.patch_jcc_rel32(not_found_jump_pos, not_found_pos);
+                    self.emit_mov_imm(Register::RAX, 0);
+                    self.emit_push(Register::RAX);
+
+                    let end_pos = self.code.len();
+                    self.patch_jmp_rel32(inner_loop_jump_pos, inner_loop_pos);
+                    self.patch_jmp_rel32(outer_loop_jump_pos, outer_loop_pos);
+                    self.patch_jmp_rel32(end_jump_pos, end_pos);
+                    return Ok(());
+                }
                 _ => {}
             }
         }
@@ -1022,12 +2892,80 @@ impl X86CodeGen {
         self.code[jump_pos + 1..jump_pos + 5].copy_from_slice(&offset.to_le_bytes());
     }
 
+    fn patch_call_rel32(&mut self, call_pos: usize, target_pos: usize) {
+        let offset = (target_pos as i32) - (call_pos as i32) - 5;
+        self.code[call_pos + 1..call_pos + 5].copy_from_slice(&offset.to_le_bytes());
+    }
+
+    fn patch_pe_import_calls(&mut self, code_len: usize) -> Result<(), String> {
+        for (call_pos, import) in &self.pending_pe_import_calls {
+            let iat_rva = match import {
+                PeImport::ExitProcess => crate::linker::pe::exit_process_iat_rva(code_len),
+                PeImport::GetStdHandle => crate::linker::pe::get_std_handle_iat_rva(code_len),
+                PeImport::WriteFile => crate::linker::pe::write_file_iat_rva(code_len),
+                PeImport::GetProcessHeap => crate::linker::pe::get_process_heap_iat_rva(code_len),
+                PeImport::HeapAlloc => crate::linker::pe::heap_alloc_iat_rva(code_len),
+            };
+            let next_instruction_rva = crate::linker::pe::TEXT_RVA as usize + *call_pos + 6;
+            let relative = iat_rva as isize - next_instruction_rva as isize;
+            let relative = i32::try_from(relative)
+                .map_err(|_| "PE import call target out of range".to_string())?;
+            self.code[*call_pos + 2..*call_pos + 6].copy_from_slice(&relative.to_le_bytes());
+        }
+
+        Ok(())
+    }
+
+    fn patch_function_address_patches(&mut self) -> Result<(), String> {
+        let patches = std::mem::take(&mut self.pending_function_address_patches);
+        for (patch_pos, name) in patches {
+            let target_pos = *self
+                .function_addresses
+                .get(&name)
+                .ok_or_else(|| format!("Undefined function: {}", name))?;
+            self.patch_rip_relative_disp32(patch_pos, target_pos)
+                .map_err(|_| format!("Function address out of range: {}", name))?;
+        }
+
+        Ok(())
+    }
+
+    fn patch_rip_relative_disp32(
+        &mut self,
+        patch_pos: usize,
+        target_pos: usize,
+    ) -> Result<(), std::num::TryFromIntError> {
+        let next_instruction = patch_pos + 4;
+        let relative = target_pos as isize - next_instruction as isize;
+        let relative = i32::try_from(relative)?;
+        self.code[patch_pos..patch_pos + 4].copy_from_slice(&relative.to_le_bytes());
+        Ok(())
+    }
+
     // ============================================================================
     // REGISTER MANAGEMENT
     // ============================================================================
 
     /// Emit: push reg
     fn emit_push(&mut self, reg: Register) {
+        self.emit_push_typed(reg, NativeValueKind::Int);
+    }
+
+    fn emit_push_machine_only(&mut self, reg: Register) {
+        if reg.encoding() >= 8 {
+            self.code.push(0x41);
+        }
+        self.code.push(0x50 + (reg.encoding() & 7));
+    }
+
+    fn emit_pop_machine_only(&mut self, reg: Register) {
+        if reg.encoding() >= 8 {
+            self.code.push(0x41);
+        }
+        self.code.push(0x58 + (reg.encoding() & 7));
+    }
+
+    fn emit_push_typed(&mut self, reg: Register, kind: NativeValueKind) {
         // Opcode: 0x50 + reg
         // REX.B if needed
         if reg.encoding() >= 8 {
@@ -1035,10 +2973,11 @@ impl X86CodeGen {
         }
         self.code.push(0x50 + (reg.encoding() & 7));
         self.stack_depth += 1;
+        self.value_stack.push(kind);
     }
 
     /// Emit: pop reg
-    fn emit_pop(&mut self, reg: Register) {
+    fn emit_pop(&mut self, reg: Register) -> NativeValueKind {
         // Opcode: 0x58 + reg
         // REX.B if needed
         if reg.encoding() >= 8 {
@@ -1046,17 +2985,21 @@ impl X86CodeGen {
         }
         self.code.push(0x58 + (reg.encoding() & 7));
         self.stack_depth -= 1;
+        self.value_stack.pop().unwrap_or(NativeValueKind::Int)
     }
 
-    fn emit_pop_checked(&mut self, reg: Register, instruction: &str) -> Result<(), String> {
+    fn emit_pop_checked(
+        &mut self,
+        reg: Register,
+        instruction: &str,
+    ) -> Result<NativeValueKind, String> {
         if self.stack_depth <= 0 {
             return Err(format!(
                 "Stack underflow while compiling instruction {}",
                 instruction
             ));
         }
-        self.emit_pop(reg);
-        Ok(())
+        Ok(self.emit_pop(reg))
     }
 
     fn ensure_stack_items(
@@ -1087,22 +3030,38 @@ impl X86CodeGen {
         // mov rbp, rsp
         self.code.extend_from_slice(&[0x48, 0x89, 0xE5]);
 
-        // sub rsp, 32 (shadow space for Windows + saving runtime ptr)
-        self.code.extend_from_slice(&[0x48, 0x83, 0xEC, 0x20]);
+        // Preserve callee-saved registers that this code generator uses as temporaries.
+        self.emit_push_machine_only(Register::RBX);
+        self.emit_push_machine_only(Register::R12);
+        self.emit_push_machine_only(Register::R14);
+        self.emit_push_machine_only(Register::R15);
 
-        // Save NativeRuntime pointer (1st arg) to stack at [rbp - 8]
+        // sub rsp, 256 (shadow space + fixed native compiler spill area)
+        self.code.extend_from_slice(&[0x48, 0x81, 0xEC]);
+        self.code.extend_from_slice(&256i32.to_le_bytes());
+
+        // Save NativeRuntime pointer (1st arg) below the preserved registers.
         #[cfg(windows)]
-        self.emit_mov_to_stack(-8, Register::RCX);
+        self.emit_mov_to_stack(RUNTIME_PTR_STACK_OFFSET, Register::RCX);
         #[cfg(not(windows))]
-        self.emit_mov_to_stack(-8, Register::RDI);
+        self.emit_mov_to_stack(RUNTIME_PTR_STACK_OFFSET, Register::RDI);
 
-        self.stack_offset = -8; // Start locals after runtime ptr
+        self.stack_offset = RUNTIME_PTR_STACK_OFFSET; // Start locals after runtime ptr
     }
 
     /// Emit function epilogue
     fn emit_epilogue(&mut self) {
-        // mov rsp, rbp
-        self.code.extend_from_slice(&[0x48, 0x89, 0xEC]);
+        // Reset to the saved-register area. The generated code uses RSP as
+        // its value stack, so returns must not assume the evaluation stack is
+        // exactly balanced here.
+        self.emit_mov_reg(Register::RSP, Register::RBP);
+        self.emit_sub_imm(Register::RSP, 32);
+
+        // Restore callee-saved temporaries.
+        self.emit_pop_machine_only(Register::R15);
+        self.emit_pop_machine_only(Register::R14);
+        self.emit_pop_machine_only(Register::R12);
+        self.emit_pop_machine_only(Register::RBX);
 
         // pop rbp
         self.code.push(0x5D);
@@ -1291,6 +3250,23 @@ impl X86CodeGen {
         self.code.push(modrm);
     }
 
+    fn emit_boolize(&mut self, reg: Register) {
+        self.emit_test_reg(reg);
+
+        // setne low 8-bit register
+        self.code.extend_from_slice(&[0x0F, 0x95]);
+        self.code.push(0xC0 | (reg.encoding() & 7));
+
+        // movzx reg, reg8
+        let rex = 0x48
+            | if reg.encoding() >= 8 { 4 } else { 0 }
+            | if reg.encoding() >= 8 { 1 } else { 0 };
+        self.code.push(rex);
+        self.code.extend_from_slice(&[0x0F, 0xB6]);
+        self.code
+            .push(0xC0 | ((reg.encoding() & 7) << 3) | (reg.encoding() & 7));
+    }
+
     /// Emit: mov [rbp + offset], reg
     fn emit_mov_to_stack(&mut self, offset: i32, src: Register) {
         // REX.W + R
@@ -1398,6 +3374,15 @@ impl X86CodeGen {
         self.code.extend_from_slice(&offset.to_le_bytes());
     }
 
+    /// Emit: jg offset (jump if greater)
+    fn emit_jg(&mut self, offset: i32) {
+        // Opcode: 0x0F 0x8F (jg rel32)
+        self.code.extend_from_slice(&[0x0F, 0x8F]);
+
+        // Offset (4 bytes)
+        self.code.extend_from_slice(&offset.to_le_bytes());
+    }
+
     /// Emit: call reg
     fn emit_call_reg(&mut self, reg: Register) {
         // Opcode: 0xFF /2 (call r/m64)
@@ -1481,6 +3466,10 @@ impl X86CodeGen {
     /// Creates a list with N elements from stack
     /// Memory layout: [type_tag(8) | length(8) | capacity(8) | data_ptr(8)]
     fn compile_new_list(&mut self, count: usize) -> Result<(), String> {
+        if self.standalone_executable {
+            return self.compile_new_list_standalone(count);
+        }
+
         self.ensure_stack_items(count, "NewList", &format!("element_count={}", count))?;
 
         // 1. Allocate list structure (32 bytes)
@@ -1553,17 +3542,80 @@ impl X86CodeGen {
         Ok(())
     }
 
+    fn compile_new_list_standalone(&mut self, count: usize) -> Result<(), String> {
+        self.ensure_stack_items(count, "NewList", &format!("element_count={}", count))?;
+
+        let element_kinds_start = self.value_stack.len().saturating_sub(count);
+        let list_kind = Self::list_kind_from_elements(&self.value_stack[element_kinds_start..]);
+
+        let saved_stack_offset = self.stack_offset;
+        let mut element_offsets = vec![0i32; count];
+        for i in (0..count).rev() {
+            self.stack_offset -= 8;
+            element_offsets[i] = self.stack_offset;
+            self.emit_pop_checked(Register::RBX, "NewList")?;
+            self.emit_mov_to_stack(element_offsets[i], Register::RBX);
+        }
+
+        self.emit_standalone_heap_alloc(32);
+        self.emit_test_reg(Register::RAX);
+        let list_alloc_fail_jump_pos = self.code.len();
+        self.emit_je(0);
+        self.emit_mov_reg(Register::R15, Register::RAX);
+
+        self.emit_mov_imm(Register::RBX, 0x01);
+        self.emit_mov_to_mem(Register::R15, 0, Register::RBX);
+        self.emit_mov_imm(Register::RBX, count as i64);
+        self.emit_mov_to_mem(Register::R15, 8, Register::RBX);
+        self.emit_mov_imm(Register::RBX, count as i64);
+        self.emit_mov_to_mem(Register::R15, 16, Register::RBX);
+
+        self.emit_standalone_heap_alloc(count.saturating_mul(8).max(8));
+        self.emit_test_reg(Register::RAX);
+        let data_alloc_fail_jump_pos = self.code.len();
+        self.emit_je(0);
+        self.emit_mov_to_mem(Register::R15, 24, Register::RAX);
+
+        for (i, element_offset) in element_offsets.iter().enumerate() {
+            self.emit_mov_from_stack(Register::RBX, *element_offset);
+            self.emit_mov_from_mem(Register::RCX, Register::R15, 24);
+            self.emit_mov_to_mem_offset(Register::RCX, (i * 8) as i32, Register::RBX);
+        }
+        self.stack_offset = saved_stack_offset;
+
+        self.emit_push_typed(Register::R15, list_kind);
+
+        let end_jump_pos = self.code.len();
+        self.emit_jmp(0);
+
+        let list_fail_pos = self.code.len();
+        self.patch_jcc_rel32(list_alloc_fail_jump_pos, list_fail_pos);
+        self.emit_panic_message("Standalone list allocation failed");
+
+        let data_fail_pos = self.code.len();
+        self.patch_jcc_rel32(data_alloc_fail_jump_pos, data_fail_pos);
+        self.emit_panic_message("Standalone list data allocation failed");
+
+        let end_pos = self.code.len();
+        self.patch_jmp_rel32(end_jump_pos, end_pos);
+
+        Ok(())
+    }
+
     /// Compile LoadIndex instruction
     /// Pop index, pop list, push value
     /// Includes bounds checking with panic on out-of-bounds access
     fn compile_load_index(&mut self) -> Result<(), String> {
         self.ensure_stack_items(2, "LoadIndex", &Self::ctx_operands("list,index"))?;
+        if self.standalone_executable {
+            return self.compile_load_index_standalone();
+        }
 
         // 1. Pop index
         self.emit_pop_checked(Register::RBX, "LoadIndex")?;
 
         // 2. Pop list
-        self.emit_pop_checked(Register::RAX, "LoadIndex")?;
+        let list_kind = self.emit_pop_checked(Register::RAX, "LoadIndex")?;
 
         // 2a. Type check: must be List (0x01)
         self.emit_mov_from_mem(Register::RDX, Register::RAX, 0);
@@ -1600,7 +3652,7 @@ impl X86CodeGen {
         self.emit_mov_from_mem(Register::RAX, Register::RCX, 0);
 
         // 10. Push value
-        self.emit_push(Register::RAX);
+        self.emit_push_typed(Register::RAX, Self::list_element_kind(list_kind));
 
         // Jump over panic path
         let end_jump_pos = self.code.len();
@@ -1628,10 +3680,91 @@ impl X86CodeGen {
         Ok(())
     }
 
+    fn compile_load_index_standalone(&mut self) -> Result<(), String> {
+        self.emit_pop_checked(Register::RBX, "LoadIndex")?;
+        let list_kind = self.emit_pop_checked(Register::RAX, "LoadIndex")?;
+
+        self.emit_mov_from_mem(Register::RCX, Register::RAX, 0);
+        self.emit_cmp_imm(Register::RCX, 0x01);
+        let list_jump_pos = self.code.len();
+        self.emit_je(0);
+        self.emit_cmp_imm(Register::RCX, 0x02);
+        let map_jump_pos = self.code.len();
+        self.emit_je(0);
+
+        self.emit_panic_message("Expected list or map for indexing");
+
+        let list_pos = self.code.len();
+        self.patch_jcc_rel32(list_jump_pos, list_pos);
+        self.emit_mov_from_mem(Register::RCX, Register::RAX, 8);
+        self.emit_cmp_imm(Register::RBX, 0);
+        let list_negative_jump_pos = self.code.len();
+        self.emit_jl(0);
+        self.emit_cmp_reg(Register::RBX, Register::RCX);
+        let list_oob_jump_pos = self.code.len();
+        self.emit_jge(0);
+        self.emit_mov_from_mem(Register::RCX, Register::RAX, 24);
+        self.emit_shl_imm(Register::RBX, 3);
+        self.emit_add_reg(Register::RCX, Register::RBX);
+        self.emit_mov_from_mem(Register::RAX, Register::RCX, 0);
+        self.emit_push_machine_only(Register::RAX);
+        let list_end_jump_pos = self.code.len();
+        self.emit_jmp(0);
+
+        let list_oob_pos = self.code.len();
+        self.patch_jcc_rel32(list_negative_jump_pos, list_oob_pos);
+        self.patch_jcc_rel32(list_oob_jump_pos, list_oob_pos);
+        self.emit_panic_message("Index out of bounds or non-list");
+
+        let map_pos = self.code.len();
+        self.patch_jcc_rel32(map_jump_pos, map_pos);
+        self.emit_standalone_map_bucket_slot(Register::RAX, Register::RBX, Register::RDX);
+        self.emit_mov_from_mem(Register::RDX, Register::RDX, 0);
+
+        let search_loop_pos = self.code.len();
+        self.emit_test_reg(Register::RDX);
+        let not_found_jump_pos = self.code.len();
+        self.emit_je(0);
+        self.emit_mov_from_mem(Register::RCX, Register::RDX, 0);
+        self.emit_cmp_reg(Register::RCX, Register::RBX);
+        let found_jump_pos = self.code.len();
+        self.emit_je(0);
+        self.emit_mov_from_mem(Register::RDX, Register::RDX, 16);
+        let search_next_jump_pos = self.code.len();
+        self.emit_jmp(0);
+        self.patch_jmp_rel32(search_next_jump_pos, search_loop_pos);
+
+        let found_pos = self.code.len();
+        self.patch_jcc_rel32(found_jump_pos, found_pos);
+        self.emit_mov_from_mem(Register::RAX, Register::RDX, 8);
+        self.emit_push_machine_only(Register::RAX);
+        let map_end_jump_pos = self.code.len();
+        self.emit_jmp(0);
+
+        let not_found_pos = self.code.len();
+        self.patch_jcc_rel32(not_found_jump_pos, not_found_pos);
+        self.emit_panic_message("Map key not found");
+
+        let end_pos = self.code.len();
+        self.patch_jmp_rel32(list_end_jump_pos, end_pos);
+        self.patch_jmp_rel32(map_end_jump_pos, end_pos);
+        let predicted_kind = self
+            .predicted_load_index_kinds
+            .pop_front()
+            .unwrap_or_else(|| Self::list_element_kind(list_kind));
+        self.stack_depth += 1;
+        self.value_stack.push(predicted_kind);
+
+        Ok(())
+    }
+
     /// Compile StoreIndex instruction
     /// Pop value, pop index, pop list
     fn compile_store_index(&mut self) -> Result<(), String> {
         self.ensure_stack_items(3, "StoreIndex", &Self::ctx_operands("list,index,value"))?;
+        if self.standalone_executable {
+            return self.compile_store_index_standalone();
+        }
 
         // 1. Pop value
         self.emit_pop_checked(Register::R8, "StoreIndex")?;
@@ -1688,6 +3821,54 @@ impl X86CodeGen {
         Ok(())
     }
 
+    fn compile_store_index_standalone(&mut self) -> Result<(), String> {
+        self.emit_pop_checked(Register::R8, "StoreIndex")?;
+        self.emit_pop_checked(Register::RBX, "StoreIndex")?;
+        self.emit_pop_checked(Register::RAX, "StoreIndex")?;
+
+        self.emit_mov_from_mem(Register::RCX, Register::RAX, 0);
+        self.emit_cmp_imm(Register::RCX, 0x01);
+        let list_jump_pos = self.code.len();
+        self.emit_je(0);
+        self.emit_cmp_imm(Register::RCX, 0x02);
+        let map_jump_pos = self.code.len();
+        self.emit_je(0);
+
+        self.emit_panic_message("Expected list or map for index store");
+
+        let list_pos = self.code.len();
+        self.patch_jcc_rel32(list_jump_pos, list_pos);
+        self.emit_cmp_imm(Register::RBX, 0);
+        let list_oob_jump_pos = self.code.len();
+        self.emit_jl(0);
+        self.emit_mov_from_mem(Register::RCX, Register::RAX, 8);
+        self.emit_cmp_reg(Register::RBX, Register::RCX);
+        let list_oob2_jump_pos = self.code.len();
+        self.emit_jge(0);
+        self.emit_mov_from_mem(Register::RCX, Register::RAX, 24);
+        self.emit_shl_imm(Register::RBX, 3);
+        self.emit_add_reg(Register::RCX, Register::RBX);
+        self.emit_mov_to_mem(Register::RCX, 0, Register::R8);
+        let list_end_jump_pos = self.code.len();
+        self.emit_jmp(0);
+
+        let list_oob_pos = self.code.len();
+        self.patch_jcc_rel32(list_oob_jump_pos, list_oob_pos);
+        self.patch_jcc_rel32(list_oob2_jump_pos, list_oob_pos);
+        self.emit_panic_message("Index out of bounds (store) or non-list");
+
+        let map_pos = self.code.len();
+        self.patch_jcc_rel32(map_jump_pos, map_pos);
+        self.emit_mov_reg(Register::R9, Register::R8);
+        self.emit_mov_reg(Register::R8, Register::RBX);
+        self.emit_standalone_map_insert()?;
+
+        let end_pos = self.code.len();
+        self.patch_jmp_rel32(list_end_jump_pos, end_pos);
+
+        Ok(())
+    }
+
     /// Compile StoreIndexVar instruction
     /// Pop value, pop index, mutate variable collection[index]
     fn compile_store_index_var(&mut self, name: &str) -> Result<(), String> {
@@ -1705,8 +3886,9 @@ impl X86CodeGen {
         let offset = self
             .variables
             .get(name)
+            .copied()
             .ok_or_else(|| format!("Undefined variable: {}", name))?;
-        self.emit_mov_from_stack(Register::RAX, *offset);
+        self.emit_mov_from_stack(Register::RAX, offset);
 
         // Dispatch by type: List(0x01) or Map(0x02)
         self.emit_mov_from_mem(Register::RCX, Register::RAX, 0);
@@ -1750,6 +3932,15 @@ impl X86CodeGen {
         let map_pos = self.code.len();
         self.patch_jcc_rel32(map_jump_pos, map_pos);
 
+        if self.standalone_executable {
+            self.emit_mov_reg(Register::R9, Register::R8);
+            self.emit_mov_reg(Register::R8, Register::RBX);
+            self.emit_standalone_map_insert()?;
+            let map_end_pos = self.code.len();
+            self.patch_jmp_rel32(list_end_jump_pos, map_end_pos);
+            return Ok(());
+        }
+
         // Map path: key is index i64
         self.emit_mov_reg(Register::RDI, Register::RAX); // map
         self.emit_mov_reg(Register::RSI, Register::RBX); // key
@@ -1766,13 +3957,17 @@ impl X86CodeGen {
     /// Compile ListPush instruction
     /// Pop value, pop list, push list (mutated)
     fn compile_list_push(&mut self) -> Result<(), String> {
+        if self.standalone_executable {
+            return self.compile_list_push_standalone();
+        }
+
         self.ensure_stack_items(2, "ListPush", &Self::ctx_operands("list,value"))?;
 
         // 1. Pop value
-        self.emit_pop_checked(Register::R8, "ListPush")?;
+        let value_kind = self.emit_pop_checked(Register::R8, "ListPush")?;
 
         // 2. Pop list
-        self.emit_pop_checked(Register::RAX, "ListPush")?;
+        let list_kind = self.emit_pop_checked(Register::RAX, "ListPush")?;
 
         // 2a. Type check: must be List (0x01)
         self.emit_mov_from_mem(Register::RDX, Register::RAX, 0);
@@ -1847,7 +4042,8 @@ impl X86CodeGen {
         self.emit_mov_to_mem(Register::RAX, 8, Register::RBX);
 
         // 11. Push list
-        self.emit_push(Register::RAX);
+        let result_kind = Self::list_kind_after_push(list_kind, value_kind);
+        self.emit_push_typed(Register::RAX, result_kind);
 
         Ok(())
     }
@@ -1855,17 +4051,30 @@ impl X86CodeGen {
     /// Compile ListPushVar instruction
     /// Pop value, mutate variable list, push unit
     fn compile_list_push_var(&mut self, name: &str) -> Result<(), String> {
+        if self.standalone_executable {
+            return self.compile_list_push_var_standalone(name);
+        }
+
         self.ensure_stack_items(1, "ListPushVar", &format!("target={},operands=value", name))?;
 
         // Pop value
-        self.emit_pop_checked(Register::R8, "ListPushVar")?;
+        let value_kind = self.emit_pop_checked(Register::R8, "ListPushVar")?;
+        let list_kind = self
+            .variable_kinds
+            .get(name)
+            .copied()
+            .unwrap_or(NativeValueKind::ListInt);
+        let updated_list_kind = Self::list_kind_after_push(list_kind, value_kind);
+        self.variable_kinds
+            .insert(name.to_string(), updated_list_kind);
 
         // Load list from variable
         let offset = self
             .variables
             .get(name)
+            .copied()
             .ok_or_else(|| format!("Undefined variable: {}", name))?;
-        self.emit_mov_from_stack(Register::RAX, *offset);
+        self.emit_mov_from_stack(Register::RAX, offset);
 
         // Type check: list
         self.emit_mov_from_mem(Register::RDX, Register::RAX, 0);
@@ -1928,13 +4137,150 @@ impl X86CodeGen {
         Ok(())
     }
 
+    fn compile_list_push_standalone(&mut self) -> Result<(), String> {
+        self.ensure_stack_items(2, "ListPush", &Self::ctx_operands("list,value"))?;
+        let value_kind = self.emit_pop_checked(Register::R8, "ListPush")?;
+        let list_kind = self.emit_pop_checked(Register::RAX, "ListPush")?;
+        self.emit_standalone_list_append(value_kind)?;
+        let result_kind = Self::list_kind_after_push(list_kind, value_kind);
+        self.emit_push_typed(Register::RAX, result_kind);
+        Ok(())
+    }
+
+    fn compile_list_push_var_standalone(&mut self, name: &str) -> Result<(), String> {
+        self.ensure_stack_items(1, "ListPushVar", &format!("target={},operands=value", name))?;
+        let value_kind = self.emit_pop_checked(Register::R8, "ListPushVar")?;
+        let offset = self
+            .variables
+            .get(name)
+            .ok_or_else(|| format!("Undefined variable: {}", name))?;
+        let list_kind = self
+            .variable_kinds
+            .get(name)
+            .copied()
+            .unwrap_or(NativeValueKind::ListInt);
+        let updated_list_kind = Self::list_kind_after_push(list_kind, value_kind);
+        self.variable_kinds
+            .insert(name.to_string(), updated_list_kind);
+        self.emit_mov_from_stack(Register::RAX, *offset);
+        self.emit_standalone_list_append(value_kind)?;
+        self.emit_mov_imm(Register::RAX, 0);
+        self.emit_push(Register::RAX);
+        Ok(())
+    }
+
+    fn emit_standalone_list_append(&mut self, _value_kind: NativeValueKind) -> Result<(), String> {
+        let saved_stack_offset = self.stack_offset;
+        self.stack_offset -= 8;
+        let list_slot = self.stack_offset;
+        self.stack_offset -= 8;
+        let value_slot = self.stack_offset;
+        self.stack_offset -= 8;
+        let len_slot = self.stack_offset;
+        self.stack_offset -= 8;
+        let new_cap_slot = self.stack_offset;
+        self.stack_offset -= 8;
+        let allocation_size_slot = self.stack_offset;
+        self.stack_offset -= 8;
+        let new_data_slot = self.stack_offset;
+
+        self.emit_mov_from_mem(Register::RDX, Register::RAX, 0);
+        self.emit_cmp_imm(Register::RDX, 0x01);
+        let type_panic_jump_pos = self.code.len();
+        self.emit_jne(0);
+
+        self.emit_mov_to_stack(list_slot, Register::RAX);
+        self.emit_mov_to_stack(value_slot, Register::R8);
+        self.emit_mov_from_mem(Register::RBX, Register::RAX, 8); // len
+        self.emit_mov_to_stack(len_slot, Register::RBX);
+        self.emit_mov_from_mem(Register::RCX, Register::RAX, 16); // cap
+        self.emit_cmp_reg(Register::RBX, Register::RCX);
+        let resize_jump_pos = self.code.len();
+        self.emit_jge(0);
+
+        let no_resize_jump_pos = self.code.len();
+        self.emit_jmp(0);
+
+        let resize_pos = self.code.len();
+        self.patch_jcc_rel32(resize_jump_pos, resize_pos);
+        self.emit_add_imm(Register::RCX, 1);
+        self.emit_mov_to_stack(new_cap_slot, Register::RCX);
+        self.emit_mov_reg(Register::RDX, Register::RCX);
+        self.emit_shl_imm(Register::RDX, 3);
+        self.emit_mov_to_stack(allocation_size_slot, Register::RDX);
+        self.emit_standalone_heap_alloc_reg(Register::RDX);
+        self.emit_test_reg(Register::RAX);
+        let alloc_fail_jump_pos = self.code.len();
+        self.emit_je(0);
+
+        self.emit_mov_to_stack(new_data_slot, Register::RAX);
+        self.emit_mov_from_stack(Register::RAX, list_slot);
+        self.emit_mov_from_mem(Register::R8, Register::RAX, 24); // old data
+        self.emit_mov_from_stack(Register::R9, new_data_slot);
+        self.emit_mov_from_stack(Register::RBX, len_slot);
+        self.emit_test_reg(Register::RBX);
+        let copy_done_jump_pos = self.code.len();
+        self.emit_je(0);
+
+        let copy_loop_pos = self.code.len();
+        self.emit_mov_from_mem(Register::RDX, Register::R8, 0);
+        self.emit_mov_to_mem(Register::R9, 0, Register::RDX);
+        self.emit_add_imm(Register::R8, 8);
+        self.emit_add_imm(Register::R9, 8);
+        self.emit_sub_imm(Register::RBX, 1);
+        let copy_loop_jump_pos = self.code.len();
+        self.emit_jne(0);
+        self.patch_jcc_rel32(copy_loop_jump_pos, copy_loop_pos);
+
+        let copy_done_pos = self.code.len();
+        self.patch_jcc_rel32(copy_done_jump_pos, copy_done_pos);
+
+        self.emit_mov_from_stack(Register::RAX, list_slot);
+        self.emit_mov_from_stack(Register::RDX, new_data_slot);
+        self.emit_mov_to_mem(Register::RAX, 24, Register::RDX);
+        self.emit_mov_from_stack(Register::RDX, new_cap_slot);
+        self.emit_mov_to_mem(Register::RAX, 16, Register::RDX);
+
+        let after_resize_pos = self.code.len();
+        self.patch_jmp_rel32(no_resize_jump_pos, after_resize_pos);
+
+        self.emit_mov_from_stack(Register::RAX, list_slot);
+        self.emit_mov_from_stack(Register::RBX, len_slot);
+        self.emit_mov_from_mem(Register::RCX, Register::RAX, 24); // data
+        self.emit_mov_reg(Register::RDX, Register::RBX);
+        self.emit_shl_imm(Register::RDX, 3);
+        self.emit_add_reg(Register::RCX, Register::RDX);
+        self.emit_mov_from_stack(Register::R8, value_slot);
+        self.emit_mov_to_mem(Register::RCX, 0, Register::R8);
+        self.emit_add_imm(Register::RBX, 1);
+        self.emit_mov_to_mem(Register::RAX, 8, Register::RBX);
+
+        let end_jump_pos = self.code.len();
+        self.emit_jmp(0);
+
+        let type_panic_pos = self.code.len();
+        self.patch_jcc_rel32(type_panic_jump_pos, type_panic_pos);
+        self.emit_panic_message("Expected list for push");
+
+        let alloc_fail_pos = self.code.len();
+        self.patch_jcc_rel32(alloc_fail_jump_pos, alloc_fail_pos);
+        self.emit_panic_message("Standalone list resize failed");
+
+        let end_pos = self.code.len();
+        self.patch_jmp_rel32(end_jump_pos, end_pos);
+
+        self.stack_offset = saved_stack_offset;
+        Ok(())
+    }
+
     /// Compile ListPop instruction
     /// Pop list, push value, push list (mutated)
     fn compile_list_pop(&mut self) -> Result<(), String> {
         self.ensure_stack_items(1, "ListPop", &Self::ctx_operands("list"))?;
 
         // 1. Pop list
-        self.emit_pop_checked(Register::RAX, "ListPop")?;
+        let list_kind = self.emit_pop_checked(Register::RAX, "ListPop")?;
+        let value_kind = Self::list_element_kind(list_kind);
 
         // 1a. Type check: must be List (0x01)
         self.emit_mov_from_mem(Register::RDX, Register::RAX, 0);
@@ -1968,10 +4314,10 @@ impl X86CodeGen {
         self.emit_mov_from_mem(Register::R8, Register::RCX, 0);
 
         // 9. Push value
-        self.emit_push(Register::R8);
+        self.emit_push_typed(Register::R8, value_kind);
 
         // 10. Push list
-        self.emit_push(Register::RAX);
+        self.emit_push_typed(Register::RAX, list_kind);
 
         // Jump over empty path
         let end_jump_pos = self.code.len();
@@ -1997,6 +4343,13 @@ impl X86CodeGen {
     /// Compile ListPopVar instruction
     /// Mutate variable list, push popped value
     fn compile_list_pop_var(&mut self, name: &str) -> Result<(), String> {
+        let list_kind = self
+            .variable_kinds
+            .get(name)
+            .copied()
+            .unwrap_or(NativeValueKind::Int);
+        let value_kind = Self::list_element_kind(list_kind);
+
         // Load list from variable
         let offset = self
             .variables
@@ -2024,7 +4377,7 @@ impl X86CodeGen {
         self.emit_shl_imm(Register::RDX, 3);
         self.emit_add_reg(Register::RCX, Register::RDX);
         self.emit_mov_from_mem(Register::R8, Register::RCX, 0);
-        self.emit_push(Register::R8);
+        self.emit_push_typed(Register::R8, value_kind);
         let end_jump_pos = self.code.len();
         self.emit_jmp(0); // Placeholder
 
@@ -2085,6 +4438,9 @@ impl X86CodeGen {
     /// Memory layout: [type_tag(8) | size(8) | buckets_ptr(8)]
     fn compile_new_map(&mut self, count: usize) -> Result<(), String> {
         self.ensure_stack_items(count * 2, "NewMap", &format!("pair_count={}", count))?;
+        if self.standalone_executable {
+            return self.compile_new_map_standalone(count);
+        }
 
         // 1. Call matter_map_new() to create empty map
         self.emit_call_runtime("matter_map_new");
@@ -2129,10 +4485,169 @@ impl X86CodeGen {
         Ok(())
     }
 
+    fn compile_new_map_standalone(&mut self, count: usize) -> Result<(), String> {
+        let saved_stack_offset = self.stack_offset;
+        self.stack_offset -= 8;
+        let map_slot = self.stack_offset;
+        self.stack_offset -= 8;
+        let buckets_slot = self.stack_offset;
+
+        self.emit_standalone_heap_alloc(24);
+        self.emit_test_reg(Register::RAX);
+        let map_alloc_fail_jump_pos = self.code.len();
+        self.emit_je(0);
+        self.emit_mov_to_stack(map_slot, Register::RAX);
+
+        self.emit_standalone_heap_alloc(16 * 8);
+        self.emit_test_reg(Register::RAX);
+        let buckets_alloc_fail_jump_pos = self.code.len();
+        self.emit_je(0);
+        self.emit_mov_to_stack(buckets_slot, Register::RAX);
+
+        self.emit_mov_reg(Register::RCX, Register::RAX);
+        self.emit_mov_imm(Register::RDX, 0);
+        self.emit_mov_imm(Register::RBX, 16);
+        let zero_loop_pos = self.code.len();
+        self.emit_mov_to_mem(Register::RCX, 0, Register::RDX);
+        self.emit_add_imm(Register::RCX, 8);
+        self.emit_sub_imm(Register::RBX, 1);
+        let zero_loop_jump_pos = self.code.len();
+        self.emit_jne(0);
+        self.patch_jcc_rel32(zero_loop_jump_pos, zero_loop_pos);
+
+        self.emit_mov_from_stack(Register::RAX, map_slot);
+        self.emit_mov_imm(Register::RDX, 0x02);
+        self.emit_mov_to_mem(Register::RAX, 0, Register::RDX);
+        self.emit_mov_imm(Register::RDX, 0);
+        self.emit_mov_to_mem(Register::RAX, 8, Register::RDX);
+        self.emit_mov_from_stack(Register::RDX, buckets_slot);
+        self.emit_mov_to_mem(Register::RAX, 16, Register::RDX);
+
+        for _ in 0..count {
+            self.emit_pop_checked(Register::R9, "NewMap")?;
+            self.emit_pop_checked(Register::R8, "NewMap")?;
+            self.emit_mov_from_stack(Register::RAX, map_slot);
+            self.emit_standalone_map_insert()?;
+        }
+
+        self.emit_mov_from_stack(Register::RAX, map_slot);
+        self.emit_push(Register::RAX);
+
+        let end_jump_pos = self.code.len();
+        self.emit_jmp(0);
+
+        let map_alloc_fail_pos = self.code.len();
+        self.patch_jcc_rel32(map_alloc_fail_jump_pos, map_alloc_fail_pos);
+        self.emit_panic_message("Map allocation failed");
+
+        let buckets_alloc_fail_pos = self.code.len();
+        self.patch_jcc_rel32(buckets_alloc_fail_jump_pos, buckets_alloc_fail_pos);
+        self.emit_panic_message("Map bucket allocation failed");
+
+        let end_pos = self.code.len();
+        self.patch_jmp_rel32(end_jump_pos, end_pos);
+
+        self.stack_offset = saved_stack_offset;
+        Ok(())
+    }
+
+    fn emit_standalone_map_bucket_slot(&mut self, map: Register, key: Register, dest: Register) {
+        self.emit_mov_from_mem(dest, map, 16);
+        self.emit_mov_reg(Register::RCX, key);
+        self.emit_and_imm(Register::RCX, 15);
+        self.emit_shl_imm(Register::RCX, 3);
+        self.emit_add_reg(dest, Register::RCX);
+    }
+
+    fn emit_standalone_map_insert(&mut self) -> Result<(), String> {
+        let saved_stack_offset = self.stack_offset;
+        self.stack_offset -= 8;
+        let map_slot = self.stack_offset;
+        self.stack_offset -= 8;
+        let key_slot = self.stack_offset;
+        self.stack_offset -= 8;
+        let value_slot = self.stack_offset;
+        self.stack_offset -= 8;
+        let bucket_slot_addr_slot = self.stack_offset;
+        self.stack_offset -= 8;
+        let current_slot = self.stack_offset;
+        self.stack_offset -= 8;
+        let new_bucket_slot = self.stack_offset;
+
+        self.emit_mov_to_stack(map_slot, Register::RAX);
+        self.emit_mov_to_stack(key_slot, Register::R8);
+        self.emit_mov_to_stack(value_slot, Register::R9);
+
+        self.emit_standalone_map_bucket_slot(Register::RAX, Register::R8, Register::RDX);
+        self.emit_mov_to_stack(bucket_slot_addr_slot, Register::RDX);
+        self.emit_mov_from_mem(Register::RBX, Register::RDX, 0);
+        self.emit_mov_to_stack(current_slot, Register::RBX);
+
+        let search_loop_pos = self.code.len();
+        self.emit_mov_from_stack(Register::RBX, current_slot);
+        self.emit_test_reg(Register::RBX);
+        let insert_new_jump_pos = self.code.len();
+        self.emit_je(0);
+        self.emit_mov_from_mem(Register::RCX, Register::RBX, 0);
+        self.emit_mov_from_stack(Register::R8, key_slot);
+        self.emit_cmp_reg(Register::RCX, Register::R8);
+        let update_jump_pos = self.code.len();
+        self.emit_je(0);
+        self.emit_mov_from_mem(Register::RBX, Register::RBX, 16);
+        self.emit_mov_to_stack(current_slot, Register::RBX);
+        let search_next_jump_pos = self.code.len();
+        self.emit_jmp(0);
+        self.patch_jmp_rel32(search_next_jump_pos, search_loop_pos);
+
+        let update_pos = self.code.len();
+        self.patch_jcc_rel32(update_jump_pos, update_pos);
+        self.emit_mov_from_stack(Register::RBX, current_slot);
+        self.emit_mov_from_stack(Register::R9, value_slot);
+        self.emit_mov_to_mem(Register::RBX, 8, Register::R9);
+        let end_jump_pos = self.code.len();
+        self.emit_jmp(0);
+
+        let insert_new_pos = self.code.len();
+        self.patch_jcc_rel32(insert_new_jump_pos, insert_new_pos);
+        self.emit_standalone_heap_alloc(24);
+        self.emit_test_reg(Register::RAX);
+        let alloc_fail_jump_pos = self.code.len();
+        self.emit_je(0);
+        self.emit_mov_to_stack(new_bucket_slot, Register::RAX);
+        self.emit_mov_from_stack(Register::R8, key_slot);
+        self.emit_mov_to_mem(Register::RAX, 0, Register::R8);
+        self.emit_mov_from_stack(Register::R9, value_slot);
+        self.emit_mov_to_mem(Register::RAX, 8, Register::R9);
+        self.emit_mov_from_stack(Register::RDX, bucket_slot_addr_slot);
+        self.emit_mov_from_mem(Register::RCX, Register::RDX, 0);
+        self.emit_mov_to_mem(Register::RAX, 16, Register::RCX);
+        self.emit_mov_to_mem(Register::RDX, 0, Register::RAX);
+        self.emit_mov_from_stack(Register::RAX, map_slot);
+        self.emit_mov_from_mem(Register::RBX, Register::RAX, 8);
+        self.emit_add_imm(Register::RBX, 1);
+        self.emit_mov_to_mem(Register::RAX, 8, Register::RBX);
+        let insert_end_jump_pos = self.code.len();
+        self.emit_jmp(0);
+
+        let alloc_fail_pos = self.code.len();
+        self.patch_jcc_rel32(alloc_fail_jump_pos, alloc_fail_pos);
+        self.emit_panic_message("Map bucket allocation failed");
+
+        let end_pos = self.code.len();
+        self.patch_jmp_rel32(end_jump_pos, end_pos);
+        self.patch_jmp_rel32(insert_end_jump_pos, end_pos);
+
+        self.stack_offset = saved_stack_offset;
+        Ok(())
+    }
+
     /// Compile MapHas instruction
     /// Pop key, pop map, push bool
     fn compile_map_has(&mut self) -> Result<(), String> {
         self.ensure_stack_items(2, "MapHas", &Self::ctx_operands("map,key"))?;
+        if self.standalone_executable {
+            return self.compile_map_has_standalone();
+        }
 
         // 1. Pop key
         self.emit_pop_checked(Register::RBX, "MapHas")?;
@@ -2169,10 +4684,71 @@ impl X86CodeGen {
         Ok(())
     }
 
+    fn compile_map_has_standalone(&mut self) -> Result<(), String> {
+        self.emit_pop_checked(Register::RBX, "MapHas")?;
+        self.emit_pop_checked(Register::RAX, "MapHas")?;
+
+        self.emit_mov_from_mem(Register::RCX, Register::RAX, 0);
+        self.emit_cmp_imm(Register::RCX, 0x02);
+        let type_panic_jump_pos = self.code.len();
+        self.emit_jne(0);
+
+        self.emit_standalone_map_bucket_slot(Register::RAX, Register::RBX, Register::RDX);
+        self.emit_mov_from_mem(Register::RDX, Register::RDX, 0);
+
+        let search_loop_pos = self.code.len();
+        self.emit_test_reg(Register::RDX);
+        let not_found_jump_pos = self.code.len();
+        self.emit_je(0);
+        self.emit_mov_from_mem(Register::RCX, Register::RDX, 0);
+        self.emit_cmp_reg(Register::RCX, Register::RBX);
+        let found_jump_pos = self.code.len();
+        self.emit_je(0);
+        self.emit_mov_from_mem(Register::RDX, Register::RDX, 16);
+        let search_next_jump_pos = self.code.len();
+        self.emit_jmp(0);
+        self.patch_jmp_rel32(search_next_jump_pos, search_loop_pos);
+
+        let found_pos = self.code.len();
+        self.patch_jcc_rel32(found_jump_pos, found_pos);
+        self.emit_mov_imm(Register::RAX, 1);
+        let end_jump_pos = self.code.len();
+        self.emit_jmp(0);
+
+        let not_found_pos = self.code.len();
+        self.patch_jcc_rel32(not_found_jump_pos, not_found_pos);
+        self.emit_mov_imm(Register::RAX, 0);
+        let not_found_end_jump_pos = self.code.len();
+        self.emit_jmp(0);
+
+        let panic_pos = self.code.len();
+        self.patch_jcc_rel32(type_panic_jump_pos, panic_pos);
+        self.emit_panic_message("Expected map for has");
+
+        let end_pos = self.code.len();
+        self.patch_jmp_rel32(end_jump_pos, end_pos);
+        self.patch_jmp_rel32(not_found_end_jump_pos, end_pos);
+        self.emit_push(Register::RAX);
+
+        Ok(())
+    }
+
     /// Compile MapKeys instruction
     /// Pop map, push list of keys
     fn compile_map_keys(&mut self) -> Result<(), String> {
         self.ensure_stack_items(1, "MapKeys", &Self::ctx_operands("map"))?;
+        if self.standalone_executable {
+            let result_kind = self
+                .predicted_map_view_kinds
+                .pop_front()
+                .unwrap_or(NativeValueKind::ListInt);
+            return self.compile_map_view_standalone(
+                0,
+                result_kind,
+                "MapKeys",
+                "Expected map for keys",
+            );
+        }
 
         // 1. Pop map
         self.emit_pop_checked(Register::RAX, "MapKeys")?;
@@ -2208,6 +4784,18 @@ impl X86CodeGen {
     /// Pop map, push list of values
     fn compile_map_values(&mut self) -> Result<(), String> {
         self.ensure_stack_items(1, "MapValues", &Self::ctx_operands("map"))?;
+        if self.standalone_executable {
+            let result_kind = self
+                .predicted_map_view_kinds
+                .pop_front()
+                .unwrap_or(NativeValueKind::ListInt);
+            return self.compile_map_view_standalone(
+                8,
+                result_kind,
+                "MapValues",
+                "Expected map for values",
+            );
+        }
 
         // 1. Pop map
         self.emit_pop_checked(Register::RAX, "MapValues")?;
@@ -2238,6 +4826,153 @@ impl X86CodeGen {
         Ok(())
     }
 
+    fn compile_map_view_standalone(
+        &mut self,
+        bucket_value_offset: i32,
+        result_kind: NativeValueKind,
+        instruction: &str,
+        type_panic: &str,
+    ) -> Result<(), String> {
+        self.emit_pop_checked(Register::RAX, instruction)?;
+
+        self.emit_mov_from_mem(Register::RCX, Register::RAX, 0);
+        self.emit_cmp_imm(Register::RCX, 0x02);
+        let type_panic_jump_pos = self.code.len();
+        self.emit_jne(0);
+
+        let saved_stack_offset = self.stack_offset;
+        self.stack_offset -= 8;
+        let map_slot = self.stack_offset;
+        self.stack_offset -= 8;
+        let list_slot = self.stack_offset;
+        self.stack_offset -= 8;
+        let size_slot = self.stack_offset;
+        self.stack_offset -= 8;
+        let data_slot = self.stack_offset;
+        self.stack_offset -= 8;
+        let buckets_cursor_slot = self.stack_offset;
+        self.stack_offset -= 8;
+        let bucket_count_slot = self.stack_offset;
+        self.stack_offset -= 8;
+        let current_bucket_slot = self.stack_offset;
+        self.stack_offset -= 8;
+        let write_index_slot = self.stack_offset;
+
+        self.emit_mov_to_stack(map_slot, Register::RAX);
+        self.emit_mov_from_mem(Register::RBX, Register::RAX, 8);
+        self.emit_mov_to_stack(size_slot, Register::RBX);
+
+        self.emit_standalone_heap_alloc(32);
+        self.emit_test_reg(Register::RAX);
+        let list_alloc_fail_jump_pos = self.code.len();
+        self.emit_je(0);
+        self.emit_mov_to_stack(list_slot, Register::RAX);
+
+        self.emit_mov_from_stack(Register::RDX, size_slot);
+        self.emit_shl_imm(Register::RDX, 3);
+        self.emit_test_reg(Register::RDX);
+        let non_empty_data_jump_pos = self.code.len();
+        self.emit_jne(0);
+        self.emit_mov_imm(Register::RDX, 8);
+        let data_size_done_jump_pos = self.code.len();
+        self.emit_jmp(0);
+        let non_empty_data_pos = self.code.len();
+        self.patch_jcc_rel32(non_empty_data_jump_pos, non_empty_data_pos);
+        let data_size_done_pos = self.code.len();
+        self.patch_jmp_rel32(data_size_done_jump_pos, data_size_done_pos);
+
+        self.emit_standalone_heap_alloc_reg(Register::RDX);
+        self.emit_test_reg(Register::RAX);
+        let data_alloc_fail_jump_pos = self.code.len();
+        self.emit_je(0);
+        self.emit_mov_to_stack(data_slot, Register::RAX);
+
+        self.emit_mov_from_stack(Register::RAX, list_slot);
+        self.emit_mov_imm(Register::RBX, 0x01);
+        self.emit_mov_to_mem(Register::RAX, 0, Register::RBX);
+        self.emit_mov_from_stack(Register::RBX, size_slot);
+        self.emit_mov_to_mem(Register::RAX, 8, Register::RBX);
+        self.emit_mov_to_mem(Register::RAX, 16, Register::RBX);
+        self.emit_mov_from_stack(Register::RBX, data_slot);
+        self.emit_mov_to_mem(Register::RAX, 24, Register::RBX);
+
+        self.emit_mov_from_stack(Register::RAX, map_slot);
+        self.emit_mov_from_mem(Register::RBX, Register::RAX, 16);
+        self.emit_mov_to_stack(buckets_cursor_slot, Register::RBX);
+        self.emit_mov_imm(Register::RBX, 16);
+        self.emit_mov_to_stack(bucket_count_slot, Register::RBX);
+        self.emit_mov_imm(Register::RBX, 0);
+        self.emit_mov_to_stack(write_index_slot, Register::RBX);
+
+        let outer_loop_pos = self.code.len();
+        self.emit_mov_from_stack(Register::RBX, bucket_count_slot);
+        self.emit_test_reg(Register::RBX);
+        let done_jump_pos = self.code.len();
+        self.emit_je(0);
+
+        self.emit_mov_from_stack(Register::RCX, buckets_cursor_slot);
+        self.emit_mov_from_mem(Register::RBX, Register::RCX, 0);
+        self.emit_mov_to_stack(current_bucket_slot, Register::RBX);
+
+        let inner_loop_pos = self.code.len();
+        self.emit_mov_from_stack(Register::RBX, current_bucket_slot);
+        self.emit_test_reg(Register::RBX);
+        let next_bucket_jump_pos = self.code.len();
+        self.emit_je(0);
+
+        self.emit_mov_from_mem(Register::R8, Register::RBX, bucket_value_offset);
+        self.emit_mov_from_stack(Register::R9, data_slot);
+        self.emit_mov_from_stack(Register::RDX, write_index_slot);
+        self.emit_shl_imm(Register::RDX, 3);
+        self.emit_add_reg(Register::R9, Register::RDX);
+        self.emit_mov_to_mem(Register::R9, 0, Register::R8);
+        self.emit_mov_from_stack(Register::RDX, write_index_slot);
+        self.emit_add_imm(Register::RDX, 1);
+        self.emit_mov_to_stack(write_index_slot, Register::RDX);
+        self.emit_mov_from_mem(Register::RBX, Register::RBX, 16);
+        self.emit_mov_to_stack(current_bucket_slot, Register::RBX);
+        let inner_continue_jump_pos = self.code.len();
+        self.emit_jmp(0);
+        self.patch_jmp_rel32(inner_continue_jump_pos, inner_loop_pos);
+
+        let next_bucket_pos = self.code.len();
+        self.patch_jcc_rel32(next_bucket_jump_pos, next_bucket_pos);
+        self.emit_mov_from_stack(Register::RCX, buckets_cursor_slot);
+        self.emit_add_imm(Register::RCX, 8);
+        self.emit_mov_to_stack(buckets_cursor_slot, Register::RCX);
+        self.emit_mov_from_stack(Register::RBX, bucket_count_slot);
+        self.emit_sub_imm(Register::RBX, 1);
+        self.emit_mov_to_stack(bucket_count_slot, Register::RBX);
+        let outer_continue_jump_pos = self.code.len();
+        self.emit_jmp(0);
+        self.patch_jmp_rel32(outer_continue_jump_pos, outer_loop_pos);
+
+        let done_pos = self.code.len();
+        self.patch_jcc_rel32(done_jump_pos, done_pos);
+        self.emit_mov_from_stack(Register::RAX, list_slot);
+        self.emit_push_typed(Register::RAX, result_kind);
+        let end_jump_pos = self.code.len();
+        self.emit_jmp(0);
+
+        let type_panic_pos = self.code.len();
+        self.patch_jcc_rel32(type_panic_jump_pos, type_panic_pos);
+        self.emit_panic_message(type_panic);
+
+        let list_alloc_fail_pos = self.code.len();
+        self.patch_jcc_rel32(list_alloc_fail_jump_pos, list_alloc_fail_pos);
+        self.emit_panic_message("Map view list allocation failed");
+
+        let data_alloc_fail_pos = self.code.len();
+        self.patch_jcc_rel32(data_alloc_fail_jump_pos, data_alloc_fail_pos);
+        self.emit_panic_message("Map view data allocation failed");
+
+        let end_pos = self.code.len();
+        self.patch_jmp_rel32(end_jump_pos, end_pos);
+
+        self.stack_offset = saved_stack_offset;
+        Ok(())
+    }
+
     /// Compile NewStruct instruction
     /// Creates a struct by materializing a map-like keyed layout.
     /// Stack input is pairs: field_name, value (same order used by bytecode compiler/VM).
@@ -2247,6 +4982,9 @@ impl X86CodeGen {
             "NewStruct",
             &format!("field_count={}", field_count),
         )?;
+        if self.standalone_executable {
+            return self.compile_new_map_standalone(field_count);
+        }
 
         // 1. Create backing map
         self.emit_call_runtime("matter_map_new");
@@ -2289,6 +5027,9 @@ impl X86CodeGen {
     /// Supports both Structs (direct offset) and Maps (hash lookup)
     fn compile_load_field(&mut self, field: &str) -> Result<(), String> {
         self.ensure_stack_items(1, "LoadField", &format!("field={}", field))?;
+        if self.standalone_executable {
+            return self.compile_load_field_standalone(field);
+        }
 
         // 1. Pop struct/map
         self.emit_pop_checked(Register::RAX, "LoadField")?;
@@ -2372,6 +5113,61 @@ impl X86CodeGen {
         Ok(())
     }
 
+    fn compile_load_field_standalone(&mut self, field: &str) -> Result<(), String> {
+        self.emit_pop_checked(Register::RAX, "LoadField")?;
+
+        self.emit_mov_from_mem(Register::RCX, Register::RAX, 0);
+        self.emit_cmp_imm(Register::RCX, 0x02);
+        let type_panic_jump_pos = self.code.len();
+        self.emit_jne(0);
+
+        let field_offset = self.add_data_standalone_string(field);
+        let patch_pos = self.code.len() + 3;
+        self.emit_lea_rip(Register::RBX, 0);
+        self.pending_data_patches.push((patch_pos, field_offset));
+
+        self.emit_standalone_map_bucket_slot(Register::RAX, Register::RBX, Register::RDX);
+        self.emit_mov_from_mem(Register::RDX, Register::RDX, 0);
+
+        let search_loop_pos = self.code.len();
+        self.emit_test_reg(Register::RDX);
+        let missing_jump_pos = self.code.len();
+        self.emit_je(0);
+        self.emit_mov_from_mem(Register::RCX, Register::RDX, 0);
+        self.emit_cmp_reg(Register::RCX, Register::RBX);
+        let found_jump_pos = self.code.len();
+        self.emit_je(0);
+        self.emit_mov_from_mem(Register::RDX, Register::RDX, 16);
+        let search_next_jump_pos = self.code.len();
+        self.emit_jmp(0);
+        self.patch_jmp_rel32(search_next_jump_pos, search_loop_pos);
+
+        let found_pos = self.code.len();
+        self.patch_jcc_rel32(found_jump_pos, found_pos);
+        self.emit_mov_from_mem(Register::RAX, Register::RDX, 8);
+        let result_kind = self
+            .predicted_load_field_kinds
+            .pop_front()
+            .unwrap_or(NativeValueKind::Int);
+        self.emit_push_typed(Register::RAX, result_kind);
+        let end_jump_pos = self.code.len();
+        self.emit_jmp(0);
+
+        let type_panic_pos = self.code.len();
+        self.patch_jcc_rel32(type_panic_jump_pos, type_panic_pos);
+        self.emit_panic_message("Expected struct or map for field access");
+
+        let missing_pos = self.code.len();
+        self.patch_jcc_rel32(missing_jump_pos, missing_pos);
+        let panic_msg = format!("Field '{}' not found", field);
+        self.emit_panic_message(&panic_msg);
+
+        let end_pos = self.code.len();
+        self.patch_jmp_rel32(end_jump_pos, end_pos);
+
+        Ok(())
+    }
+
     /// Compile StoreFieldVar instruction
     /// Pop value, mutate variable field
     fn compile_store_field_var(&mut self, target: &str, field: &str) -> Result<(), String> {
@@ -2390,6 +5186,9 @@ impl X86CodeGen {
             .get(target)
             .ok_or_else(|| format!("Undefined variable: {}", target))?;
         self.emit_mov_from_stack(Register::RAX, *offset);
+        if self.standalone_executable {
+            return self.compile_store_field_var_standalone(field);
+        }
 
         // 3. Branch by runtime tag: map-backed struct path or legacy positional struct path.
         self.emit_mov_from_mem(Register::RCX, Register::RAX, 0); // type_tag
@@ -2425,6 +5224,32 @@ impl X86CodeGen {
         // Invalid type panic path
         let invalid_type_pos = self.code.len();
         self.patch_jcc_rel32(invalid_type_jump_pos, invalid_type_pos);
+        self.emit_panic_message("Expected struct or map variable for field store");
+
+        let end_pos = self.code.len();
+        self.patch_jmp_rel32(end_jump_pos, end_pos);
+
+        Ok(())
+    }
+
+    fn compile_store_field_var_standalone(&mut self, field: &str) -> Result<(), String> {
+        self.emit_mov_from_mem(Register::RCX, Register::RAX, 0);
+        self.emit_cmp_imm(Register::RCX, 0x02);
+        let type_panic_jump_pos = self.code.len();
+        self.emit_jne(0);
+
+        let field_offset = self.add_data_standalone_string(field);
+        let patch_pos = self.code.len() + 3;
+        self.emit_lea_rip(Register::R8, 0);
+        self.pending_data_patches.push((patch_pos, field_offset));
+        self.emit_mov_reg(Register::R9, Register::RBX);
+        self.emit_standalone_map_insert()?;
+
+        let end_jump_pos = self.code.len();
+        self.emit_jmp(0);
+
+        let type_panic_pos = self.code.len();
+        self.patch_jcc_rel32(type_panic_jump_pos, type_panic_pos);
         self.emit_panic_message("Expected struct or map variable for field store");
 
         let end_pos = self.code.len();
@@ -2545,6 +5370,31 @@ impl X86CodeGen {
         self.code.extend_from_slice(&offset.to_le_bytes());
     }
 
+    /// Emit: movzx dest, byte ptr [base + index + offset]
+    fn emit_movzx_byte_from_base_index(
+        &mut self,
+        dest: Register,
+        base: Register,
+        index: Register,
+        offset: i32,
+    ) {
+        let rex = 0x48
+            | if dest.encoding() >= 8 { 4 } else { 0 }
+            | if index.encoding() >= 8 { 2 } else { 0 }
+            | if base.encoding() >= 8 { 1 } else { 0 };
+        self.code.push(rex);
+        self.code.extend_from_slice(&[0x0F, 0xB6]);
+
+        // ModR/M: mod=10 disp32, r=dest, r/m=100 SIB follows.
+        let modrm = 0x84 | ((dest.encoding() & 7) << 3);
+        self.code.push(modrm);
+
+        // SIB: scale=1, index=index, base=base.
+        let sib = ((index.encoding() & 7) << 3) | (base.encoding() & 7);
+        self.code.push(sib);
+        self.code.extend_from_slice(&offset.to_le_bytes());
+    }
+
     /// Emit: shl reg, imm
     fn emit_shl_imm(&mut self, reg: Register, shift: u8) {
         // REX.W + B
@@ -2560,6 +5410,27 @@ impl X86CodeGen {
 
         // Immediate shift amount
         self.code.push(shift);
+    }
+
+    /// Emit: and reg, imm
+    fn emit_and_imm(&mut self, reg: Register, value: i32) {
+        // REX.W + B
+        let rex = 0x48 | if reg.encoding() >= 8 { 1 } else { 0 };
+        self.code.push(rex);
+
+        if (-128..=127).contains(&value) {
+            // Opcode: 0x83 /4 (and r/m64, imm8)
+            self.code.push(0x83);
+            let modrm = 0xE0 | (reg.encoding() & 7);
+            self.code.push(modrm);
+            self.code.push(value as u8);
+        } else {
+            // Opcode: 0x81 /4 (and r/m64, imm32)
+            self.code.push(0x81);
+            let modrm = 0xE0 | (reg.encoding() & 7);
+            self.code.push(modrm);
+            self.code.extend_from_slice(&value.to_le_bytes());
+        }
     }
 
     /// Emit: add reg, imm
@@ -2675,6 +5546,40 @@ mod tests {
         assert!(result.is_ok());
         let code = result.unwrap();
         assert!(!code.is_empty());
+    }
+
+    #[test]
+    fn test_boolean_ops_codegen() {
+        let mut bytecode = Bytecode::new();
+        let c0 = bytecode.add_constant(Constant::Int(0));
+        let c2 = bytecode.add_constant(Constant::Int(2));
+        let c3 = bytecode.add_constant(Constant::Int(3));
+
+        bytecode.main_instructions = vec![
+            Instruction::LoadConst(c2),
+            Instruction::LoadConst(c3),
+            Instruction::And,
+            Instruction::Print,
+            Instruction::LoadConst(c0),
+            Instruction::LoadConst(c3),
+            Instruction::Or,
+            Instruction::Print,
+            Instruction::LoadConst(c0),
+            Instruction::Not,
+            Instruction::Print,
+            Instruction::Halt,
+        ];
+
+        let mut codegen = X86CodeGen::new();
+        let code = codegen
+            .compile(&bytecode)
+            .expect("boolean operators should compile");
+
+        assert!(!code.is_empty());
+        assert!(
+            code.windows([0x0F, 0x95].len()).any(|w| w == [0x0F, 0x95]),
+            "boolean operators should lower through setne normalization"
+        );
     }
 
     #[test]

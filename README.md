@@ -40,6 +40,9 @@ Launch the native Rust terminal studio:
 .\matter-cli.exe studio-native-json examples\matter_studio_ui.matter
 .\matter-cli.exe sentinel-pvmbc examples\matter_studio_ui.matter -o target\matter-studio.pvmbc --name matter-studio
 .\matter-cli.exe sentinel-pvmbc-inspect-json target\matter-studio.pvmbc
+.\matter-cli.exe sentinel-pvmbc-rust-array examples\matter_studio_ui.matter --const MATTER_STUDIO_PVMBC --name matter-studio
+.\matter-cli.exe sentinel-mbc1-rust-array examples\sentinel_boot.matter --const MATTER_BOOT_MBC1
+.\matter-cli.exe sentinel-mbc1-kernel-check-json examples\sentinel_boot.matter --budget 10000
 ```
 
 ## Build From Source
@@ -74,7 +77,12 @@ cargo build -p matter-cli --release
 - declare UI layouts in Matter with `visual.*` and preview them in Matter Studio
 - render a native Rust terminal studio with `studio-native`
 - export Matter visual layouts to Sentinel OS PVM2 bytecode with `sentinel-pvmbc`
+- emit Sentinel PVM2 packages as Rust kernel constants with `sentinel-pvmbc-rust-array`
+- emit compiled Matter MBC1 programs as Rust kernel constants with `sentinel-mbc1-rust-array`
+- compile and validate Matter MBC1 programs against the `matter-kernel-vm` subset with `sentinel-mbc1-kernel-check-json`
 - inspect Sentinel PVM bytecode artifacts with `sentinel-pvmbc-inspect-json`
+- validate and run a small `no_std + alloc` MBC1 kernel subset with `matter-kernel-vm`
+- validate Rust FFI argument payloads and call Rust `cdylib` symbols through the documented JSON ABI
 
 ## Example
 
@@ -121,6 +129,8 @@ Guard it before a reflexive/self-modifying workflow:
 - `benchmark-gate-json`: enforce performance budgets.
 - `init` / `init-json`: scaffold a Matter project.
 - `project-*`: operate on `matter.toml` package manifests.
+- `rust-ffi-validate-args-json`: validate typed JSON arguments for Rust FFI.
+- `rust-ffi-call-json`: call a Rust dynamic library symbol through the JSON FFI ABI.
 
 Machine-readable capabilities:
 
@@ -164,9 +174,15 @@ Matter can export a `visual.*` interface as Sentinel-compatible `PVM2` bytecode.
 ```powershell
 .\matter-cli.exe sentinel-pvmbc examples\matter_studio_ui.matter -o target\matter-studio.pvmbc --name matter-studio
 .\matter-cli.exe sentinel-pvmbc-inspect-json target\matter-studio.pvmbc
+.\matter-cli.exe sentinel-pvmbc-rust-array examples\matter_studio_ui.matter --const MATTER_STUDIO_PVMBC --name matter-studio
+.\matter-cli.exe sentinel-mbc1-rust-array examples\sentinel_boot.matter --const MATTER_BOOT_MBC1
+.\matter-cli.exe sentinel-mbc1-kernel-check-json examples\sentinel_boot.matter --budget 10000
 ```
 
 The generated file can be copied into a Sentinel disk image and loaded from the Sentinel PVM shell with its `installpvmbc` / `loadpvmbc` flow.
+The Rust array output is for embedding the same package directly in Sentinel's kernel catalog without hand-copying bytes.
+
+The next layer is `matter-kernel-vm`, a `no_std + alloc` crate for Sentinel L3. It can inspect real `MBC1` Matter bytecode and execute a safe integer subset of `main` instructions for first QEMU boot tests. Use `sentinel-mbc1-kernel-check-json` to validate that a Matter program fits the kernel subset before embedding it with `sentinel-mbc1-rust-array`.
 
 ## Who This Is For
 
@@ -197,21 +213,30 @@ Format and test:
 cargo fmt --all
 cargo check -p matter-cli
 cargo test --workspace --all-targets
+powershell -ExecutionPolicy Bypass -File .\scripts\validate-full-workspace.ps1
 ```
 
 The repository uses `.cargo/config.toml` to place build output outside this directory. This avoids Windows toolchain failures caused by spaces in the workspace path.
 
 ## Documentation
 
-Start here:
+**Start here:**
 
-- [User onboarding](docs/USER_ONBOARDING.md)
-- [Language tour](docs/LANGUAGE_TOUR.md)
-- [Reflexive core](docs/REFLEXIVE_CORE.md)
-- [Build status](docs/BUILD_STATUS.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [Language spec](docs/SPEC.md)
-- [Documentation index](docs/INDEX.md)
+- **[Documentation Index](docs/INDEX.md)** - Complete navigation guide
+- **[Manifesto](docs/MANIFESTO.md)** - Language philosophy and principles
+- **[Specification](docs/SPEC.md)** - Technical specification
+- **[Progress](PROGRESS.md)** - Current development status
+- **[Reality Check](docs/status/REALIDADE_ATUAL_HONESTA.md)** - Honest current status
+- **[Final Instructions](docs/guides/INSTRUCOES_FINAIS.md)** - How to compile and run
+
+**Organized documentation:**
+- `docs/status/` - Current validation/status reports
+- `docs/sprints/` - 54 development sprints
+- `docs/sessions/` - Development session summaries
+- `docs/vision/` - Vision and strategy documents
+- `docs/technical/` - Technical deep dives
+- `docs/guides/` - Current quick start guides
+- `docs/archive/` - Historical documents (200+)
 
 ## GitHub Repository Metadata
 

@@ -68,6 +68,7 @@ members = [
     "crates/matter-ir",
     "crates/matter-display",
     "crates/matter-sentinel-abi",
+    "crates/matter-kernel-vm",
 ]
 resolver = "2"
 
@@ -90,6 +91,7 @@ matter-scheduler = { path = "crates/matter-scheduler" }
 matter-ir = { path = "crates/matter-ir" }
 matter-display = { path = "crates/matter-display" }
 matter-sentinel-abi = { path = "crates/matter-sentinel-abi" }
+matter-kernel-vm = { path = "crates/matter-kernel-vm" }
 matter-runtime = { path = "crates/matter-runtime" }
 matter-backend = { path = "crates/matter-backend" }
 matter-energy = { path = "crates/matter-energy" }

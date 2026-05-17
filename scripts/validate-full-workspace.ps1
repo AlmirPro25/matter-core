@@ -1,8 +1,16 @@
 param(
     [switch]$RequireLLVM,
     [switch]$SkipFmt,
+    [switch]$SkipRunnableExamples,
+    [switch]$SkipRustFfiSmoke,
+    [switch]$SkipNativeFfiSmoke,
+    [switch]$IncludeJavaNativeSmoke,
+    [switch]$IncludeNodeNativeUnitTests,
     [switch]$JsonSummary,
     [switch]$RunPreflight,
+    [switch]$RunDoctor,
+    [switch]$RequireDoctorPass,
+    [switch]$CiMode,
     [int]$PreflightMinFreeGB = 10
 )
 
@@ -26,6 +34,27 @@ if ($RunPreflight) {
     }
     else {
         Write-Host "Preflight script not found at $preflightScript. Continuing." -ForegroundColor Yellow
+    }
+}
+
+# Optional release doctor for environment/readiness diagnostics.
+if ($RunDoctor) {
+    $doctorScript = Join-Path $PSScriptRoot "release-doctor.ps1"
+    if (Test-Path $doctorScript) {
+        Write-Host "Running release doctor..." -ForegroundColor Yellow
+        & powershell -ExecutionPolicy Bypass -File $doctorScript
+        $doctorExit = $LASTEXITCODE
+        if ($doctorExit -eq 2) {
+            Write-Host "Release doctor reported FAIL. Aborting validation." -ForegroundColor Red
+            exit 4
+        }
+        if (($doctorExit -eq 1) -and $RequireDoctorPass) {
+            Write-Host "Release doctor reported WARN and -RequireDoctorPass was enabled. Aborting validation." -ForegroundColor Red
+            exit 4
+        }
+    }
+    else {
+        Write-Host "Release doctor script not found at $doctorScript. Continuing." -ForegroundColor Yellow
     }
 }
 
@@ -174,21 +203,91 @@ try {
         # Keep full validation flow operational in environments without LLVM.
         $workspaceClippyCmd = "$cargoPrefix clippy --workspace --exclude matter-llvm --all-targets -- -D warnings"
         $workspaceTestCmd = "$cargoPrefix test --workspace --exclude matter-llvm --exclude matter-wasm"
+        if (-not $IncludeNodeNativeUnitTests) {
+            # matter-bridge-nodejs-native unit tests can spam Node-API symbol lookup logs
+            # when not running under a Node host process. Native smoke covers bridge health.
+            $workspaceTestCmd += " --exclude matter-bridge-nodejs-native"
+        }
     }
 
     if (-not $SkipFmt) {
-        Run-Step -Name "Format check" -Command "$cargoPrefix fmt --all -- --check" -Critical
+        $fmtCmd = "$cargoPrefix fmt --all -- --check"
+        if ($CiMode) {
+            $fmtCmd = "$cargoPrefix fmt --all -- --check -q"
+        }
+        Run-Step -Name "Format check" -Command $fmtCmd -Critical
     }
     else {
         Add-Result -Name "Format check" -Passed $true -DurationSec 0 -Details "skipped"
     }
 
+    if ($CiMode) {
+        $workspaceTestCmd = "$workspaceTestCmd -q"
+    }
     Run-Step -Name "Clippy workspace (strict)" -Command $workspaceClippyCmd -Critical
     Run-Step -Name "Workspace tests" -Command $workspaceTestCmd -Critical
 
+    if (-not $SkipRunnableExamples) {
+        Run-Step -Name "Runnable examples contract" -Command "powershell -ExecutionPolicy Bypass -File .\scripts\test-runnable-examples.ps1 -JsonSummary" -Critical
+    }
+    else {
+        Add-Result -Name "Runnable examples contract" -Passed $true -DurationSec 0 -Details "skipped"
+    }
+
+    if (-not $SkipRustFfiSmoke) {
+        Run-Step -Name "Rust FFI plugin smoke" -Command "powershell -ExecutionPolicy Bypass -File .\scripts\rust-ffi-plugin-smoke.ps1 -JsonOut target\ffi\rust-smoke.json" -Critical
+    }
+    else {
+        Add-Result -Name "Rust FFI plugin smoke" -Passed $true -DurationSec 0 -Details "skipped"
+    }
+
+    if (-not $SkipNativeFfiSmoke) {
+        $nativeFfiCommand = "powershell -ExecutionPolicy Bypass -File .\scripts\native-ffi-smoke.ps1"
+        if ($IncludeJavaNativeSmoke) {
+            $nativeFfiCommand = "$nativeFfiCommand -IncludeJava"
+        }
+        $nativeFfiCommand = "$nativeFfiCommand -JsonOut target\ffi\native-smoke.json"
+        Run-Step -Name "Native FFI smoke" -Command $nativeFfiCommand -Critical
+    }
+    else {
+        Add-Result -Name "Native FFI smoke" -Passed $true -DurationSec 0 -Details "skipped"
+    }
+
+    if ((-not $SkipRustFfiSmoke) -and (-not $SkipNativeFfiSmoke)) {
+        $verifyFfiCommand = "powershell -ExecutionPolicy Bypass -File .\scripts\verify-ffi-smoke-summaries.ps1"
+        if ($IncludeJavaNativeSmoke) {
+            $verifyFfiCommand = "$verifyFfiCommand -RequireJava"
+        }
+        Run-Step -Name "Verify FFI smoke summaries" -Command $verifyFfiCommand -Critical
+        Run-Step -Name "Export FFI validation matrix" -Command "powershell -ExecutionPolicy Bypass -File .\scripts\export-ffi-validation-matrix.ps1 -Out target\ffi\ffi-validation-matrix.json" -Critical
+        $verifyFfiMatrixCommand = "powershell -ExecutionPolicy Bypass -File .\scripts\verify-ffi-smoke-summaries.ps1 -CheckMatrix"
+        if ($IncludeJavaNativeSmoke) {
+            $verifyFfiMatrixCommand = "$verifyFfiMatrixCommand -RequireJava"
+        }
+        Run-Step -Name "Verify FFI validation matrix" -Command $verifyFfiMatrixCommand -Critical
+        Run-Step -Name "Export FFI validation report" -Command "powershell -ExecutionPolicy Bypass -File .\scripts\export-ffi-validation-report.ps1 -Out target\ffi\ffi-validation-report.md" -Critical
+        Run-Step -Name "Test FFI validation report contract" -Command "powershell -ExecutionPolicy Bypass -File .\scripts\test-ffi-validation-report-contract.ps1" -Critical
+        Run-Step -Name "Test FFI validation matrix contract" -Command "powershell -ExecutionPolicy Bypass -File .\scripts\test-ffi-validation-matrix-contract.ps1" -Critical
+        Run-Step -Name "Test release package contract" -Command "powershell -ExecutionPolicy Bypass -File .\scripts\test-release-package-contract.ps1" -Critical
+    }
+    else {
+        Add-Result -Name "Verify FFI smoke summaries" -Passed $true -DurationSec 0 -Details "skipped (smoke skipped)"
+        Add-Result -Name "Export FFI validation matrix" -Passed $true -DurationSec 0 -Details "skipped (smoke skipped)"
+        Add-Result -Name "Verify FFI validation matrix" -Passed $true -DurationSec 0 -Details "skipped (smoke skipped)"
+        Add-Result -Name "Export FFI validation report" -Passed $true -DurationSec 0 -Details "skipped (smoke skipped)"
+        Add-Result -Name "Test FFI validation report contract" -Passed $true -DurationSec 0 -Details "skipped (smoke skipped)"
+        Add-Result -Name "Test FFI validation matrix contract" -Passed $true -DurationSec 0 -Details "skipped (smoke skipped)"
+        Add-Result -Name "Test release package contract" -Passed $true -DurationSec 0 -Details "skipped (smoke skipped)"
+    }
+
     if ($llvmDetected) {
-        Run-Step -Name "Clippy matter-llvm (strict)" -Command "$cargoPrefix clippy -p matter-llvm --all-targets -- -D warnings" -Critical
-        Run-Step -Name "Build CLI with LLVM feature" -Command "$cargoPrefix build -p matter-cli --features llvm" -Critical
+        $llvmClippyCmd = "$cargoPrefix clippy -p matter-llvm --all-targets -- -D warnings"
+        $llvmBuildCmd = "$cargoPrefix build -p matter-cli --features llvm"
+        if ($CiMode) {
+            $llvmBuildCmd = "$llvmBuildCmd -q"
+        }
+        Run-Step -Name "Clippy matter-llvm (strict)" -Command $llvmClippyCmd -Critical
+        Run-Step -Name "Build CLI with LLVM feature" -Command $llvmBuildCmd -Critical
     }
     else {
         Add-Result -Name "Clippy matter-llvm (strict)" -Passed $true -DurationSec 0 -Details "skipped (LLVM unavailable)"

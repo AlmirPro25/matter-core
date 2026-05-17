@@ -363,7 +363,7 @@ mod tests {
     fn test_crash_reporter() {
         let reporter = CrashReporter::new();
 
-        let error = std::io::Error::new(std::io::ErrorKind::Other, "test error");
+        let error = std::io::Error::other("test error");
         let result = reporter.report_crash(&error);
 
         assert!(result.is_ok());

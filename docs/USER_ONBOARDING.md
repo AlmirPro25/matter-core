@@ -33,10 +33,33 @@ The next command teaches syntax:
 ## Release Friction Checklist
 
 - Windows zip contains `matter-cli.exe`
+- zip contains `examples\README.md`
 - zip contains `examples\first_run.matter`
 - zip contains `examples\language_tour.matter`
 - zip contains `README.md`
 - zip contains `LANGUAGE_TOUR.md`
+- zip contains `docs\technical\RUST_FFI_ABI.md`
+- zip contains `docs\technical\FFI_NATIVE_SMOKE.md`
+- zip contains `schemas\ffi-validation-matrix.schema.json`
+- zip contains `examples\rust_ffi_plugin\`
+- zip contains `examples\go_native_plugin\`
+- zip contains `examples\node_native_host\`
+- zip contains `scripts\export-ffi-validation-matrix.ps1`
+- zip contains `scripts\export-ffi-validation-report.ps1`
+- zip contains `scripts\export-release-readiness.ps1`
+- zip contains `scripts\export-release-package-manifest.ps1`
+- zip contains `scripts\ffi-smoke-all.ps1`
+- zip contains `scripts\test-ffi-validation-matrix-contract.ps1`
+- zip contains `scripts\test-ffi-validation-report-contract.ps1`
+- zip contains `scripts\test-release-readiness-contract.ps1`
+- zip contains `scripts\test-release-package-contract.ps1`
+- zip contains `scripts\verify-release-package.ps1`
+- zip contains `scripts\rust-ffi-plugin-smoke.ps1`
+- zip contains `scripts\native-ffi-smoke.ps1`
+- zip contains `scripts\verify-ffi-smoke-summaries.ps1`
+- zip contains `target\ffi\ffi-validation-report-*.md`
+- zip contains `target\ffi\release-readiness-*.json`
+- zip contains `target\ffi\release-package-manifest.json`
 - README starts with binary download path before Rust build instructions
 - release page shows the three commands above
 - no command in the first path requires Rust, Git, network access, or source-code reading

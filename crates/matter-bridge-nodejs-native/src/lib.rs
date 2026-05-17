@@ -159,7 +159,7 @@ impl NodeJSNativeBridge {
     }
 
     /// Converte JsValue para Value (FFI direto)
-    fn js_to_value(&self, env: &napi::Env, js_value: napi::JsUnknown) -> BridgeResult<Value> {
+    fn js_to_value(&self, _env: &napi::Env, js_value: napi::JsUnknown) -> BridgeResult<Value> {
         let value_type = js_value.get_type()?;
 
         match value_type {
@@ -194,7 +194,7 @@ impl NodeJSNativeBridge {
                     let mut items = Vec::new();
                     for i in 0..len {
                         let js_item: napi::JsUnknown = js_array.get_element(i)?;
-                        items.push(self.js_to_value(env, js_item)?);
+                        items.push(self.js_to_value(_env, js_item)?);
                     }
                     Ok(Value::new_list(items))
                 } else {
@@ -207,7 +207,7 @@ impl NodeJSNativeBridge {
                         let key: napi::JsString = keys.get_element(i)?;
                         let key_str = key.into_utf8()?.as_str()?.to_string();
                         let js_val: napi::JsUnknown = js_obj.get_named_property(&key_str)?;
-                        map.insert(key_str, self.js_to_value(env, js_val)?);
+                        map.insert(key_str, self.js_to_value(_env, js_val)?);
                     }
                     Ok(Value::new_map(map))
                 }
@@ -217,6 +217,12 @@ impl NodeJSNativeBridge {
                 value_type
             ))),
         }
+    }
+}
+
+impl Default for NodeJSNativeBridge {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -265,6 +271,42 @@ pub fn matter_bridge_init() -> String {
 #[napi]
 pub fn matter_bridge_version() -> String {
     "2.1.0".to_string()
+}
+
+#[napi]
+pub fn matter_bridge_add_ints_json(args_json: String) -> napi::Result<String> {
+    let args: serde_json::Value = serde_json::from_str(&args_json)
+        .map_err(|error| napi::Error::from_reason(format!("Invalid args JSON: {}", error)))?;
+    let values = args
+        .as_array()
+        .ok_or_else(|| napi::Error::from_reason("Args JSON must be an array".to_string()))?;
+
+    let mut total = 0i64;
+    for value in values {
+        let object = value
+            .as_object()
+            .ok_or_else(|| napi::Error::from_reason("Typed arg must be an object".to_string()))?;
+        let value_type = object
+            .get("type")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| napi::Error::from_reason("Typed arg is missing type".to_string()))?;
+        if value_type != "int" {
+            return Err(napi::Error::from_reason(format!(
+                "Expected int arg, got {}",
+                value_type
+            )));
+        }
+        total += object
+            .get("value")
+            .and_then(serde_json::Value::as_i64)
+            .ok_or_else(|| napi::Error::from_reason("Typed int arg is invalid".to_string()))?;
+    }
+
+    Ok(serde_json::json!({
+        "type": "int",
+        "value": total
+    })
+    .to_string())
 }
 
 #[cfg(test)]

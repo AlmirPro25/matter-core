@@ -1,8 +1,12 @@
+param(
+    [string]$CliPath = ".\target\release\matter-cli.exe"
+)
+
 # Test: API Bridge JSON commands
 Write-Host "=== Teste da Ponte API/JSON ===" -ForegroundColor Cyan
 Write-Host ""
 
-$cli = ".\target\release\matter-cli.exe"
+$cli = $CliPath
 $allPassed = $true
 
 function Fail($message) {
@@ -76,6 +80,9 @@ $projectBytecodeFile = "target\api_bridge_project.mbc"
 $projectBuildFile = "target\api_bridge_project_build.mbc"
 $projectRunBuildFile = "target\api_bridge_project_run_build.mbc"
 $projectEmitBuildFile = "target\api_bridge_project_emit_build.mbc"
+
+$rootManifest = Get-Content "matter.toml" -Raw
+$rootEntry = if ($rootManifest -match '(?m)^\s*entry\s*=\s*"([^"]+)"') { $Matches[1] } else { "" }
 
 try {
     'import "stdlib_demo"' | Set-Content -Path $projectEntryFile -Encoding UTF8
@@ -192,7 +199,7 @@ entry = "api_bridge_project_event_entry.matter"
     if ($null -ne $json) {
         Assert-Equal $json.ok $true "package-json deveria retornar ok=true"
         Assert-Equal $json.package.name "matter-core" "package-json deveria ler nome do pacote"
-        Assert-Equal $json.package.entry "examples/showcase.matter" "package-json deveria ler entrada"
+        Assert-Equal $json.package.entry $rootEntry "package-json deveria ler entrada"
         Assert-Equal $json.paths.stdlib "stdlib" "package-json deveria ler caminho da stdlib"
         Assert-Equal @($json.dependencies)[0].name "math_tools" "package-json deveria listar dependencia local"
         Pass "package-json"

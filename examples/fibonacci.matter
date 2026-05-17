@@ -1,5 +1,5 @@
 // Fibonacci Real - Teste de performance
-fn main() {
+fn main() with io {
     print("Calculando Fibonacci...")
     
     let n = 20

@@ -479,7 +479,7 @@ mod tests {
 
     #[test]
     fn create_ir_ops() {
-        let ops = vec![
+        let ops = [
             MatterOp::BeginTask,
             MatterOp::SleepFrames(1),
             MatterOp::EndTask,

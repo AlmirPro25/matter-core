@@ -6,3 +6,7 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
+
+[[example]]
+name = "run_text_pvpu"
+path = "examples/run_text.rs"

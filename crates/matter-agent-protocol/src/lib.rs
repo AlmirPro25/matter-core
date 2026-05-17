@@ -639,17 +639,11 @@ impl AgentHandoffPacket {
         }
 
         match self.context.last_response_kind {
-            Some(ResponseKind::Completed) => {
-                if !self.context.terminal {
-                    errors.push("last_response_kind=completed requires terminal=true".to_string());
-                }
+            Some(ResponseKind::Completed) if !self.context.terminal => {
+                errors.push("last_response_kind=completed requires terminal=true".to_string());
             }
-            Some(ResponseKind::Blocked) => {
-                if self.context.blockers.is_empty() {
-                    errors.push(
-                        "last_response_kind=blocked requires at least one blocker".to_string(),
-                    );
-                }
+            Some(ResponseKind::Blocked) if self.context.blockers.is_empty() => {
+                errors.push("last_response_kind=blocked requires at least one blocker".to_string());
             }
             _ => {}
         }

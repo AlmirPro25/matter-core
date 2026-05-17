@@ -371,7 +371,7 @@ impl Vm {
             .record_call_count(func_name);
 
         // Check if it's time to JIT compile
-        if (call_count == 1_000 || call_count % 1_024 == 0)
+        if (call_count == 1_000 || call_count.is_multiple_of(1_024))
             && !self.jit_compiler.is_compiled(func_name)
             && !self.jit_failed_functions.contains(func_name)
         {

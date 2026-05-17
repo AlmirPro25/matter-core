@@ -1,0 +1,13 @@
+{
+  "module": "matter-native::optimizer",
+  "phase": "Optimize",
+  "cpu_cost": 28.0,
+  "memory_pressure": 22.0,
+  "error_rate": 0.02,
+  "latency_ms": 65.0,
+  "cache_hit_rate": 0.91,
+  "optimization_confidence": 0.88,
+  "security_risk": 0.04,
+  "novelty_score": 0.42,
+  "label": "inline_candidate"
+}

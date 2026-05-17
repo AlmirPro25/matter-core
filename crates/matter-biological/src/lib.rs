@@ -18,6 +18,7 @@
 //! - <10% overhead vs specialized tools
 
 use std::collections::HashMap;
+use std::fmt;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -212,10 +213,12 @@ impl DNASequence {
 
         positions
     }
+}
 
-    /// Convert to string
-    pub fn to_string(&self) -> String {
-        self.bases.iter().map(|b| b.to_char()).collect()
+impl fmt::Display for DNASequence {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let sequence: String = self.bases.iter().map(|b| b.to_char()).collect();
+        write!(f, "{}", sequence)
     }
 }
 
@@ -350,10 +353,12 @@ impl RNASequence {
 
         table
     }
+}
 
-    /// Convert to string
-    pub fn to_string(&self) -> String {
-        self.bases.iter().map(|b| b.to_char()).collect()
+impl fmt::Display for RNASequence {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let sequence: String = self.bases.iter().map(|b| b.to_char()).collect();
+        write!(f, "{}", sequence)
     }
 }
 
@@ -414,10 +419,12 @@ impl ProteinSequence {
             .filter_map(|aa| weights.get(aa))
             .sum()
     }
+}
 
-    /// Convert to string
-    pub fn to_string(&self) -> String {
-        self.amino_acids.iter().collect()
+impl fmt::Display for ProteinSequence {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let sequence: String = self.amino_acids.iter().collect();
+        write!(f, "{}", sequence)
     }
 }
 

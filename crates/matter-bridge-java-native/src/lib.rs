@@ -4,12 +4,18 @@
 // a local JDK/JVM setup. The default crate still exposes a stable API surface so
 // the whole workspace can compile on machines without JAVA_HOME.
 
+#![allow(clippy::result_large_err, dead_code)]
+
 use matter_backend::Value;
+#[cfg(not(feature = "jni-native"))]
 use matter_error::{ErrorType, MatterError};
+#[cfg(not(feature = "jni-native"))]
 use std::sync::Arc;
 
+#[cfg(not(feature = "jni-native"))]
 type Result<T> = std::result::Result<T, MatterError>;
 
+#[cfg(not(feature = "jni-native"))]
 fn runtime_error(message: impl Into<String>) -> MatterError {
     MatterError::new(ErrorType::Runtime, message)
 }

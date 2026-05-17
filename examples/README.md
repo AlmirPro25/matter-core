@@ -91,6 +91,37 @@ Esta pasta contém exemplos práticos que demonstram os recursos do Matter Core.
     matter run examples/json_api_demo.matter
     ```
 
+### FFI / Bridges
+
+16. **rust_ffi_plugin/** - Plugin Rust `cdylib` usando ABI JSON validada
+    ```bash
+    cargo build --manifest-path examples/rust_ffi_plugin/Cargo.toml
+    cargo test --manifest-path examples/rust_ffi_plugin/Cargo.toml
+    matter rust-ffi-validate-args-json @examples/rust_ffi_plugin/args_add.json
+    matter rust-ffi-call-json F:/Users/almir/Desktop/matter_target/debug/matter_rust_ffi_plugin.dll add @examples/rust_ffi_plugin/args_add.json
+    ```
+
+    Este exemplo cobre chamada dinamica, valores tipados, erro formal e liberacao opcional de memoria via `matter_free_string`.
+    Em Windows com `.cargo/config.toml` do workspace, o artefato pode sair em `F:/Users/almir/Desktop/matter_target/debug/`.
+
+17. **go_native_plugin/** - Plugin Go `c-shared` para o bridge `cgo-native`
+    ```bash
+    go build -buildmode=c-shared -o F:/Users/almir/Desktop/matter_target/debug/matter_go_native_plugin.dll examples/go_native_plugin/plugin.go
+    cargo test -p matter-bridge-go-native --features cgo-native
+    powershell -ExecutionPolicy Bypass -File ./scripts/native-ffi-smoke.ps1
+    ```
+
+    Este exemplo cobre chamada nativa por `libloading`, argumentos JSON tipados, retorno int/string e liberacao de memoria via `matter_free_string`.
+
+18. **node_native_host/** - Host Node.js para o addon N-API nativo
+    ```bash
+    cargo build -p matter-bridge-nodejs-native
+    node examples/node_native_host/smoke.js F:/Users/almir/Desktop/matter_target/debug/matter_bridge_nodejs_native.node
+    powershell -ExecutionPolicy Bypass -File ./scripts/native-ffi-smoke.ps1
+    ```
+
+    Este exemplo cobre carregamento real do addon por Node.js, exports N-API e chamada JSON tipada retornando int 42.
+
 ## 🎯 Casos de Uso
 
 ### Aprendizado

@@ -340,7 +340,7 @@ impl TopologicalCircuit {
             }
 
             // Error correction after each gate
-            for (_i, surface_code) in self.surface_codes.iter_mut().enumerate() {
+            for surface_code in self.surface_codes.iter_mut() {
                 let errors = surface_code.detect_errors();
                 if !errors.is_empty() {
                     surface_code.correct_errors(&errors);

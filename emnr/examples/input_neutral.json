@@ -1,0 +1,13 @@
+{
+  "signal": {
+    "values": [0.3, 0.3, 0.3, 0.3],
+    "shape": [4],
+    "energy": 1.0,
+    "timestamp": 0,
+    "label": "neutral_signal"
+  },
+  "reward": 0.1,
+  "danger": 0.1,
+  "novelty": 0.1,
+  "label": "neutral_test"
+}

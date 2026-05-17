@@ -1,5 +1,6 @@
 // Matter Automatic Parallelization
 // Analyzes code and automatically parallelizes safe operations
+#![allow(clippy::result_large_err)]
 
 use matter_ast::{Expression, Statement};
 use matter_backend::Value;

@@ -286,7 +286,7 @@ mod tests {
 
         match rc.try_unwrap() {
             Ok(val) => assert_eq!(val, 42),
-            Err(_) => assert!(false, "should have unwrapped"),
+            Err(_) => panic!("should have unwrapped"),
         }
     }
 
@@ -296,7 +296,7 @@ mod tests {
         let rc2 = rc1.clone();
 
         match rc1.try_unwrap() {
-            Ok(_) => assert!(false, "should not have unwrapped"),
+            Ok(_) => panic!("should not have unwrapped"),
             Err(rc) => {
                 assert_eq!(*rc, 42);
                 assert_eq!(rc.strong_count(), 2);

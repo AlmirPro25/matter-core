@@ -59,7 +59,7 @@ impl GoBridge {
         }
 
         // Verifica se package existe
-        let check = Command::new("go").args(&["list", package_name]).output();
+        let check = Command::new("go").args(["list", package_name]).output();
 
         match check {
             Ok(output) if output.status.success() => {
@@ -74,7 +74,7 @@ impl GoBridge {
             _ => {
                 // Tenta instalar package
                 println!("Installing Go package: {}", package_name);
-                let install = Command::new("go").args(&["get", package_name]).output();
+                let install = Command::new("go").args(["get", package_name]).output();
 
                 match install {
                     Ok(output) if output.status.success() => {
@@ -166,27 +166,38 @@ impl GoBridge {
     fn value_to_go(&self, value: &Value) -> BridgeResult<String> {
         match value {
             Value::Int(n) => Ok(n.to_string()),
-            Value::Float(f) => Ok(f.to_string()),
-            Value::String(s) => Ok(format!("\"{}\"", s)),
+            Value::Float(f) => Ok(format!("{:?}", f)),
+            Value::String(s) => serde_json::to_string(s.as_str()).map_err(|e| {
+                BridgeError::ConversionError(format!("Failed to encode Go string literal: {}", e))
+            }),
             Value::Bool(b) => Ok(b.to_string()),
             Value::List(items) => {
                 let go_items: Result<Vec<_>, _> =
                     items.iter().map(|v| self.value_to_go(v)).collect();
-                Ok(format!("[]{{{}}}", go_items?.join(", ")))
+                Ok(format!("[]interface{{}}{{{}}}", go_items?.join(", ")))
             }
             Value::Map(map) => {
                 let mut pairs = Vec::new();
                 for (k, v) in map.iter() {
+                    let go_key = serde_json::to_string(k).map_err(|e| {
+                        BridgeError::ConversionError(format!("Failed to encode Go map key: {}", e))
+                    })?;
                     let go_val = self.value_to_go(v)?;
-                    pairs.push(format!("\"{}\": {}", k, go_val));
+                    pairs.push(format!("{}: {}", go_key, go_val));
                 }
                 Ok(format!("map[string]interface{{}}{{{}}}", pairs.join(", ")))
             }
             Value::Struct { fields, .. } => {
                 let mut pairs = Vec::new();
                 for (k, v) in fields.iter() {
+                    let go_key = serde_json::to_string(k).map_err(|e| {
+                        BridgeError::ConversionError(format!(
+                            "Failed to encode Go struct key: {}",
+                            e
+                        ))
+                    })?;
                     let go_val = self.value_to_go(v)?;
-                    pairs.push(format!("\"{}\": {}", k, go_val));
+                    pairs.push(format!("{}: {}", go_key, go_val));
                 }
                 Ok(format!("map[string]interface{{}}{{{}}}", pairs.join(", ")))
             }
@@ -208,7 +219,7 @@ impl GoBridge {
 
         // Executa com go run
         let output = Command::new("go")
-            .args(&["run", temp_file.to_str().unwrap()])
+            .args(["run", temp_file.to_str().unwrap()])
             .output()
             .map_err(|e| BridgeError::RuntimeError(format!("Failed to execute Go: {}", e)))?;
 
@@ -262,6 +273,12 @@ impl GoBridge {
     }
 }
 
+impl Default for GoBridge {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Bridge for GoBridge {
     fn name(&self) -> &str {
         "go"
@@ -297,7 +314,7 @@ mod tests {
         let bridge = GoBridge::new();
 
         assert_eq!(bridge.value_to_go(&Value::Int(42)).unwrap(), "42");
-        assert_eq!(bridge.value_to_go(&Value::Float(3.14)).unwrap(), "3.14");
+        assert_eq!(bridge.value_to_go(&Value::Float(2.5)).unwrap(), "2.5");
         assert_eq!(
             bridge
                 .value_to_go(&Value::new_string("hello".to_string()))
@@ -306,6 +323,50 @@ mod tests {
         );
         assert_eq!(bridge.value_to_go(&Value::Bool(true)).unwrap(), "true");
         assert_eq!(bridge.value_to_go(&Value::Unit).unwrap(), "nil");
+    }
+
+    #[test]
+    fn test_value_to_go_escapes_strings_and_composites() {
+        let bridge = GoBridge::new();
+
+        assert_eq!(
+            bridge
+                .value_to_go(&Value::new_string("hello \"go\"".to_string()))
+                .unwrap(),
+            r#""hello \"go\"""#
+        );
+
+        assert_eq!(
+            bridge
+                .value_to_go(&Value::new_list(vec![
+                    Value::Int(1),
+                    Value::new_string("two".to_string())
+                ]))
+                .unwrap(),
+            r#"[]interface{}{1, "two"}"#
+        );
+
+        let mut map = HashMap::new();
+        map.insert("name".to_string(), Value::new_string("test".to_string()));
+        map.insert("value".to_string(), Value::Int(42));
+        let code = bridge.value_to_go(&Value::new_map(map)).unwrap();
+        assert!(code.starts_with("map[string]interface{}{"));
+        assert!(code.contains(r#""name": "test""#));
+        assert!(code.contains(r#""value": 42"#));
+    }
+
+    #[test]
+    fn test_load_and_call_standard_library_function() {
+        let mut bridge = GoBridge::new();
+        if bridge.load_package("math").is_err() {
+            return;
+        }
+
+        let result = bridge
+            .call_function("math", "Sqrt", vec![Value::Float(2.25)])
+            .unwrap();
+
+        assert_eq!(result, Value::Float(1.5));
     }
 
     #[test]

@@ -20,6 +20,17 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.x"
+
+      - name: Install Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
@@ -29,27 +40,106 @@ jobs:
       - name: Build release binary
         run: cargo build -p matter-cli --release
 
+      - name: Rust FFI smoke against release CLI
+        shell: pwsh
+        run: .\scripts\rust-ffi-plugin-smoke.ps1 -Release -CliPath "$env:CARGO_TARGET_DIR\release\matter-cli.exe" -JsonOut target\ffi\rust-smoke-release.json
+
+      - name: Native FFI smoke
+        shell: pwsh
+        run: .\scripts\native-ffi-smoke.ps1 -IncludeJava -JsonOut target\ffi\native-smoke-release.json
+
+      - name: Verify FFI smoke summaries
+        shell: pwsh
+        run: .\scripts\verify-ffi-smoke-summaries.ps1 -RustSummary target\ffi\rust-smoke-release.json -NativeSummary target\ffi\native-smoke-release.json -RequireJava
+
+      - name: Export FFI validation matrix
+        shell: pwsh
+        run: .\scripts\export-ffi-validation-matrix.ps1 -RustSummary target\ffi\rust-smoke-release.json -NativeSummary target\ffi\native-smoke-release.json -Out target\ffi\ffi-validation-matrix-release.json
+
+      - name: Verify FFI validation matrix
+        shell: pwsh
+        run: .\scripts\verify-ffi-smoke-summaries.ps1 -RustSummary target\ffi\rust-smoke-release.json -NativeSummary target\ffi\native-smoke-release.json -MatrixPath target\ffi\ffi-validation-matrix-release.json -CheckMatrix -RequireJava
+
+      - name: Export FFI validation report
+        shell: pwsh
+        run: .\scripts\export-ffi-validation-report.ps1 -MatrixPath target\ffi\ffi-validation-matrix-release.json -Out target\ffi\ffi-validation-report-release.md
+
+      - name: Test FFI validation report contract
+        shell: pwsh
+        run: .\scripts\test-ffi-validation-report-contract.ps1 -ReportPath target\ffi\ffi-validation-report-release.md
+
+      - name: Test FFI validation matrix contract
+        shell: pwsh
+        run: .\scripts\test-ffi-validation-matrix-contract.ps1 -RustSummary target\ffi\rust-smoke-release.json -NativeSummary target\ffi\native-smoke-release.json -MatrixPath target\ffi\ffi-validation-matrix-release.json
+
+      - name: Export release readiness
+        shell: pwsh
+        run: .\scripts\export-release-readiness.ps1 -MatrixPath target\ffi\ffi-validation-matrix-release.json -Out target\ffi\release-readiness-release.json
+
+      - name: Test release readiness contract
+        shell: pwsh
+        run: .\scripts\test-release-readiness-contract.ps1 -MatrixPath target\ffi\ffi-validation-matrix-release.json
+
+      - name: Test release package contract
+        shell: pwsh
+        run: .\scripts\test-release-package-contract.ps1 -RustSummary target\ffi\rust-smoke-release.json -NativeSummary target\ffi\native-smoke-release.json -MatrixPath target\ffi\ffi-validation-matrix-release.json
+
       - name: Prepare package
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist\matter-core-windows-x64\examples | Out-Null
           New-Item -ItemType Directory -Force dist\matter-core-windows-x64\apps | Out-Null
+          New-Item -ItemType Directory -Force dist\matter-core-windows-x64\docs\technical | Out-Null
+          New-Item -ItemType Directory -Force dist\matter-core-windows-x64\schemas | Out-Null
+          New-Item -ItemType Directory -Force dist\matter-core-windows-x64\scripts | Out-Null
+          New-Item -ItemType Directory -Force dist\matter-core-windows-x64\target\ffi | Out-Null
           Copy-Item "$env:CARGO_TARGET_DIR\release\matter-cli.exe" dist\matter-core-windows-x64\matter-cli.exe
           Copy-Item README.md dist\matter-core-windows-x64\README.md
+          Copy-Item examples\README.md dist\matter-core-windows-x64\examples\README.md
           Copy-Item examples\first_run.matter dist\matter-core-windows-x64\examples\first_run.matter
           Copy-Item examples\language_tour.matter dist\matter-core-windows-x64\examples\language_tour.matter
           Copy-Item examples\reflexive_self.matter dist\matter-core-windows-x64\examples\reflexive_self.matter
           Copy-Item examples\matter_studio_ui.matter dist\matter-core-windows-x64\examples\matter_studio_ui.matter
+          Copy-Item examples\rust_ffi_plugin dist\matter-core-windows-x64\examples\rust_ffi_plugin -Recurse
+          Copy-Item examples\go_native_plugin dist\matter-core-windows-x64\examples\go_native_plugin -Recurse
+          Copy-Item examples\node_native_host dist\matter-core-windows-x64\examples\node_native_host -Recurse
+          Copy-Item scripts\export-ffi-validation-matrix.ps1 dist\matter-core-windows-x64\scripts\export-ffi-validation-matrix.ps1
+          Copy-Item scripts\export-ffi-validation-report.ps1 dist\matter-core-windows-x64\scripts\export-ffi-validation-report.ps1
+          Copy-Item scripts\export-release-readiness.ps1 dist\matter-core-windows-x64\scripts\export-release-readiness.ps1
+          Copy-Item scripts\export-release-package-manifest.ps1 dist\matter-core-windows-x64\scripts\export-release-package-manifest.ps1
+          Copy-Item scripts\ffi-smoke-all.ps1 dist\matter-core-windows-x64\scripts\ffi-smoke-all.ps1
+          Copy-Item scripts\test-ffi-validation-matrix-contract.ps1 dist\matter-core-windows-x64\scripts\test-ffi-validation-matrix-contract.ps1
+          Copy-Item scripts\test-ffi-validation-report-contract.ps1 dist\matter-core-windows-x64\scripts\test-ffi-validation-report-contract.ps1
+          Copy-Item scripts\test-release-readiness-contract.ps1 dist\matter-core-windows-x64\scripts\test-release-readiness-contract.ps1
+          Copy-Item scripts\test-release-package-contract.ps1 dist\matter-core-windows-x64\scripts\test-release-package-contract.ps1
+          Copy-Item scripts\verify-release-package.ps1 dist\matter-core-windows-x64\scripts\verify-release-package.ps1
+          Copy-Item scripts\rust-ffi-plugin-smoke.ps1 dist\matter-core-windows-x64\scripts\rust-ffi-plugin-smoke.ps1
+          Copy-Item scripts\native-ffi-smoke.ps1 dist\matter-core-windows-x64\scripts\native-ffi-smoke.ps1
+          Copy-Item scripts\verify-ffi-smoke-summaries.ps1 dist\matter-core-windows-x64\scripts\verify-ffi-smoke-summaries.ps1
+          Copy-Item target\ffi\*.json dist\matter-core-windows-x64\target\ffi\ -ErrorAction SilentlyContinue
+          Copy-Item target\ffi\*.md dist\matter-core-windows-x64\target\ffi\ -ErrorAction SilentlyContinue
           Copy-Item docs\USER_ONBOARDING.md dist\matter-core-windows-x64\USER_ONBOARDING.md
           Copy-Item docs\LANGUAGE_TOUR.md dist\matter-core-windows-x64\LANGUAGE_TOUR.md
+          Copy-Item docs\technical\RUST_FFI_ABI.md dist\matter-core-windows-x64\docs\technical\RUST_FFI_ABI.md
+          Copy-Item docs\technical\FFI_NATIVE_SMOKE.md dist\matter-core-windows-x64\docs\technical\FFI_NATIVE_SMOKE.md
+          Copy-Item schemas\ffi-validation-matrix.schema.json dist\matter-core-windows-x64\schemas\ffi-validation-matrix.schema.json
           Copy-Item apps\matter-studio dist\matter-core-windows-x64\apps\matter-studio -Recurse
+          .\scripts\export-release-package-manifest.ps1 -PackageRoot dist\matter-core-windows-x64
+          .\scripts\verify-release-package.ps1 -PackageRoot dist\matter-core-windows-x64
           Compress-Archive -Path dist\matter-core-windows-x64\* -DestinationPath dist\matter-core-windows-x64.zip -Force
+          .\scripts\verify-release-package.ps1 -ZipPath dist\matter-core-windows-x64.zip
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: matter-core-windows-x64
           path: dist\matter-core-windows-x64.zip
+
+      - name: Upload FFI smoke summaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffi-smoke-summaries-release
+          path: target\ffi\*.json
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/')
@@ -74,3 +164,5 @@ jobs:
             cd apps\matter-studio
             npm start
             ```
+
+            FFI material is included in `docs\technical\RUST_FFI_ABI.md`, with reproducible examples in `examples\rust_ffi_plugin\`, `examples\go_native_plugin\`, and `examples\node_native_host\`.

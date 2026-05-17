@@ -1,5 +1,6 @@
 // Matter Smart Type Inference
 // Cross-language type inference with automatic conversion
+#![allow(clippy::result_large_err)]
 
 use matter_error::MatterError;
 use matter_types::Type;
@@ -193,13 +194,9 @@ impl SmartInference {
             Type::Float => Some(Type::Float),
             Type::String => Some(Type::String),
             Type::Bool => Some(Type::Bool),
-            Type::List(inner) => {
-                if let Some(converted_inner) = self.convert_type(inner, from_lang, to_lang)? {
-                    Some(Type::List(Box::new(converted_inner)))
-                } else {
-                    None
-                }
-            }
+            Type::List(inner) => self
+                .convert_type(inner, from_lang, to_lang)?
+                .map(|converted_inner| Type::List(Box::new(converted_inner))),
             _ => Some(typ.clone()),
         };
 

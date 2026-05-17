@@ -1,15 +1,15 @@
-// Matter Bridge: Java Native (JNI FFI)
-// Direct FFI to Java libraries using JNI
-// Performance: 100-1000x faster than subprocess
-
-use jni::objects::{JClass, JObject, JString, JValue};
-use jni::sys::{jboolean, jdouble, jint, jlong, jstring};
+use jni::objects::{JObject, JString, JValueOwned};
 use jni::{JNIEnv, JavaVM};
-use matter_ast::Value;
-use matter_error::{Error, Result};
-use serde::{Deserialize, Serialize};
+use matter_backend::Value;
+use matter_error::{ErrorType, MatterError};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+
+type Result<T> = std::result::Result<T, MatterError>;
+
+fn runtime_error(message: impl Into<String>) -> MatterError {
+    MatterError::new(ErrorType::Runtime, message)
+}
 
 fn lock_unpoison<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     match mutex.lock() {
@@ -18,16 +18,13 @@ fn lock_unpoison<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     }
 }
 
-/// Java bridge with direct FFI via JNI
+#[derive(Clone)]
 pub struct JavaBridge {
-    /// JVM instance
-    jvm: Arc<Mutex<Option<JavaVM>>>,
-    /// Loaded Java classes
+    jvm: Arc<Mutex<Option<&'static JavaVM>>>,
     classes: Arc<Mutex<HashMap<String, String>>>,
 }
 
 impl JavaBridge {
-    /// Create a new Java bridge
     pub fn new() -> Result<Self> {
         Ok(Self {
             jvm: Arc::new(Mutex::new(None)),
@@ -35,231 +32,131 @@ impl JavaBridge {
         })
     }
 
-    /// Initialize JVM if not already initialized
-    fn ensure_jvm(&self) -> Result<()> {
+    fn ensure_jvm(&self) -> Result<&'static JavaVM> {
         let mut jvm_lock = lock_unpoison(&self.jvm);
-
-        if jvm_lock.is_none() {
-            // Build JVM with default options
-            let jvm_args = jni::InitArgsBuilder::new()
-                .version(jni::JNIVersion::V8)
-                .option("-Xms64m")
-                .option("-Xmx512m")
-                .build()
-                .map_err(|e| Error::Runtime(format!("Failed to build JVM args: {}", e)))?;
-
-            let jvm = JavaVM::new(jvm_args)
-                .map_err(|e| Error::Runtime(format!("Failed to create JVM: {}", e)))?;
-
-            *jvm_lock = Some(jvm);
+        if let Some(jvm) = jvm_lock.as_ref() {
+            return Ok(*jvm);
         }
 
-        Ok(())
+        let jvm_args = jni::InitArgsBuilder::new()
+            .version(jni::JNIVersion::V8)
+            .option("-Xms64m")
+            .option("-Xmx512m")
+            .build()
+            .map_err(|error| runtime_error(format!("Failed to build JVM args: {}", error)))?;
+
+        let jvm = Box::leak(Box::new(JavaVM::new(jvm_args).map_err(|error| {
+            runtime_error(format!("Failed to create JVM: {}", error))
+        })?));
+        *jvm_lock = Some(jvm);
+        Ok(jvm)
     }
 
-    /// Get JNI environment
-    fn get_env(&self) -> Result<JNIEnv> {
-        self.ensure_jvm()?;
-
-        let jvm_lock = lock_unpoison(&self.jvm);
-        let jvm = jvm_lock
-            .as_ref()
-            .ok_or_else(|| Error::Runtime("JVM not initialized".to_string()))?;
-
-        jvm.attach_current_thread()
-            .map_err(|e| Error::Runtime(format!("Failed to attach to JVM: {}", e)))
+    fn get_env(&self) -> Result<JNIEnv<'static>> {
+        let jvm = self.ensure_jvm()?;
+        jvm.attach_current_thread_permanently()
+            .map_err(|error| runtime_error(format!("Failed to attach to JVM: {}", error)))
     }
 
-    /// Load a Java class
     pub fn load_class(&self, class_name: &str) -> Result<()> {
-        let env = self.get_env()?;
-
-        // Try to find the class
-        let class = env.find_class(class_name).map_err(|e| {
-            Error::Runtime(format!("Failed to load Java class {}: {}", class_name, e))
+        let mut env = self.get_env()?;
+        env.find_class(class_name).map_err(|error| {
+            runtime_error(format!(
+                "Failed to load Java class {}: {}",
+                class_name, error
+            ))
         })?;
-
         lock_unpoison(&self.classes).insert(class_name.to_string(), class_name.to_string());
         Ok(())
     }
 
-    /// Call a static Java method
     pub fn call_static_method(
         &self,
         class_name: &str,
         method_name: &str,
         args: Vec<Value>,
     ) -> Result<Value> {
-        let env = self.get_env()?;
-
-        // Load class if not already loaded
-        if !lock_unpoison(&self.classes).contains_key(class_name) {
-            self.load_class(class_name)?;
+        if !args.is_empty() {
+            return Err(runtime_error(
+                "Java native bridge currently validates JVM class loading and no-arg static calls only",
+            ));
         }
 
-        // Find the class
+        let mut env = self.get_env()?;
         let class = env
             .find_class(class_name)
-            .map_err(|e| Error::Runtime(format!("Class not found: {}: {}", class_name, e)))?;
+            .map_err(|error| runtime_error(format!("Class not found {}: {}", class_name, error)))?;
 
-        // Convert Matter values to JValues
-        let jvalues: Vec<JValue> = args
-            .iter()
-            .map(|v| self.value_to_jvalue(&env, v))
-            .collect::<Result<Vec<_>>>()?;
-
-        // Build method signature
-        let signature = self.build_signature(&args);
-
-        // Call the static method
         let result = env
-            .call_static_method(class, method_name, &signature, &jvalues)
-            .map_err(|e| Error::Runtime(format!("Failed to call method {}: {}", method_name, e)))?;
+            .call_static_method(class, method_name, "()Ljava/lang/String;", &[])
+            .map_err(|error| {
+                runtime_error(format!(
+                    "Failed to call Java static method {}.{}: {}",
+                    class_name, method_name, error
+                ))
+            })?;
 
-        // Convert result back to Matter value
-        self.jvalue_to_value(&env, result)
+        self.jvalue_to_value(&mut env, result)
     }
 
-    /// Call an instance Java method
-    pub fn call_method(
-        &self,
-        object: &JObject,
-        method_name: &str,
-        args: Vec<Value>,
-    ) -> Result<Value> {
-        let env = self.get_env()?;
-
-        // Convert Matter values to JValues
-        let jvalues: Vec<JValue> = args
-            .iter()
-            .map(|v| self.value_to_jvalue(&env, v))
-            .collect::<Result<Vec<_>>>()?;
-
-        // Build method signature
-        let signature = self.build_signature(&args);
-
-        // Call the method
-        let result = env
-            .call_method(object, method_name, &signature, &jvalues)
-            .map_err(|e| Error::Runtime(format!("Failed to call method {}: {}", method_name, e)))?;
-
-        // Convert result back to Matter value
-        self.jvalue_to_value(&env, result)
-    }
-
-    /// Convert Matter value to JValue
-    fn value_to_jvalue(&self, env: &JNIEnv, value: &Value) -> Result<JValue> {
+    fn jvalue_to_value(&self, env: &mut JNIEnv<'_>, value: JValueOwned<'_>) -> Result<Value> {
         match value {
-            Value::Null => Ok(JValue::Object(JObject::null())),
-            Value::Bool(b) => Ok(JValue::Bool(*b as jboolean)),
-            Value::Number(n) => Ok(JValue::Double(*n as jdouble)),
-            Value::String(s) => {
-                let jstring = env
-                    .new_string(s)
-                    .map_err(|e| Error::Runtime(format!("Failed to create Java string: {}", e)))?;
-                Ok(JValue::Object(jstring.into()))
-            }
-            Value::Array(arr) => {
-                // Convert to JSON string for simplicity
-                let json = serde_json::to_string(arr)
-                    .map_err(|e| Error::Runtime(format!("Failed to serialize array: {}", e)))?;
-                let jstring = env
-                    .new_string(&json)
-                    .map_err(|e| Error::Runtime(format!("Failed to create Java string: {}", e)))?;
-                Ok(JValue::Object(jstring.into()))
-            }
-            Value::Object(_) => {
-                // Convert to JSON string for simplicity
-                let json = serde_json::to_string(value)
-                    .map_err(|e| Error::Runtime(format!("Failed to serialize object: {}", e)))?;
-                let jstring = env
-                    .new_string(&json)
-                    .map_err(|e| Error::Runtime(format!("Failed to create Java string: {}", e)))?;
-                Ok(JValue::Object(jstring.into()))
-            }
-            _ => Err(Error::Runtime(format!(
-                "Unsupported value type for Java: {:?}",
-                value
-            ))),
+            JValueOwned::Bool(value) => Ok(Value::Bool(value != 0)),
+            JValueOwned::Byte(value) => Ok(Value::Int(value as i64)),
+            JValueOwned::Char(value) => Ok(Value::Int(value as i64)),
+            JValueOwned::Short(value) => Ok(Value::Int(value as i64)),
+            JValueOwned::Int(value) => Ok(Value::Int(value as i64)),
+            JValueOwned::Long(value) => Ok(Value::Int(value)),
+            JValueOwned::Float(value) => Ok(Value::Float(value as f64)),
+            JValueOwned::Double(value) => Ok(Value::Float(value)),
+            JValueOwned::Object(object) => self.object_to_value(env, object),
+            JValueOwned::Void => Ok(Value::Unit),
         }
     }
 
-    /// Convert JValue to Matter value
-    fn jvalue_to_value(&self, env: &JNIEnv, jvalue: JValue) -> Result<Value> {
-        match jvalue {
-            JValue::Bool(b) => Ok(Value::Bool(b != 0)),
-            JValue::Byte(b) => Ok(Value::Number(b as f64)),
-            JValue::Char(c) => Ok(Value::String(format!("{}", c as u8 as char))),
-            JValue::Short(s) => Ok(Value::Number(s as f64)),
-            JValue::Int(i) => Ok(Value::Number(i as f64)),
-            JValue::Long(l) => Ok(Value::Number(l as f64)),
-            JValue::Float(f) => Ok(Value::Number(f as f64)),
-            JValue::Double(d) => Ok(Value::Number(d)),
-            JValue::Object(obj) => {
-                if obj.is_null() {
-                    return Ok(Value::Null);
-                }
-
-                // Try to convert to string
-                let jstring = JString::from(obj);
-                let rust_string = env
-                    .get_string(jstring)
-                    .map_err(|e| Error::Runtime(format!("Failed to get Java string: {}", e)))?;
-
-                Ok(Value::String(rust_string.into()))
-            }
-            JValue::Void => Ok(Value::Null),
+    fn object_to_value(&self, env: &mut JNIEnv<'_>, object: JObject<'_>) -> Result<Value> {
+        if object.is_null() {
+            return Ok(Value::Unit);
         }
+        let string = JString::from(object);
+        let rust_string = env
+            .get_string(&string)
+            .map_err(|error| runtime_error(format!("Failed to read Java string: {}", error)))?;
+        Ok(Value::new_string(rust_string.into()))
     }
 
-    /// Build JNI method signature from arguments
+    #[cfg(test)]
     fn build_signature(&self, args: &[Value]) -> String {
         let mut sig = String::from("(");
-
         for arg in args {
             sig.push_str(match arg {
                 Value::Bool(_) => "Z",
-                Value::Number(_) => "D",
+                Value::Int(_) => "J",
+                Value::Float(_) => "D",
                 Value::String(_) => "Ljava/lang/String;",
-                _ => "Ljava/lang/String;", // Use string for complex types
+                _ => "Ljava/lang/String;",
             });
         }
-
         sig.push_str(")Ljava/lang/Object;");
         sig
     }
 
-    /// Import a Java class
     pub fn import(&self, class_name: &str, alias: Option<&str>) -> Result<JavaClass> {
         self.load_class(class_name)?;
-
         Ok(JavaClass {
             bridge: self.clone(),
             class_name: class_name.to_string(),
-            alias: alias.map(|s| s.to_string()),
+            alias: alias.map(str::to_string),
         })
-    }
-}
-
-impl Clone for JavaBridge {
-    fn clone(&self) -> Self {
-        Self {
-            jvm: Arc::clone(&self.jvm),
-            classes: Arc::clone(&self.classes),
-        }
     }
 }
 
 impl Default for JavaBridge {
     fn default() -> Self {
-        Self::new().unwrap_or_else(|_| Self {
-            jvm: Arc::new(Mutex::new(None)),
-            classes: Arc::new(Mutex::new(HashMap::new())),
-        })
+        Self::new().expect("JavaBridge::new should not initialize JVM")
     }
 }
 
-/// Represents an imported Java class
 pub struct JavaClass {
     bridge: JavaBridge,
     class_name: String,
@@ -267,13 +164,11 @@ pub struct JavaClass {
 }
 
 impl JavaClass {
-    /// Call a static method from this class
     pub fn call_static(&self, method: &str, args: Vec<Value>) -> Result<Value> {
         self.bridge
             .call_static_method(&self.class_name, method, args)
     }
 
-    /// Get class name
     pub fn name(&self) -> &str {
         self.alias.as_deref().unwrap_or(&self.class_name)
     }
@@ -294,10 +189,24 @@ mod tests {
         let bridge = JavaBridge::new().unwrap();
         let args = vec![
             Value::Bool(true),
-            Value::Number(42.0),
-            Value::String("test".to_string()),
+            Value::Float(42.0),
+            Value::new_string("test".to_string()),
         ];
         let sig = bridge.build_signature(&args);
         assert_eq!(sig, "(ZDLjava/lang/String;)Ljava/lang/Object;");
+    }
+
+    #[test]
+    #[ignore = "requires java/javac/JNI runtime on PATH"]
+    fn calls_real_jvm_static_string() {
+        let bridge = JavaBridge::new().unwrap();
+        let value = bridge
+            .call_static_method("java/lang/System", "lineSeparator", vec![])
+            .unwrap();
+
+        let Value::String(line_separator) = value else {
+            panic!("expected Java String result");
+        };
+        assert!(!line_separator.is_empty());
     }
 }

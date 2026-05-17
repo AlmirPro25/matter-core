@@ -1119,7 +1119,7 @@ impl ToolBackend {
         Ok(Value::new_map(out))
     }
 
-    fn from_wire(&self, wire: &str) -> Result<Value, String> {
+    fn parse_wire(&self, wire: &str) -> Result<Value, String> {
         let packet = AgentHandoffPacket::from_wire(wire)
             .map_err(|error| format!("tool.from_wire parse error: {}", error))?;
         let mut out = HashMap::new();
@@ -1344,7 +1344,7 @@ impl Backend for ToolBackend {
                     return Err(backend_arity_error("tool.from_wire", 1, args.len()));
                 }
                 let wire = args[0].as_string()?;
-                self.from_wire(&wire)
+                self.parse_wire(&wire)
             }
             "merge_wire" => {
                 if args.len() < 2 || args.len() > 3 {

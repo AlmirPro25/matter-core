@@ -39,8 +39,8 @@ impl PythonBridge {
     }
 
     /// Converte resultado Python para Matter
-    fn convert_result(&self, py: Python, result: &PyAny) -> Result<Value, String> {
-        self.converter.to_matter(py, result)
+    fn convert_result(&self, _py: Python, result: &PyAny) -> Result<Value, String> {
+        self.converter.to_matter(result)
     }
 }
 
@@ -195,7 +195,7 @@ mod tests {
         let result = bridge.get_attribute("math", "pi").unwrap();
 
         match result {
-            Value::Float(f) => assert!((f - 3.14159).abs() < 0.001),
+            Value::Float(f) => assert!((f - std::f64::consts::PI).abs() < 0.001),
             _ => panic!("Expected float result"),
         }
     }

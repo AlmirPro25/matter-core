@@ -6,6 +6,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 pub mod bridge;
 pub mod parser;
@@ -23,7 +24,7 @@ pub enum LanguageTarget {
 }
 
 impl LanguageTarget {
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "python" | "py" => Some(Self::Python),
             "nodejs" | "node" | "javascript" | "js" => Some(Self::NodeJS),
@@ -52,6 +53,14 @@ impl LanguageTarget {
             Self::Go => "go",
             Self::Java => "maven",
         }
+    }
+}
+
+impl FromStr for LanguageTarget {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::parse(s).ok_or(())
     }
 }
 
@@ -95,25 +104,13 @@ impl ExternalImport {
 }
 
 /// Configuração de dependências polyglot
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PolyglotConfig {
     pub python: HashMap<String, String>,
     pub nodejs: HashMap<String, String>,
     pub rust: HashMap<String, String>,
     pub go: HashMap<String, String>,
     pub java: HashMap<String, String>,
-}
-
-impl Default for PolyglotConfig {
-    fn default() -> Self {
-        Self {
-            python: HashMap::new(),
-            nodejs: HashMap::new(),
-            rust: HashMap::new(),
-            go: HashMap::new(),
-            java: HashMap::new(),
-        }
-    }
 }
 
 impl PolyglotConfig {
@@ -273,17 +270,17 @@ mod tests {
     #[test]
     fn test_language_target_from_str() {
         assert_eq!(
-            LanguageTarget::from_str("python"),
+            LanguageTarget::parse("python"),
             Some(LanguageTarget::Python)
         );
         assert_eq!(
-            LanguageTarget::from_str("nodejs"),
+            LanguageTarget::parse("nodejs"),
             Some(LanguageTarget::NodeJS)
         );
-        assert_eq!(LanguageTarget::from_str("rust"), Some(LanguageTarget::Rust));
-        assert_eq!(LanguageTarget::from_str("go"), Some(LanguageTarget::Go));
-        assert_eq!(LanguageTarget::from_str("java"), Some(LanguageTarget::Java));
-        assert_eq!(LanguageTarget::from_str("invalid"), None);
+        assert_eq!(LanguageTarget::parse("rust"), Some(LanguageTarget::Rust));
+        assert_eq!(LanguageTarget::parse("go"), Some(LanguageTarget::Go));
+        assert_eq!(LanguageTarget::parse("java"), Some(LanguageTarget::Java));
+        assert_eq!(LanguageTarget::parse("invalid"), None);
     }
 
     #[test]

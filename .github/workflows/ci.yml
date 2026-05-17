@@ -20,6 +20,17 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.x"
+
+      - name: Install Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
@@ -31,3 +42,45 @@ jobs:
 
       - name: Test workspace
         run: cargo test --workspace --all-targets
+
+      - name: Rust FFI plugin smoke
+        shell: pwsh
+        run: .\scripts\rust-ffi-plugin-smoke.ps1 -JsonOut target\ffi\rust-smoke.json
+
+      - name: Native FFI smoke
+        shell: pwsh
+        run: .\scripts\native-ffi-smoke.ps1 -IncludeJava -JsonOut target\ffi\native-smoke.json
+
+      - name: Verify FFI smoke summaries
+        shell: pwsh
+        run: .\scripts\verify-ffi-smoke-summaries.ps1 -RequireJava
+
+      - name: Export FFI validation matrix
+        shell: pwsh
+        run: .\scripts\export-ffi-validation-matrix.ps1 -Out target\ffi\ffi-validation-matrix.json
+
+      - name: Verify FFI validation matrix
+        shell: pwsh
+        run: .\scripts\verify-ffi-smoke-summaries.ps1 -CheckMatrix -RequireJava
+
+      - name: Export FFI validation report
+        shell: pwsh
+        run: .\scripts\export-ffi-validation-report.ps1 -Out target\ffi\ffi-validation-report.md
+
+      - name: Test FFI validation report contract
+        shell: pwsh
+        run: .\scripts\test-ffi-validation-report-contract.ps1
+
+      - name: Test FFI validation matrix contract
+        shell: pwsh
+        run: .\scripts\test-ffi-validation-matrix-contract.ps1
+
+      - name: Test release package contract
+        shell: pwsh
+        run: .\scripts\test-release-package-contract.ps1
+
+      - name: Upload FFI smoke summaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffi-smoke-summaries
+          path: target\ffi\*.json

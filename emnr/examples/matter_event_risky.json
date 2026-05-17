@@ -1,0 +1,13 @@
+{
+  "module": "matter-bridge-nodejs",
+  "phase": "Bridge",
+  "cpu_cost": 84.0,
+  "memory_pressure": 76.0,
+  "error_rate": 0.34,
+  "latency_ms": 620.0,
+  "cache_hit_rate": 0.22,
+  "optimization_confidence": 0.18,
+  "security_risk": 0.93,
+  "novelty_score": 0.71,
+  "label": "foreign_call_spike"
+}

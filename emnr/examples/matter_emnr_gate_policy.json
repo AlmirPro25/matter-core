@@ -1,0 +1,7 @@
+{
+  "warn_as_fail": false,
+  "risk_threshold": 0.4,
+  "confidence_threshold": 0.55,
+  "energy_threshold": 25.0,
+  "critical_energy": 10.0
+}

@@ -1,0 +1,575 @@
+﻿# Agent Workspace Context
+
+Generated: 2026-05-15 12:45:26
+Root: F:\Users\almir\Desktop\MANIFESTO DA LINGUAGEM MATTER CORE
+
+## Git Status
+~~~
+ M .github/workflows/ci.yml
+ M .github/workflows/release-windows.yml
+ M .gitignore
+ D ACHIEVEMENT_SUMMARY.md
+ D ACTION_PLAN_TO_100.md
+ D ALL_DOCUMENTS.md
+ D ANALISE_SISTEMA_ATUAL.md
+ D CELEBRATION_100_PERCENT.md
+ D CURRENT_STATUS.md
+ M Cargo.lock
+ M Cargo.toml
+ D DEPLOYMENT_GUIDE.md
+ D DOCUMENTATION_INDEX.md
+ D DOCUMENTATION_MAP.md
+ D DOCUMENTATION_MASTER_INDEX.md
+ D EVOLUTION_TIMELINE.md
+ D EXECUTIVE_SUMMARY.md
+ D EXECUTIVE_SUMMARY_V3_1.md
+ D EXECUTIVE_SUMMARY_V3_3.md
+ D FINAL_STATUS.md
+ D FINAL_SUMMARY.md
+ D INSTALL_LLVM_QUICK.md
+ D JOURNEY.md
+ D LAUNCH_CHECKLIST.md
+ D MANIFESTO_DO_FUTURO.md
+ D MATTER_ABSOLUTE_FINAL.md
+ D MATTER_ACHIEVEMENTS_FINAL.md
+ D MATTER_ACHIEVEMENT_FINAL.md
+ D MATTER_CAPABILITIES.md
+ D MATTER_COMPILER_REVOLUTION.md
+ D MATTER_COMPLETE_FINAL.md
+ D MATTER_COMPLETE_REVOLUTIONARY.md
+ D MATTER_COMPLETE_SYSTEM.md
+ D MATTER_CORE_100_PERCENT.md
+ D MATTER_CORE_97_PERCENT.md
+ D MATTER_CORE_98_PERCENT.md
+ D MATTER_CORE_99_5_PERCENT.md
+ D MATTER_CORE_COMPLETE.md
+ D MATTER_CORE_COMPLETE_VISION.md
+ D MATTER_CORE_V0.10.0.md
+ D MATTER_CORE_V0.8.0_FINAL.md
+ D MATTER_CORE_V0.9.0.md
+ D MATTER_CORE_V1_FINAL_COMPLETE.md
+ D MATTER_ENTERPRISE_CERTIFICATION.md
+ D MATTER_EVOLUTION_V3_1.md
+ D MATTER_EXECUTIVE_BRIEF.md
+ D MATTER_FINAL_ABSOLUTO_V2_7.md
+ D MATTER_FINAL_ACHIEVEMENT.md
+ D MATTER_FINAL_COMPLETE.md
+ D MATTER_FINAL_SUMMARY.md
+ D MATTER_FOR_AI_AGENTS.md
+ D MATTER_FOR_BEGINNERS.md
+ D MATTER_FRONTIER_SUMMARY.md
+ D MATTER_GLOBAL_IMPACT.md
+ D MATTER_IN_ACTION.md
+ D MATTER_MAGNUM_OPUS.md
+ D MATTER_NATIVE_COMPILER_COMPLETE.md
+ D MATTER_PITCH_DECK.md
+ D MATTER_POLYGLOT_5_LANGUAGES.md
+ D MATTER_POLYGLOT_COMPLETE.md
+ D MATTER_POLYGLOT_FINAL.md
+ D MATTER_POLYGLOT_VISION.md
+ D MATTER_QUICK_REFERENCE.md
+ D MATTER_REAL_WORLD_COMPLETE.md
+ D MATTER_REVOLUTIONARY_COMPLETE.md
+ D MATTER_REVOLUTIONARY_FEATURES.md
+ D MATTER_ROADMAP_2026_2031.md
+ D MATTER_SCIENTIFIC_BENCHMARKS.md
+ D MATTER_SHOWCASE.md
+ D MATTER_TECHNICAL_OVERVIEW.md
+ D MATTER_ULTIMATE_COMPLETE.md
+ D MATTER_ULTIMATE_FINAL.md
+ D MATTER_UNIVERSAL_LANGUAGE.md
+ D MATTER_V2_5_ENTERPRISE.md
+ D MATTER_V2_6_FRONTIER.md
+ D MATTER_V2_7_COMPLETE.md
+ D MATTER_V2_8_COMPLETE.md
+ D MATTER_V3_0_ABSOLUTE_FINAL.md
+ D MATTER_V3_1_PHOTONIC_FINAL.md
+ D MATTER_V3_2_FINAL_ABSOLUTO.md
+ D MATTER_V3_3_SPINTRONICS_FINAL.md
+ D MATTER_VISION_2026.md
+ D MATTER_VISION_FUTURE.md
+ D NATIVE_COMPILER_QUICK_START.md
+ D NEXT_ACTION.md
+ D OPTIMIZATION_QUICK_GUIDE.md
+ D ORGANIZACAO_COMPLETA.md
+ D PLANO_CONTINUACAO.md
+ D PROJECT_COMPLETE.md
+ D PROJECT_STATUS_v0.11.0.md
+ D PROJECT_STRUCTURE.md
+ D QUICK_COMMANDS.md
+ D QUICK_START.md
+ M README.md
+ D README_FINAL.md
+ D README_SPRINT_26.md
+ D REALIDADE_ATUAL_HONESTA.md
+ D RELEASE_NOTES_V0.8.0.md
+ D RELEASE_NOTES_V1_0.md
+ D RELEASE_NOTES_v0.13.0.md
+ D RELEASE_NOTES_v0.9.0.md
+ D RESUMO_FINAL_V3_2_PT.md
+ D RESUMO_SPRINT_51_PT.md
+ D RESUMO_SPRINT_53_PT.md
+ D ROADMAP_2026.md
+ D ROADMAP_FINAL_2_PERCENT.md
+ D ROADMAP_TO_100_PERCENT.md
+ D SESSAO_ATUAL_RESUMO.md
+ D SESSAO_COMPLETA_RESUMO_FINAL.md
+ D SESSAO_EPICA_FINAL.md
+ D SESSAO_EPICA_RUNTIME_COMPLETE.md
+ D SESSAO_FINAL_98_PERCENT.md
+ D SESSAO_PHASE_4_INICIO.md
+ D SESSION_2_SUMMARY.md
+ D SESSION_3_SUMMARY.md
+ D SESSION_4_SUMMARY.md
+ D SESSION_5_SUMMARY.md
+ D SESSION_6_SUMMARY.md
+ D SESSION_ARM64_COMPLETE.md
+ D SESSION_COMPLETE_FINAL.md
+ D SESSION_COMPLETE_SUMMARY.md
+ D SESSION_CONTINUATION_SUMMARY.md
+ D SESSION_CURRENT_SPRINT_26.md
+ D SESSION_CURRENT_SUMMARY.md
+ D SESSION_FINAL_REPORT.md
+ D SESSION_FINAL_REVOLUTIONARY.md
+ D SESSION_FINAL_SPRINT_26.md
+ D SESSION_FINAL_SUMMARY.md
+ D SESSION_HONEST_CORRECTION.md
+ D SESSION_REAL_WORLD_COMPLETE.md
+ D SESSION_SPRINT25_FINAL.md
+ D SESSION_SPRINTS_44_45_FINAL.md
+ D SESSION_SPRINTS_46_47_FINAL.md
+ D SESSION_SPRINTS_51_52_COMPLETE.md
+ D SESSION_SPRINT_26_COMPLETE.md
+ D SESSION_SPRINT_26_CURRENT.md
+ D SESSION_SPRINT_26_SUMMARY.md
+ D SESSION_SPRINT_27_COMPLETE.md
+ D SESSION_SPRINT_28_COMPLETE.md
+ D SESSION_SPRINT_31_COMPLETE.md
+ D SESSION_SPRINT_33_COMPLETE.md
+ D SESSION_SPRINT_34_COMPLETE.md
+ D SESSION_SPRINT_35_COMPLETE.md
+ D SESSION_SPRINT_36_37_COMPLETE.md
+ D SESSION_SPRINT_36_COMPLETE.md
+ D SESSION_SPRINT_42_COMPLETE.md
+ D SESSION_SPRINT_43_COMPLETE.md
+ D SESSION_SPRINT_44_COMPLETE.md
+ D SESSION_SPRINT_46_COMPLETE.md
+ D SESSION_SPRINT_48_COMPLETE.md
+ D SESSION_SPRINT_49_COMPLETE.md
+ D SESSION_SPRINT_51_COMPLETE.md
+ D SESSION_SPRINT_53_COMPLETE.md
+ D SESSION_SUMMARY.md
+ D SESSION_SUMMARY_FINAL.md
+ D SPRINTS_13_14_15_SUMMARY.md
+ D SPRINT_13_COMPLETE.md
+ D SPRINT_14_COMPLETE.md
+ D SPRINT_17_SUMMARY.md
+ D SPRINT_18_COMPLETE.md
+ D SPRINT_19_COMPLETE.md
+ D SPRINT_20_COMPLETE.md
+ D SPRINT_21_COMPLETE.md
+ D SPRINT_22_COMPLETE.md
+ D SPRINT_23_COMPLETE.md
+ D SPRINT_24_COMPLETE.md
+ D SPRINT_24_PHASE_1_COMPLETE.md
+ D SPRINT_24_PHASE_1_PROGRESS.md
+ D SPRINT_24_PHASE_1_STATUS.md
+ D SPRINT_24_PHASE_2_COMPLETE.md
+ D SPRINT_24_PHASE_2_STATUS.md
+ D SPRINT_24_PHASE_3_COMPLETE.md
+ D SPRINT_24_PHASE_4_COMPLETE.md
+ D SPRINT_24_PROGRESS.md
+ D SPRINT_25_ACHIEVEMENTS.md
+ D SPRINT_25_BREAK_CONTINUE_ANALYSIS.md
+ D SPRINT_25_COMPLETE.md
+ D SPRINT_25_FINAL_STATUS.md
+ D SPRINT_25_HONEST_ASSESSMENT.md
+ D SPRINT_25_IMPLEMENTATION_PROGRESS.md
+ D SPRINT_25_NEXT_STEPS.md
+ D SPRINT_25_OPTIMIZATION_COMPLETE.md
+ D SPRINT_25_PHASE_1_COMPLETE.md
+ D SPRINT_25_PHASE_2_PROGRESS.md
+ D SPRINT_25_PHASE_3_COMPLETE.md
+ D SPRINT_25_PROGRESS_REPORT.md
+ D SPRINT_25_REAL_COMPLETION_PLAN.md
+ D SPRINT_25_SESSION_FINAL.md
+ D SPRINT_25_STATUS.md
+ D SPRINT_26_ARM64_COMPLETE.md
+ D SPRINT_26_COMPLETE.md
+ D SPRINT_26_COMPLETE_SUMMARY.md
+ D SPRINT_26_NATIVE_COMPILER.md
+ D SPRINT_26_PHASE_1_COMPLETE.md
+ D SPRINT_26_PHASE_2_COMPLETE.md
+ D SPRINT_26_PHASE_2_PROGRESS.md
+ D SPRINT_26_PHASE_3_COMPLETE.md
+ D SPRINT_26_PHASE_3_STATUS.md
+ D SPRINT_26_PHASE_4_COMPLETE_INITIAL.md
+ D SPRINT_26_PHASE_4_RUNTIME_COMPLETE.md
+ D SPRINT_26_PHASE_4_SESSION_3.md
+ D SPRINT_26_PHASE_4_STATUS.matter
+ D SPRINT_26_STATUS.md
+ D SPRINT_27_ADVANCED_FEATURES.md
+ D SPRINT_27_EFFECT_SYSTEM_COMPLETE.md
+ D SPRINT_27_FINAL_SUMMARY.md
+ D SPRINT_27_GRADUAL_TYPING_COMPLETE.md
+ D SPRINT_27_HOTRELOAD_COMPLETE.md
+ D SPRINT_28_EFFECT_HANDLERS_COMPLETE.md
+ D SPRINT_29_EFFECT_INFERENCE_COMPLETE.md
+ D SPRINT_30_FINAL_POLISH.md
+ D SPRINT_31_RISCV_COMPLETE.md
+ D SPRINT_32_OPTIMIZATIONS_COMPLETE.md
+ D SPRINT_33_INLINE_UNROLL_COMPLETE.md
+ D SPRINT_34_VECTORIZATION_COMPLETE.md
+ D SPRINT_35_PGO_COMPLETE.md
+ D SPRINT_36_LTO_COMPLETE.md
+ D SPRINT_37_AUTOPGO_COMPLETE.md
+ D SPRINT_38_AVX512_COMPLETE.md
+ D SPRINT_39_POLYGLOT_PLAN.md
+ D SPRINT_39_POLYGLOT_STATUS.md
+ D SPRINT_40_COMPLETE.md
+ D SPRINT_41_ADVANCED_FEATURES.md
+ D SPRINT_42_NATIVE_FFI_COMPLETE.md
+ D SPRINT_42_SUMMARY.md
+ D SPRINT_43_SMART_FEATURES_COMPLETE.md
+ D SPRINT_44_ENTERPRISE_FEATURES.md
+ D SPRINT_44_SUMMARY.md
+ D SPRINT_45_GO_TO_MARKET.md
+ D SPRINT_46_FRONTIER_COMPUTING.md
+ D SPRINT_46_SUMMARY.md
+ D SPRINT_47_QUANTUM_HYBRID.md
+ D SPRINT_48_BIO_ADVANCED.md
+ D SPRINT_48_SUMMARY.md
+ D SPRINT_49_NEURO_HARDWARE.md
+ D SPRINT_50_MOLECULAR_COMPUTING.md
+ D SPRINT_51_PHOTONIC_COMPUTING.md
+ D SPRINT_51_SUMMARY.md
+ D SPRINT_52_SUMMARY.md
+ D SPRINT_53_SPINTRONICS_COMPUTING.md
+ D SPRINT_53_SUMMARY.md
+ D SPRINT_COMPLETE.md
+ D START_HERE.md
+ D START_HERE_V2_7.md
+ D START_HERE_V3_1.md
+ D START_HERE_V3_3.md
+ D STATUS.md
+ D STATUS_ATUAL_MATTER_V3_2.md
+ D STATUS_ATUAL_MATTER_V3_3.md
+ D STRATEGIC_VISION.md
+ D THE_MATTER_STORY.md
+ D VALIDATION_CHECKLIST.md
+ D VISUAL_ROADMAP.md
+ M crates/matter-agent-protocol/src/lib.rs
+ M crates/matter-auto-parallel/src/lib.rs
+ M crates/matter-backend/src/lib.rs
+ M crates/matter-bio-advanced/src/lib.rs
+ M crates/matter-biological/src/lib.rs
+ M crates/matter-bridge-go-native/src/lib.rs
+ M crates/matter-bridge-go-native/src/real.rs
+ M crates/matter-bridge-go/src/lib.rs
+ M crates/matter-bridge-java-native/src/lib.rs
+ M crates/matter-bridge-java-native/src/real.rs
+ M crates/matter-bridge-java/src/lib.rs
+ M crates/matter-bridge-nodejs-native/Cargo.toml
+ M crates/matter-bridge-nodejs-native/src/lib.rs
+ M crates/matter-bridge-nodejs/src/lib.rs
+ M crates/matter-bridge-python/src/converter.rs
+ M crates/matter-bridge-python/src/lib.rs
+ M crates/matter-bridge-rust/Cargo.toml
+ M crates/matter-bridge-rust/src/lib.rs
+ M crates/matter-bytecode/src/lib.rs
+ M crates/matter-cli/Cargo.toml
+ M crates/matter-cli/src/main.rs
+ M crates/matter-crash-reporter/src/lib.rs
+ M crates/matter-distributed-cache/src/lib.rs
+ M crates/matter-ir/src/lib.rs
+ M crates/matter-leak-detector/src/lib.rs
+ M crates/matter-lexer/src/lib.rs
+ M crates/matter-memory/src/rc.rs
+ M crates/matter-memristive/src/lib.rs
+ M crates/matter-molecular/src/lib.rs
+ M crates/matter-parser/src/lib.rs
+ M crates/matter-polyglot/src/lib.rs
+ M crates/matter-polyglot/src/parser.rs
+ M crates/matter-polyglot/src/resolver.rs
+ M crates/matter-polyglot/src/types.rs
+ M crates/matter-profiler/Cargo.toml
+ M crates/matter-profiler/src/lib.rs
+ M crates/matter-smart-inference/src/lib.rs
+ M crates/matter-stdlib/src/lib.rs
+ M crates/matter-topological/src/lib.rs
+ M crates/matter-visual/src/lib.rs
+ M crates/matter-vm/src/lib.rs
+ M docs/INDEX.md
+ M docs/SENTINEL_INTEGRATION.md
+ M docs/USER_ONBOARDING.md
+ D docs/guides/COMO_INSTALAR.txt
+ D docs/guides/INSTALACAO_COMPLETA.md
+ D docs/guides/INSTALL_GUIDE.md
+ D docs/guides/PVM_INTEGRATION_GUIDE.md
+ M docs/guides/QUICKSTART.md
+ D docs/guides/QUICKSTART_VISUAL.md
+ M examples/README.md
+ D fix_visual.py
+ M scripts/README.md
+ M scripts/test_all.ps1
+ M scripts/validate-full-workspace.ps1
+ D test_hello.matter
+ D test_pro.matter
+ D validate_sprint25.ps1
+?? benchmarks/benchmark_fib.matter
+?? benchmarks/benchmark_fib.py
+?? crates/matter-kernel-vm/
+?? docs/AGENT_SPECIALIST_BOOTSTRAP.md
+?? docs/archive/
+?? docs/guides/INSTRUCOES_FINAIS.md
+?? docs/guides/LEIA_PRIMEIRO.md
+?? docs/sessions/RESUMO_FINAL_SESSAO.md
+?? docs/sessions/SESSAO_ATUAL_RESUMO.md
+?? docs/sessions/SESSAO_COMPLETA_RESUMO_FINAL.md
+?? docs/sessions/SESSAO_EPICA_FINAL.md
+?? docs/sessions/SESSAO_EPICA_RUNTIME_COMPLETE.md
+?? docs/sessions/SESSAO_FINAL_98_PERCENT.md
+?? docs/sessions/SESSAO_PHASE_4_INICIO.md
+?? docs/sessions/SESSION_2_SUMMARY.md
+?? docs/sessions/SESSION_3_SUMMARY.md
+?? docs/sessions/SESSION_4_SUMMARY.md
+?? docs/sessions/SESSION_5_SUMMARY.md
+?? docs/sessions/SESSION_6_SUMMARY.md
+?? docs/sessions/SESSION_ARM64_COMPLETE.md
+?? docs/sessions/SESSION_COMPLETE_FINAL.md
+?? docs/sessions/SESSION_COMPLETE_SUMMARY.md
+?? docs/sessions/SESSION_CONTINUATION_SUMMARY.md
+?? docs/sessions/SESSION_CURRENT_SPRINT_26.md
+?? docs/sessions/SESSION_CURRENT_SUMMARY.md
+?? docs/sessions/SESSION_FINAL_REPORT.md
+?? docs/sessions/SESSION_FINAL_REVOLUTIONARY.md
+?? docs/sessions/SESSION_FINAL_SPRINT_26.md
+?? docs/sessions/SESSION_FINAL_SUMMARY.md
+?? docs/sessions/SESSION_HONEST_CORRECTION.md
+?? docs/sessions/SESSION_REAL_WORLD_COMPLETE.md
+?? docs/sessions/SESSION_SPRINT25_FINAL.md
+?? docs/sessions/SESSION_SPRINTS_44_45_FINAL.md
+?? docs/sessions/SESSION_SPRINTS_46_47_FINAL.md
+?? docs/sessions/SESSION_SPRINTS_51_52_COMPLETE.md
+?? docs/sessions/SESSION_SPRINT_26_COMPLETE.md
+?? docs/sessions/SESSION_SPRINT_26_CURRENT.md
+?? docs/sessions/SESSION_SPRINT_26_SUMMARY.md
+?? docs/sessions/SESSION_SPRINT_27_COMPLETE.md
+?? docs/sessions/SESSION_SPRINT_28_COMPLETE.md
+?? docs/sessions/SESSION_SPRINT_31_COMPLETE.md
+?? docs/sessions/SESSION_SPRINT_33_COMPLETE.md
+?? docs/sessions/SESSION_SPRINT_34_COMPLETE.md
+?? docs/sessions/SESSION_SPRINT_35_COMPLETE.md
+?? docs/sessions/SESSION_SPRINT_36_37_COMPLETE.md
+?? docs/sessions/SESSION_SPRINT_36_COMPLETE.md
+?? docs/sessions/SESSION_SPRINT_42_COMPLETE.md
+?? docs/sessions/SESSION_SPRINT_43_COMPLETE.md
+?? docs/sessions/SESSION_SPRINT_44_COMPLETE.md
+?? docs/sessions/SESSION_SPRINT_46_COMPLETE.md
+?? docs/sessions/SESSION_SPRINT_48_COMPLETE.md
+?? docs/sessions/SESSION_SPRINT_49_COMPLETE.md
+?? docs/sessions/SESSION_SPRINT_51_COMPLETE.md
+?? docs/sessions/SESSION_SPRINT_53_COMPLETE.md
+?? docs/sessions/SESSION_SUMMARY.md
+?? docs/sessions/SESSION_SUMMARY_FINAL.md
+?? docs/sprints/SPRINT_13_COMPLETE.md
+?? docs/sprints/SPRINT_14_COMPLETE.md
+?? docs/sprints/SPRINT_17_SUMMARY.md
+?? docs/sprints/SPRINT_18_COMPLETE.md
+?? docs/sprints/SPRINT_19_COMPLETE.md
+?? docs/sprints/SPRINT_20_COMPLETE.md
+?? docs/sprints/SPRINT_21_COMPLETE.md
+?? docs/sprints/SPRINT_22_COMPLETE.md
+?? docs/sprints/SPRINT_23_COMPLETE.md
+?? docs/sprints/SPRINT_24_COMPLETE.md
+?? docs/sprints/SPRINT_24_PHASE_1_COMPLETE.md
+?? docs/sprints/SPRINT_24_PHASE_1_PROGRESS.md
+?? docs/sprints/SPRINT_24_PHASE_1_STATUS.md
+?? docs/sprints/SPRINT_24_PHASE_2_COMPLETE.md
+?? docs/sprints/SPRINT_24_PHASE_2_STATUS.md
+?? docs/sprints/SPRINT_24_PHASE_3_COMPLETE.md
+?? docs/sprints/SPRINT_24_PHASE_4_COMPLETE.md
+?? docs/sprints/SPRINT_24_PROGRESS.md
+?? docs/sprints/SPRINT_25_ACHIEVEMENTS.md
+?? docs/sprints/SPRINT_25_BREAK_CONTINUE_ANALYSIS.md
+?? docs/sprints/SPRINT_25_COMPLETE.md
+?? docs/sprints/SPRINT_25_FINAL_STATUS.md
+?? docs/sprints/SPRINT_25_HONEST_ASSESSMENT.md
+?? docs/sprints/SPRINT_25_IMPLEMENTATION_PROGRESS.md
+?? docs/sprints/SPRINT_25_NEXT_STEPS.md
+?? docs/sprints/SPRINT_25_OPTIMIZATION_COMPLETE.md
+?? docs/sprints/SPRINT_25_PHASE_1_COMPLETE.md
+?? docs/sprints/SPRINT_25_PHASE_2_PROGRESS.md
+?? docs/sprints/SPRINT_25_PHASE_3_COMPLETE.md
+?? docs/sprints/SPRINT_25_PROGRESS_REPORT.md
+?? docs/sprints/SPRINT_25_REAL_COMPLETION_PLAN.md
+?? docs/sprints/SPRINT_25_SESSION_FINAL.md
+?? docs/sprints/SPRINT_25_STATUS.md
+?? docs/sprints/SPRINT_26_ARM64_COMPLETE.md
+?? docs/sprints/SPRINT_26_COMPLETE.md
+?? docs/sprints/SPRINT_26_COMPLETE_SUMMARY.md
+?? docs/sprints/SPRINT_26_NATIVE_COMPILER.md
+?? docs/sprints/SPRINT_26_PHASE_1_COMPLETE.md
+?? docs/sprints/SPRINT_26_PHASE_2_COMPLETE.md
+?? docs/sprints/SPRINT_26_PHASE_2_PROGRESS.md
+?? docs/sprints/SPRINT_26_PHASE_3_COMPLETE.md
+?? docs/sprints/SPRINT_26_PHASE_3_STATUS.md
+?? docs/sprints/SPRINT_26_PHASE_4_COMPLETE_INITIAL.md
+?? docs/sprints/SPRINT_26_PHASE_4_RUNTIME_COMPLETE.md
+?? docs/sprints/SPRINT_26_PHASE_4_SESSION_3.md
+?? docs/sprints/SPRINT_26_STATUS.md
+?? docs/sprints/SPRINT_27_ADVANCED_FEATURES.md
+?? docs/sprints/SPRINT_27_EFFECT_SYSTEM_COMPLETE.md
+?? docs/sprints/SPRINT_27_FINAL_SUMMARY.md
+?? docs/sprints/SPRINT_27_GRADUAL_TYPING_COMPLETE.md
+?? docs/sprints/SPRINT_27_HOTRELOAD_COMPLETE.md
+?? docs/sprints/SPRINT_28_EFFECT_HANDLERS_COMPLETE.md
+?? docs/sprints/SPRINT_29_EFFECT_INFERENCE_COMPLETE.md
+?? docs/sprints/SPRINT_30_FINAL_POLISH.md
+?? docs/sprints/SPRINT_31_RISCV_COMPLETE.md
+?? docs/sprints/SPRINT_32_OPTIMIZATIONS_COMPLETE.md
+?? docs/sprints/SPRINT_33_INLINE_UNROLL_COMPLETE.md
+?? docs/sprints/SPRINT_34_VECTORIZATION_COMPLETE.md
+?? docs/sprints/SPRINT_35_PGO_COMPLETE.md
+?? docs/sprints/SPRINT_36_LTO_COMPLETE.md
+?? docs/sprints/SPRINT_37_AUTOPGO_COMPLETE.md
+?? docs/sprints/SPRINT_38_AVX512_COMPLETE.md
+?? docs/sprints/SPRINT_39_POLYGLOT_PLAN.md
+?? docs/sprints/SPRINT_39_POLYGLOT_STATUS.md
+?? docs/sprints/SPRINT_40_COMPLETE.md
+?? docs/sprints/SPRINT_41_ADVANCED_FEATURES.md
+?? docs/sprints/SPRINT_42_NATIVE_FFI_COMPLETE.md
+?? docs/sprints/SPRINT_42_SUMMARY.md
+?? docs/sprints/SPRINT_43_SMART_FEATURES_COMPLETE.md
+?? docs/sprints/SPRINT_44_ENTERPRISE_FEATURES.md
+?? docs/sprints/SPRINT_44_SUMMARY.md
+?? docs/sprints/SPRINT_45_GO_TO_MARKET.md
+?? docs/sprints/SPRINT_46_FRONTIER_COMPUTING.md
+?? docs/sprints/SPRINT_46_SUMMARY.md
+?? docs/sprints/SPRINT_47_QUANTUM_HYBRID.md
+?? docs/sprints/SPRINT_48_BIO_ADVANCED.md
+?? docs/sprints/SPRINT_48_SUMMARY.md
+?? docs/sprints/SPRINT_49_NEURO_HARDWARE.md
+?? docs/sprints/SPRINT_50_MOLECULAR_COMPUTING.md
+?? docs/sprints/SPRINT_51_PHOTONIC_COMPUTING.md
+?? docs/sprints/SPRINT_51_SUMMARY.md
+?? docs/sprints/SPRINT_52_SUMMARY.md
+?? docs/sprints/SPRINT_53_SPINTRONICS_COMPUTING.md
+?? docs/sprints/SPRINT_53_SUMMARY.md
+?? docs/sprints/SPRINT_COMPLETE.md
+?? docs/status/
+?? docs/technical/
+?? docs/vision/
+?? env/
+?? examples/go_native_plugin/
+?? examples/node_native_host/
+?? examples/rust_ffi_plugin/
+?? examples/sentinel_boot.matter
+?? schemas/
+?? scripts/archive/
+?? scripts/export-ffi-validation-matrix.ps1
+?? scripts/export-ffi-validation-report.ps1
+?? scripts/export-release-package-manifest.ps1
+?? scripts/export-release-readiness.ps1
+?? scripts/ffi-smoke-all.ps1
+?? scripts/generate-agent-context.ps1
+?? scripts/native-ffi-smoke.ps1
+?? scripts/rust-ffi-plugin-smoke.ps1
+?? scripts/start-agent-chat.ps1
+?? scripts/start-agent-specialist.ps1
+?? scripts/test-ffi-validation-matrix-contract.ps1
+?? scripts/test-ffi-validation-report-contract.ps1
+?? scripts/test-release-package-contract.ps1
+?? scripts/test-release-readiness-contract.ps1
+?? scripts/verify-ffi-smoke-summaries.ps1
+?? scripts/verify-release-package.ps1
+~~~
+
+## Core Files
+- Cargo.toml
+- README.md
+- docs\AGENT_SPECIALIST_BOOTSTRAP.md
+- env\agent_system_prompt.txt
+
+## Crates
+- crates/matter-agent-protocol
+- crates/matter-ast
+- crates/matter-async
+- crates/matter-auto-parallel
+- crates/matter-backend
+- crates/matter-bench
+- crates/matter-bio-advanced
+- crates/matter-biological
+- crates/matter-bridge-go
+- crates/matter-bridge-go-native
+- crates/matter-bridge-java
+- crates/matter-bridge-java-native
+- crates/matter-bridge-nodejs
+- crates/matter-bridge-nodejs-native
+- crates/matter-bridge-python
+- crates/matter-bridge-rust
+- crates/matter-bus
+- crates/matter-bytecode
+- crates/matter-cache
+- crates/matter-cli
+- crates/matter-crash-reporter
+- crates/matter-debugger
+- crates/matter-deployment
+- crates/matter-display
+- crates/matter-distributed-cache
+- crates/matter-docs
+- crates/matter-effect-handlers
+- crates/matter-effect-inference
+- crates/matter-effects
+- crates/matter-energy
+- crates/matter-error
+- crates/matter-formatter
+- crates/matter-hotreload
+- crates/matter-ir
+- crates/matter-jit
+- crates/matter-kernel-vm
+- crates/matter-leak-detector
+- crates/matter-lexer
+- crates/matter-linter
+- crates/matter-llvm
+- crates/matter-lsp
+- crates/matter-memory
+- crates/matter-memristive
+- crates/matter-molecular
+- crates/matter-native
+- crates/matter-neuro-hardware
+- crates/matter-neuromorphic
+- crates/matter-optimizer
+- crates/matter-package
+- crates/matter-package-resolver
+- crates/matter-parser
+- crates/matter-photonic
+- crates/matter-photonic-vpu
+- crates/matter-polyglot
+- crates/matter-profiler
+- crates/matter-quantum
+- crates/matter-quantum-hybrid
+- crates/matter-runtime
+- crates/matter-scheduler
+- crates/matter-security
+- crates/matter-sentinel-abi
+- crates/matter-smart-inference
+- crates/matter-spintronics
+- crates/matter-stdlib
+- crates/matter-topological
+- crates/matter-types
+- crates/matter-vcpu
+- crates/matter-visual
+- crates/matter-vm
+- crates/matter-wasm
+
+## Matter CLI Quick Commands
+- cargo run -p matter-cli -- help
+- cargo run -p matter-cli -- repl
+- cargo run -p matter-cli -- agent-chat --help
+- cargo clippy --workspace --exclude matter-llvm --all-targets -- -D warnings
+
+## Specialist Focus
+- Preserve architecture and conventions
+- Prefer small validated iterations
+- Keep secrets out of versioned files

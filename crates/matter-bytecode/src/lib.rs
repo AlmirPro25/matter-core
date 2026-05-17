@@ -1513,3 +1513,9 @@ impl BytecodeBuilder {
         }
     }
 }
+
+impl Default for BytecodeBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}

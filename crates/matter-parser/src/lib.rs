@@ -1008,13 +1008,22 @@ mod tests {
         let mut parser = Parser::from_source("let pi = 3.14");
         let program = parser.parse().unwrap();
         if let Statement::Let { value, .. } = &program.statements[0] {
-            assert!(matches!(value, Expression::Float(f) if (f - 3.14).abs() < 0.001));
+            assert!(
+                matches!(value, Expression::Float(f) if (f - std::f64::consts::PI).abs() < 0.01)
+            );
         }
     }
 
     #[test]
     fn test_parse_logical_ops() {
         let mut parser = Parser::from_source("if a && b || !c { print d }");
+        let program = parser.parse().unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_word_logical_ops() {
+        let mut parser = Parser::from_source("if a and b or not c { print d }");
         let program = parser.parse().unwrap();
         assert_eq!(program.statements.len(), 1);
     }

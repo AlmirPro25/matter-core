@@ -1,5 +1,6 @@
 // Matter Distributed Cache
 // Redis-based distributed compilation cache for teams
+#![allow(clippy::result_large_err)]
 
 use matter_error::{ErrorType, MatterError};
 use redis::{aio::ConnectionManager, AsyncCommands, Client};
@@ -174,11 +175,7 @@ impl DistributedCache {
             }
         }
 
-        let avg_entry_size = if total_entries > 0 {
-            total_size / total_entries
-        } else {
-            0
-        };
+        let avg_entry_size = total_size.checked_div(total_entries).unwrap_or(0);
 
         let hit_rate = if total_entries > 0 {
             total_hits as f64 / total_entries as f64

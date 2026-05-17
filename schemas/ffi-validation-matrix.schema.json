@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://matter-core.local/schemas/ffi-validation-matrix.schema.json",
+  "title": "Matter Core FFI Validation Matrix",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schema_version",
+    "generated_at",
+    "source_summaries",
+    "rule",
+    "bridges"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "schemas/ffi-validation-matrix.schema.json"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "generated_at": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_summaries": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rust", "native"],
+      "properties": {
+        "rust": {
+          "type": "string",
+          "minLength": 1
+        },
+        "native": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "rule": {
+      "type": "string",
+      "minLength": 1
+    },
+    "bridges": {
+      "type": "array",
+      "minItems": 4,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "crate",
+          "status",
+          "evidence",
+          "production_claim_allowed",
+          "production_blocker"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "rust-dynamic-json-abi",
+              "node-native-napi",
+              "go-native-cgo",
+              "java-native-jni"
+            ]
+          },
+          "crate": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "validated_smoke",
+              "missing_smoke",
+              "environment_required"
+            ]
+          },
+          "evidence": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "production_claim_allowed": {
+            "const": false
+          },
+          "production_blocker": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

@@ -4,6 +4,7 @@
 //! Includes DNA computing, molecular logic gates, chemical reactions as computation.
 
 use std::collections::HashMap;
+use std::fmt;
 
 // ============================================================================
 // DNA COMPUTING
@@ -56,7 +57,7 @@ pub struct DNAStrand {
 
 impl DNAStrand {
     pub fn new(sequence: &str) -> Option<Self> {
-        let bases: Option<Vec<_>> = sequence.chars().map(|c| DNABase::from_char(c)).collect();
+        let bases: Option<Vec<_>> = sequence.chars().map(DNABase::from_char).collect();
         bases.map(|b| Self { bases: b })
     }
 
@@ -70,10 +71,6 @@ impl DNAStrand {
         Self {
             bases: self.bases.iter().rev().map(|b| b.complement()).collect(),
         }
-    }
-
-    pub fn to_string(&self) -> String {
-        self.bases.iter().map(|b| b.to_char()).collect()
     }
 
     pub fn hamming_distance(&self, other: &DNAStrand) -> usize {
@@ -91,6 +88,13 @@ impl DNAStrand {
             .filter(|b| **b == DNABase::G || **b == DNABase::C)
             .count();
         gc_count as f64 / self.bases.len() as f64
+    }
+}
+
+impl fmt::Display for DNAStrand {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let sequence: String = self.bases.iter().map(|b| b.to_char()).collect();
+        write!(f, "{}", sequence)
     }
 }
 
@@ -235,6 +239,12 @@ impl DNAComputer {
     }
 }
 
+impl Default for DNAComputer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 // ============================================================================
 // MOLECULAR LOGIC GATES
 // ============================================================================
@@ -363,6 +373,12 @@ impl MolecularCircuit {
             .enumerate()
             .filter_map(|(id, _)| signals.get(&id).copied())
             .collect()
+    }
+}
+
+impl Default for MolecularCircuit {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -500,6 +516,12 @@ impl ReactionNetwork {
         }
 
         self.get_concentration("C") > 50
+    }
+}
+
+impl Default for ReactionNetwork {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

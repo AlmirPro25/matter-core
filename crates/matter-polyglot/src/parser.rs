@@ -21,7 +21,7 @@ impl PolyglotParser {
         if let Some(captures) = self.import_regex.captures(line) {
             let package = captures.get(1)?.as_str().to_string();
             let language_str = captures.get(2)?.as_str();
-            let language = LanguageTarget::from_str(language_str)?;
+            let language = LanguageTarget::parse(language_str)?;
             let alias = captures.get(3).map(|m| m.as_str().to_string());
 
             let mut import = ExternalImport::new(package, language);

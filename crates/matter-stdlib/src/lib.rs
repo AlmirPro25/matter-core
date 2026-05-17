@@ -447,7 +447,7 @@ mod tests {
             assert_eq!(parts.len(), 3);
             assert_eq!(parts[0], Value::new_string("a".to_string()));
         } else {
-            assert!(false, "expected list result");
+            panic!("expected list result");
         }
     }
 
@@ -468,7 +468,7 @@ mod tests {
         if let Value::List(sorted) = result {
             assert_eq!(*sorted, vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
         } else {
-            assert!(false, "expected list result");
+            panic!("expected list result");
         }
     }
 
@@ -514,7 +514,7 @@ mod tests {
         if let Value::Int(timestamp) = result {
             assert!(timestamp > 0);
         } else {
-            assert!(false, "expected int timestamp");
+            panic!("expected int timestamp");
         }
     }
 
@@ -525,7 +525,7 @@ mod tests {
         if let Value::Int(n) = result {
             assert!((0..10).contains(&n));
         } else {
-            assert!(false, "expected int result");
+            panic!("expected int result");
         }
     }
 

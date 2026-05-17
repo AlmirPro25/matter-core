@@ -4,7 +4,7 @@ use matter_backend::Value;
 
 pub trait TypeConverter {
     fn to_matter(&self, foreign_value: &dyn std::any::Any) -> Result<Value, String>;
-    fn from_matter(&self, matter_value: &Value) -> Result<Box<dyn std::any::Any>, String>;
+    fn decode_matter(&self, matter_value: &Value) -> Result<Box<dyn std::any::Any>, String>;
 }
 
 /// Mapeamento de tipos entre linguagens

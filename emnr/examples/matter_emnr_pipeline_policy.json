@@ -1,0 +1,15 @@
+{
+  "gate": {
+    "warn_as_fail": false,
+    "risk_threshold": 0.4,
+    "confidence_threshold": 0.55,
+    "energy_threshold": 25.0,
+    "critical_energy": 10.0
+  },
+  "promotion": {
+    "max_risk_regression": 0.02,
+    "max_error_regression": 0.02,
+    "max_confidence_drop": 0.02,
+    "min_energy": 20.0
+  }
+}

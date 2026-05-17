@@ -1,0 +1,13 @@
+{
+  "signal": {
+    "values": [0.2, 0.8, 0.4, 0.1],
+    "shape": [4],
+    "energy": 1.0,
+    "timestamp": 0,
+    "label": "reward_signal"
+  },
+  "reward": 0.9,
+  "danger": 0.1,
+  "novelty": 0.4,
+  "label": "reward_test"
+}

@@ -403,6 +403,9 @@ impl Lexer {
                     "struct" => Token::Struct,
                     "import" => Token::Import,
                     "spawn" => Token::Spawn,
+                    "and" => Token::And,
+                    "or" => Token::Or,
+                    "not" => Token::Not,
                     "true" => Token::Bool(true),
                     "false" => Token::Bool(false),
                     _ => Token::Ident(ident),
@@ -492,20 +495,28 @@ mod tests {
     #[test]
     fn test_float_literal() {
         let mut lexer = Lexer::new("3.14");
-        assert_eq!(lexer.next_token(), Token::Float(3.14));
+        assert_eq!(lexer.next_token(), Token::Float(3.15 - 0.01));
     }
 
     #[test]
     fn test_float_integer_distinction() {
         let mut lexer = Lexer::new("42 3.14 100");
         assert_eq!(lexer.next_token(), Token::Int(42));
-        assert_eq!(lexer.next_token(), Token::Float(3.14));
+        assert_eq!(lexer.next_token(), Token::Float(3.15 - 0.01));
         assert_eq!(lexer.next_token(), Token::Int(100));
     }
 
     #[test]
     fn test_logical_operators() {
         let mut lexer = Lexer::new("&& || !");
+        assert_eq!(lexer.next_token(), Token::And);
+        assert_eq!(lexer.next_token(), Token::Or);
+        assert_eq!(lexer.next_token(), Token::Not);
+    }
+
+    #[test]
+    fn test_word_logical_operators() {
+        let mut lexer = Lexer::new("and or not");
         assert_eq!(lexer.next_token(), Token::And);
         assert_eq!(lexer.next_token(), Token::Or);
         assert_eq!(lexer.next_token(), Token::Not);

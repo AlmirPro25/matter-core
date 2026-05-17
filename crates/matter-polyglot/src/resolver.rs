@@ -14,7 +14,7 @@ pub struct PipManager;
 impl PackageManager for PipManager {
     fn is_installed(&self, package: &str) -> bool {
         Command::new("pip")
-            .args(&["show", package])
+            .args(["show", package])
             .output()
             .map(|output| output.status.success())
             .unwrap_or(false)
@@ -28,7 +28,7 @@ impl PackageManager for PipManager {
         };
 
         let output = Command::new("pip")
-            .args(&["install", &package_spec])
+            .args(["install", &package_spec])
             .output()
             .map_err(|e| format!("Failed to run pip: {}", e))?;
 
@@ -43,7 +43,7 @@ impl PackageManager for PipManager {
     }
 
     fn get_install_path(&self, package: &str) -> Option<String> {
-        let output = Command::new("pip").args(&["show", package]).output().ok()?;
+        let output = Command::new("pip").args(["show", package]).output().ok()?;
 
         if !output.status.success() {
             return None;
@@ -65,7 +65,7 @@ pub struct NpmManager;
 impl PackageManager for NpmManager {
     fn is_installed(&self, package: &str) -> bool {
         Command::new("npm")
-            .args(&["list", package])
+            .args(["list", package])
             .output()
             .map(|output| output.status.success())
             .unwrap_or(false)
@@ -79,7 +79,7 @@ impl PackageManager for NpmManager {
         };
 
         let output = Command::new("npm")
-            .args(&["install", &package_spec])
+            .args(["install", &package_spec])
             .output()
             .map_err(|e| format!("Failed to run npm: {}", e))?;
 
@@ -121,10 +121,88 @@ impl PackageManager for CargoManager {
     }
 }
 
+pub struct GoManager;
+
+impl PackageManager for GoManager {
+    fn is_installed(&self, package: &str) -> bool {
+        Command::new("go")
+            .args(["list", package])
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    }
+
+    fn install(&self, package: &str, version: Option<&str>) -> Result<(), String> {
+        let package_spec = if let Some(ver) = version {
+            format!("{}@{}", package, ver)
+        } else {
+            package.to_string()
+        };
+
+        let output = Command::new("go")
+            .args(["get", &package_spec])
+            .output()
+            .map_err(|e| format!("Failed to run go: {}", e))?;
+
+        if output.status.success() {
+            Ok(())
+        } else {
+            Err(format!(
+                "go get failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ))
+        }
+    }
+
+    fn get_install_path(&self, package: &str) -> Option<String> {
+        Some(format!("$GOMODCACHE/{}", package))
+    }
+}
+
+pub struct MavenManager;
+
+impl PackageManager for MavenManager {
+    fn is_installed(&self, package: &str) -> bool {
+        Command::new("mvn")
+            .args(["dependency:get", &format!("-Dartifact={}", package), "-q"])
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    }
+
+    fn install(&self, package: &str, version: Option<&str>) -> Result<(), String> {
+        let package_spec = if let Some(ver) = version {
+            format!("{}:{}", package, ver)
+        } else {
+            package.to_string()
+        };
+
+        let output = Command::new("mvn")
+            .args(["dependency:get", &format!("-Dartifact={}", package_spec)])
+            .output()
+            .map_err(|e| format!("Failed to run mvn: {}", e))?;
+
+        if output.status.success() {
+            Ok(())
+        } else {
+            Err(format!(
+                "maven dependency:get failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ))
+        }
+    }
+
+    fn get_install_path(&self, package: &str) -> Option<String> {
+        Some(format!("~/.m2/repository/{}", package.replace(':', "/")))
+    }
+}
+
 pub struct DependencyResolver {
     pip: PipManager,
     npm: NpmManager,
     cargo: CargoManager,
+    go: GoManager,
+    maven: MavenManager,
 }
 
 impl DependencyResolver {
@@ -133,6 +211,8 @@ impl DependencyResolver {
             pip: PipManager,
             npm: NpmManager,
             cargo: CargoManager,
+            go: GoManager,
+            maven: MavenManager,
         }
     }
 
@@ -141,7 +221,8 @@ impl DependencyResolver {
             LanguageTarget::Python => &self.pip,
             LanguageTarget::NodeJS => &self.npm,
             LanguageTarget::Rust => &self.cargo,
-            _ => unimplemented!("Package manager for {:?} not implemented yet", language),
+            LanguageTarget::Go => &self.go,
+            LanguageTarget::Java => &self.maven,
         }
     }
 

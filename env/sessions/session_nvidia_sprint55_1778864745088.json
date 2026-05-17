@@ -1,0 +1,14 @@
+{
+  "message_count": 1,
+  "messages": [
+    {
+      "content": "You are Matter Agent, a pragmatic coding assistant inside Matter CLI. Keep answers concise and actionable.",
+      "role": "system"
+    }
+  ],
+  "model": "meta/llama-3.1-8b-instruct",
+  "profile": "coding",
+  "provider": "nvidia",
+  "saved_at": "1778864745088",
+  "specialist": false
+}

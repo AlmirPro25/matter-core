@@ -2,6 +2,7 @@
 /target
 target_*/
 tmp_*/
+.build-artifacts/
 **/*.rs.bk
 *.pdb
 *.exe
@@ -34,5 +35,6 @@ Thumbs.db
 # Local app secrets
 .env
 *.local.env
+env/*.env
 apps/matter-studio/.env
 apps/matter-studio/.matter-studio-events.json

@@ -1,0 +1,17 @@
+fn fact(n) {
+    if n <= 1 {
+        return 1
+    }
+
+    let previous = fact(n - 1)
+    let current = n * previous
+    return current
+}
+
+let result = fact(5)
+sentinel.telemetry(result)
+sentinel.log(result)
+sentinel.screen(result)
+sentinel.file(result)
+sentinel.process(result)
+print result

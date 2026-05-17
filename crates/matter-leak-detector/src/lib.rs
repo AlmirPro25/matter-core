@@ -76,17 +76,14 @@ impl LeakDetector {
     }
 
     pub fn track_reference(&mut self, from: usize, to: usize) {
-        self.references
-            .entry(from)
-            .or_insert_with(Vec::new)
-            .push(to);
+        self.references.entry(from).or_default().push(to);
     }
 
     pub fn detect_leaks(&self) -> Vec<Leak> {
         let now = Instant::now();
         let mut leaks = Vec::new();
 
-        for (_, info) in &self.allocations {
+        for info in self.allocations.values() {
             let age = now - info.timestamp;
 
             if age > self.threshold_age {
@@ -100,7 +97,7 @@ impl LeakDetector {
         }
 
         // Sort by age (oldest first)
-        leaks.sort_by(|a, b| b.age.cmp(&a.age));
+        leaks.sort_by_key(|leak| std::cmp::Reverse(leak.age));
         leaks
     }
 

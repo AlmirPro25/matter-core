@@ -1,0 +1,10 @@
+[
+  {
+    "type": "list",
+    "value": [
+      { "type": "int", "value": 10 },
+      { "type": "int", "value": 20 },
+      { "type": "int", "value": 12 }
+    ]
+  }
+]

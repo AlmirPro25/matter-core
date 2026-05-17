@@ -9,7 +9,7 @@ pub struct PythonTypeConverter;
 
 impl PythonTypeConverter {
     /// Converte valor Python para Matter
-    pub fn to_matter(&self, py: Python, py_obj: &PyAny) -> Result<Value, String> {
+    pub fn to_matter(&self, py_obj: &PyAny) -> Result<Value, String> {
         // None
         if py_obj.is_none() {
             return Ok(Value::Unit);
@@ -38,14 +38,14 @@ impl PythonTypeConverter {
         // List
         if let Ok(list) = py_obj.downcast::<PyList>() {
             let items: Result<Vec<Value>, String> =
-                list.iter().map(|item| self.to_matter(py, item)).collect();
+                list.iter().map(|item| self.to_matter(item)).collect();
             return Ok(Value::new_list(items?));
         }
 
         // Tuple (converte para List)
         if let Ok(tuple) = py_obj.downcast::<PyTuple>() {
             let items: Result<Vec<Value>, String> =
-                tuple.iter().map(|item| self.to_matter(py, item)).collect();
+                tuple.iter().map(|item| self.to_matter(item)).collect();
             return Ok(Value::new_list(items?));
         }
 
@@ -56,7 +56,7 @@ impl PythonTypeConverter {
                 let key_str = key
                     .extract::<String>()
                     .map_err(|_| "Dict keys must be strings".to_string())?;
-                let value_matter = self.to_matter(py, value)?;
+                let value_matter = self.to_matter(value)?;
                 map.insert(key_str, value_matter);
             }
             return Ok(Value::new_map(map));
@@ -68,7 +68,7 @@ impl PythonTypeConverter {
             let to_list = py_obj
                 .call_method0("tolist")
                 .map_err(|e| format!("Failed to convert numpy array: {}", e))?;
-            return self.to_matter(py, to_list);
+            return self.to_matter(to_list);
         }
 
         Err(format!(
@@ -132,7 +132,7 @@ mod tests {
 
             // Python → Matter
             let py_int = 42.to_object(py);
-            let matter_result = converter.to_matter(py, py_int.as_ref(py)).unwrap();
+            let matter_result = converter.to_matter(py_int.as_ref(py)).unwrap();
             assert_eq!(matter_result, Value::Int(42));
         });
     }

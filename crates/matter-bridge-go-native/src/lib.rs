@@ -4,13 +4,20 @@
 // build keeps workspace validation independent from a local Go shared-library
 // toolchain.
 
+#![allow(clippy::result_large_err)]
+
 use matter_backend::Value;
+#[cfg(not(feature = "cgo-native"))]
 use matter_error::{ErrorType, MatterError};
+#[cfg(not(feature = "cgo-native"))]
 use serde_json::Value as JsonValue;
+#[cfg(not(feature = "cgo-native"))]
 use std::sync::{Arc, Mutex};
 
+#[cfg(not(feature = "cgo-native"))]
 type Result<T> = std::result::Result<T, MatterError>;
 
+#[cfg(not(feature = "cgo-native"))]
 fn runtime_error(message: impl Into<String>) -> MatterError {
     MatterError::new(ErrorType::Runtime, message)
 }

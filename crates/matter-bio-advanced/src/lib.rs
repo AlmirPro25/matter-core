@@ -126,8 +126,8 @@ impl ProteinStructure {
     }
 
     pub fn from_sequence(seq: &str) -> Option<Self> {
-        let sequence: Option<Vec<_>> = seq.chars().map(|c| AminoAcid::from_code(c)).collect();
-        sequence.map(|s| Self::new(s))
+        let sequence: Option<Vec<_>> = seq.chars().map(AminoAcid::from_code).collect();
+        sequence.map(Self::new)
     }
 
     pub fn calculate_energy(&self) -> f64 {
@@ -455,13 +455,11 @@ impl GuideRNA {
             / self.sequence.len() as f64;
 
         // Optimal GC content is 40-60%
-        let gc_score = if gc_content >= 0.4 && gc_content <= 0.6 {
+        if (0.4..=0.6).contains(&gc_content) {
             1.0
         } else {
             1.0 - (gc_content - 0.5).abs() * 2.0
-        };
-
-        gc_score
+        }
     }
 }
 
@@ -484,13 +482,13 @@ impl CRISPRDesigner {
 
         // Find PAM sites
         for i in 0..target_gene.len().saturating_sub(self.pam_sequence.len()) {
-            if &target_gene[i..i + self.pam_sequence.len()] == self.pam_sequence {
-                if i >= self.guide_length {
-                    let guide_seq = target_gene[i - self.guide_length..i].to_string();
-                    let guide =
-                        GuideRNA::new(guide_seq, self.pam_sequence.clone(), i - self.guide_length);
-                    guides.push(guide);
-                }
+            if target_gene[i..i + self.pam_sequence.len()] == self.pam_sequence
+                && i >= self.guide_length
+            {
+                let guide_seq = target_gene[i - self.guide_length..i].to_string();
+                let guide =
+                    GuideRNA::new(guide_seq, self.pam_sequence.clone(), i - self.guide_length);
+                guides.push(guide);
             }
         }
 
@@ -631,6 +629,12 @@ impl CircuitSimulator {
 
     pub fn get_concentration(&self, protein: &str) -> f64 {
         *self.concentrations.get(protein).unwrap_or(&0.0)
+    }
+}
+
+impl Default for CircuitSimulator {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
