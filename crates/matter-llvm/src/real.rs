@@ -44,7 +44,7 @@ impl<'ctx> LLVMCodegen<'ctx> {
         let module = context.create_module(module_name);
         let builder = context.create_builder();
 
-        Self {
+        let mut codegen = Self {
             context,
             module,
             builder,
@@ -53,7 +53,128 @@ impl<'ctx> LLVMCodegen<'ctx> {
             stack: Vec::new(),
             basic_blocks: HashMap::new(),
             loop_stack: Vec::new(),
-        }
+        };
+
+        codegen.declare_builtins();
+        codegen
+    }
+
+    /// Declare native builtin C functions from the matter runtime
+    fn declare_builtins(&mut self) {
+        let i64_type = self.i64_type();
+        let i8_ptr_type = self.i8_type().ptr_type(inkwell::AddressSpace::default());
+
+        // matter_list_new(capacity: i64) -> *mut MatterList (we treat pointers as i64 in Matter for now, or just use i8_ptr)
+        let list_new_type = i8_ptr_type.fn_type(&[i64_type.into()], false);
+        let fn_list_new = self
+            .module
+            .add_function("matter_list_new", list_new_type, None);
+        self.functions
+            .insert("matter_list_new".to_string(), fn_list_new);
+
+        // matter_list_push(list_ptr: *mut MatterList, value: i64) -> bool (i1 or i64)
+        let list_push_type = self
+            .i32_type()
+            .fn_type(&[i8_ptr_type.into(), i64_type.into()], false);
+        let fn_list_push = self
+            .module
+            .add_function("matter_list_push", list_push_type, None);
+        self.functions
+            .insert("matter_list_push".to_string(), fn_list_push);
+
+        // matter_list_pop(list_ptr: *mut MatterList) -> i64
+        let list_pop_type = i64_type.fn_type(&[i8_ptr_type.into()], false);
+        let fn_list_pop = self
+            .module
+            .add_function("matter_list_pop", list_pop_type, None);
+        self.functions
+            .insert("matter_list_pop".to_string(), fn_list_pop);
+
+        // matter_list_len(list_ptr: *mut MatterList) -> i64
+        let list_len_type = i64_type.fn_type(&[i8_ptr_type.into()], false);
+        let fn_list_len = self
+            .module
+            .add_function("matter_list_len", list_len_type, None);
+        self.functions
+            .insert("matter_list_len".to_string(), fn_list_len);
+
+        // matter_list_get(list_ptr: *mut MatterList, index: i64) -> i64
+        let list_get_type = i64_type.fn_type(&[i8_ptr_type.into(), i64_type.into()], false);
+        let fn_list_get = self
+            .module
+            .add_function("matter_list_get", list_get_type, None);
+        self.functions
+            .insert("matter_list_get".to_string(), fn_list_get);
+
+        // matter_list_set(list_ptr: *mut MatterList, index: i64, value: i64) -> bool
+        let list_set_type = self.i32_type().fn_type(
+            &[i8_ptr_type.into(), i64_type.into(), i64_type.into()],
+            false,
+        );
+        let fn_list_set = self
+            .module
+            .add_function("matter_list_set", list_set_type, None);
+        self.functions
+            .insert("matter_list_set".to_string(), fn_list_set);
+
+        // Map functions
+        let map_new_type = i8_ptr_type.fn_type(&[], false);
+        let fn_map_new = self
+            .module
+            .add_function("matter_map_new", map_new_type, None);
+        self.functions
+            .insert("matter_map_new".to_string(), fn_map_new);
+
+        let map_insert_type = self.i32_type().fn_type(
+            &[i8_ptr_type.into(), i64_type.into(), i64_type.into()],
+            false,
+        );
+        let fn_map_insert = self
+            .module
+            .add_function("matter_map_insert", map_insert_type, None);
+        self.functions
+            .insert("matter_map_insert".to_string(), fn_map_insert);
+
+        let map_has_type = self
+            .i32_type()
+            .fn_type(&[i8_ptr_type.into(), i64_type.into()], false);
+        let fn_map_has = self
+            .module
+            .add_function("matter_map_has", map_has_type, None);
+        self.functions
+            .insert("matter_map_has".to_string(), fn_map_has);
+
+        let map_keys_type = i8_ptr_type.fn_type(&[i8_ptr_type.into()], false);
+        let fn_map_keys = self
+            .module
+            .add_function("matter_map_keys", map_keys_type, None);
+        self.functions
+            .insert("matter_map_keys".to_string(), fn_map_keys);
+
+        let map_values_type = i8_ptr_type.fn_type(&[i8_ptr_type.into()], false);
+        let fn_map_values = self
+            .module
+            .add_function("matter_map_values", map_values_type, None);
+        self.functions
+            .insert("matter_map_values".to_string(), fn_map_values);
+
+        // Generic collection functions
+        let col_get_type = i64_type.fn_type(&[i8_ptr_type.into(), i64_type.into()], false);
+        let fn_col_get = self
+            .module
+            .add_function("matter_collection_get", col_get_type, None);
+        self.functions
+            .insert("matter_collection_get".to_string(), fn_col_get);
+
+        let col_set_type = self.i32_type().fn_type(
+            &[i8_ptr_type.into(), i64_type.into(), i64_type.into()],
+            false,
+        );
+        let fn_col_set = self
+            .module
+            .add_function("matter_collection_set", col_set_type, None);
+        self.functions
+            .insert("matter_collection_set".to_string(), fn_col_set);
     }
 
     /// Get the i64 type
@@ -833,16 +954,49 @@ impl<'ctx> LLVMCodegen<'ctx> {
 
     /// Compile NewList instruction
     fn compile_new_list(&mut self, size: usize) -> Result<(), String> {
-        // Pop N elements from stack (they will be list elements)
+        // Collect N elements from stack
+        let mut initial_elements = Vec::new();
         for _ in 0..size {
-            self.stack
+            let elem = self
+                .stack
                 .pop()
                 .ok_or_else(|| "Stack underflow in NewList".to_string())?;
+            initial_elements.push(elem);
+        }
+        // Elements are popped in reverse order
+        initial_elements.reverse();
+
+        // Call matter_list_new(size)
+        let fn_list_new = self.functions.get("matter_list_new").unwrap();
+        let cap = self
+            .i64_type()
+            .const_int(std::cmp::max(size, 4) as u64, false);
+        let list_ptr_val = self
+            .builder
+            .build_call(*fn_list_new, &[cap.into()], "call_list_new")
+            .map_err(|e| format!("Failed: {:?}", e))?
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_pointer_value();
+
+        // Push initial elements
+        let fn_list_push = self.functions.get("matter_list_push").unwrap();
+        for elem in initial_elements {
+            self.builder
+                .build_call(
+                    *fn_list_push,
+                    &[list_ptr_val.into(), elem.into()],
+                    "call_list_push",
+                )
+                .map_err(|e| format!("Failed: {:?}", e))?;
         }
 
-        // For now, push a placeholder list handle (0)
-        // TODO: Implement proper list allocation and storage
-        let list_handle = self.i64_type().const_int(0, false);
+        // We store the pointer casted as i64 on the Matter stack
+        let list_handle = self
+            .builder
+            .build_ptr_to_int(list_ptr_val, self.i64_type(), "list_handle")
+            .map_err(|e| format!("Failed: {:?}", e))?;
         self.stack.push(list_handle);
 
         Ok(())
@@ -850,41 +1004,76 @@ impl<'ctx> LLVMCodegen<'ctx> {
 
     /// Compile LoadIndex instruction
     fn compile_load_index(&mut self) -> Result<(), String> {
-        let _index = self
+        let index = self
             .stack
             .pop()
             .ok_or_else(|| "Stack underflow in LoadIndex (index)".to_string())?;
-        let _collection = self
+        let collection = self
             .stack
             .pop()
             .ok_or_else(|| "Stack underflow in LoadIndex (collection)".to_string())?;
 
-        // For now, push a placeholder value (0)
-        // TODO: Implement proper list/map indexing
-        let value = self.i64_type().const_int(0, false);
-        self.stack.push(value);
+        let fn_col_get = self.functions.get("matter_collection_get").unwrap();
+        let col_ptr_val = self
+            .builder
+            .build_int_to_ptr(
+                collection,
+                self.i8_type().ptr_type(inkwell::AddressSpace::default()),
+                "col_ptr",
+            )
+            .map_err(|e| format!("Failed: {:?}", e))?;
 
+        let value_val = self
+            .builder
+            .build_call(
+                *fn_col_get,
+                &[col_ptr_val.into(), index.into()],
+                "call_col_get",
+            )
+            .map_err(|e| format!("Failed: {:?}", e))?
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_int_value();
+
+        self.stack.push(value_val);
         Ok(())
     }
 
     /// Compile StoreIndex instruction
     fn compile_store_index(&mut self) -> Result<(), String> {
-        let _value = self
+        let value = self
             .stack
             .pop()
             .ok_or_else(|| "Stack underflow in StoreIndex (value)".to_string())?;
-        let _index = self
+        let index = self
             .stack
             .pop()
             .ok_or_else(|| "Stack underflow in StoreIndex (index)".to_string())?;
-        let _collection = self
+        let collection = self
             .stack
             .pop()
             .ok_or_else(|| "Stack underflow in StoreIndex (collection)".to_string())?;
 
-        // For now, push the collection back (modified)
-        // TODO: Implement proper list/map index assignment
-        let collection = self.i64_type().const_int(0, false);
+        let fn_col_set = self.functions.get("matter_collection_set").unwrap();
+        let col_ptr_val = self
+            .builder
+            .build_int_to_ptr(
+                collection,
+                self.i8_type().ptr_type(inkwell::AddressSpace::default()),
+                "col_ptr",
+            )
+            .map_err(|e| format!("Failed: {:?}", e))?;
+
+        self.builder
+            .build_call(
+                *fn_col_set,
+                &[col_ptr_val.into(), index.into(), value.into()],
+                "call_col_set",
+            )
+            .map_err(|e| format!("Failed: {:?}", e))?;
+
+        // Matter's VM pushes the collection back after store index
         self.stack.push(collection);
 
         Ok(())
@@ -908,17 +1097,34 @@ impl<'ctx> LLVMCodegen<'ctx> {
 
     /// Compile ListPush instruction
     fn compile_list_push(&mut self) -> Result<(), String> {
-        let _value = self
+        let value = self
             .stack
             .pop()
             .ok_or_else(|| "Stack underflow in ListPush (value)".to_string())?;
-        let _list = self
+        let list = self
             .stack
             .pop()
             .ok_or_else(|| "Stack underflow in ListPush (list)".to_string())?;
 
+        let fn_list_push = self.functions.get("matter_list_push").unwrap();
+        let list_ptr_val = self
+            .builder
+            .build_int_to_ptr(
+                list,
+                self.i8_type().ptr_type(inkwell::AddressSpace::default()),
+                "list_ptr",
+            )
+            .map_err(|e| format!("Failed: {:?}", e))?;
+
+        self.builder
+            .build_call(
+                *fn_list_push,
+                &[list_ptr_val.into(), value.into()],
+                "call_list_push",
+            )
+            .map_err(|e| format!("Failed: {:?}", e))?;
+
         // Push modified list back
-        let list = self.i64_type().const_int(0, false);
         self.stack.push(list);
 
         Ok(())
@@ -926,15 +1132,31 @@ impl<'ctx> LLVMCodegen<'ctx> {
 
     /// Compile ListPop instruction
     fn compile_list_pop(&mut self) -> Result<(), String> {
-        let _list = self
+        let list = self
             .stack
             .pop()
             .ok_or_else(|| "Stack underflow in ListPop".to_string())?;
 
-        // Push popped value and modified list
-        let value = self.i64_type().const_int(0, false);
-        let list = self.i64_type().const_int(0, false);
-        self.stack.push(value);
+        let fn_list_pop = self.functions.get("matter_list_pop").unwrap();
+        let list_ptr_val = self
+            .builder
+            .build_int_to_ptr(
+                list,
+                self.i8_type().ptr_type(inkwell::AddressSpace::default()),
+                "list_ptr",
+            )
+            .map_err(|e| format!("Failed: {:?}", e))?;
+
+        let value_val = self
+            .builder
+            .build_call(*fn_list_pop, &[list_ptr_val.into()], "call_list_pop")
+            .map_err(|e| format!("Failed: {:?}", e))?
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_int_value();
+
+        self.stack.push(value_val);
         self.stack.push(list);
 
         Ok(())
@@ -942,14 +1164,31 @@ impl<'ctx> LLVMCodegen<'ctx> {
 
     /// Compile ListLen instruction
     fn compile_list_len(&mut self) -> Result<(), String> {
-        let _list = self
+        let list = self
             .stack
             .pop()
             .ok_or_else(|| "Stack underflow in ListLen".to_string())?;
 
-        // Push list length (placeholder: 0)
-        let len = self.i64_type().const_int(0, false);
-        self.stack.push(len);
+        let fn_list_len = self.functions.get("matter_list_len").unwrap();
+        let list_ptr_val = self
+            .builder
+            .build_int_to_ptr(
+                list,
+                self.i8_type().ptr_type(inkwell::AddressSpace::default()),
+                "list_ptr",
+            )
+            .map_err(|e| format!("Failed: {:?}", e))?;
+
+        let len_val = self
+            .builder
+            .build_call(*fn_list_len, &[list_ptr_val.into()], "call_list_len")
+            .map_err(|e| format!("Failed: {:?}", e))?
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_int_value();
+
+        self.stack.push(len_val);
 
         Ok(())
     }
@@ -983,20 +1222,46 @@ impl<'ctx> LLVMCodegen<'ctx> {
 
     /// Compile NewMap instruction
     fn compile_new_map(&mut self, size: usize) -> Result<(), String> {
-        // Pop N key/value pairs from stack
+        // Collect N key/value pairs from stack
+        let mut initial_pairs = Vec::new();
         for _ in 0..size {
-            let _value = self
+            let value = self
                 .stack
                 .pop()
                 .ok_or_else(|| "Stack underflow in NewMap (value)".to_string())?;
-            let _key = self
+            let key = self
                 .stack
                 .pop()
                 .ok_or_else(|| "Stack underflow in NewMap (key)".to_string())?;
+            initial_pairs.push((key, value));
+        }
+        initial_pairs.reverse();
+
+        let fn_map_new = self.functions.get("matter_map_new").unwrap();
+        let map_ptr_val = self
+            .builder
+            .build_call(*fn_map_new, &[], "call_map_new")
+            .map_err(|e| format!("Failed: {:?}", e))?
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_pointer_value();
+
+        let fn_map_insert = self.functions.get("matter_map_insert").unwrap();
+        for (key, value) in initial_pairs {
+            self.builder
+                .build_call(
+                    *fn_map_insert,
+                    &[map_ptr_val.into(), key.into(), value.into()],
+                    "call_map_insert",
+                )
+                .map_err(|e| format!("Failed: {:?}", e))?;
         }
 
-        // Push map handle (placeholder: 0)
-        let map_handle = self.i64_type().const_int(0, false);
+        let map_handle = self
+            .builder
+            .build_ptr_to_int(map_ptr_val, self.i64_type(), "map_handle")
+            .map_err(|e| format!("Failed: {:?}", e))?;
         self.stack.push(map_handle);
 
         Ok(())
@@ -1004,46 +1269,117 @@ impl<'ctx> LLVMCodegen<'ctx> {
 
     /// Compile MapHas instruction
     fn compile_map_has(&mut self) -> Result<(), String> {
-        let _key = self
+        let key = self
             .stack
             .pop()
             .ok_or_else(|| "Stack underflow in MapHas (key)".to_string())?;
-        let _map = self
+        let map = self
             .stack
             .pop()
             .ok_or_else(|| "Stack underflow in MapHas (map)".to_string())?;
 
-        // Push boolean result (placeholder: 0 = false)
-        let result = self.i64_type().const_int(0, false);
-        self.stack.push(result);
+        let fn_map_has = self.functions.get("matter_map_has").unwrap();
+        let map_ptr_val = self
+            .builder
+            .build_int_to_ptr(
+                map,
+                self.i8_type().ptr_type(inkwell::AddressSpace::default()),
+                "map_ptr",
+            )
+            .map_err(|e| format!("Failed: {:?}", e))?;
+
+        let result_val = self
+            .builder
+            .build_call(
+                *fn_map_has,
+                &[map_ptr_val.into(), key.into()],
+                "call_map_has",
+            )
+            .map_err(|e| format!("Failed: {:?}", e))?
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_int_value();
+
+        // Convert i32 (bool) to i64
+        let result_i64 = self
+            .builder
+            .build_int_z_extend(result_val, self.i64_type(), "has_ext")
+            .map_err(|e| format!("Failed: {:?}", e))?;
+
+        self.stack.push(result_i64);
 
         Ok(())
     }
 
     /// Compile MapKeys instruction
     fn compile_map_keys(&mut self) -> Result<(), String> {
-        let _map = self
+        let map = self
             .stack
             .pop()
             .ok_or_else(|| "Stack underflow in MapKeys".to_string())?;
 
-        // Push list of keys (placeholder: 0)
-        let keys = self.i64_type().const_int(0, false);
-        self.stack.push(keys);
+        let fn_map_keys = self.functions.get("matter_map_keys").unwrap();
+        let map_ptr_val = self
+            .builder
+            .build_int_to_ptr(
+                map,
+                self.i8_type().ptr_type(inkwell::AddressSpace::default()),
+                "map_ptr",
+            )
+            .map_err(|e| format!("Failed: {:?}", e))?;
+
+        let list_ptr_val = self
+            .builder
+            .build_call(*fn_map_keys, &[map_ptr_val.into()], "call_map_keys")
+            .map_err(|e| format!("Failed: {:?}", e))?
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_pointer_value();
+
+        let list_handle = self
+            .builder
+            .build_ptr_to_int(list_ptr_val, self.i64_type(), "keys_handle")
+            .map_err(|e| format!("Failed: {:?}", e))?;
+
+        self.stack.push(list_handle);
 
         Ok(())
     }
 
     /// Compile MapValues instruction
     fn compile_map_values(&mut self) -> Result<(), String> {
-        let _map = self
+        let map = self
             .stack
             .pop()
             .ok_or_else(|| "Stack underflow in MapValues".to_string())?;
 
-        // Push list of values (placeholder: 0)
-        let values = self.i64_type().const_int(0, false);
-        self.stack.push(values);
+        let fn_map_values = self.functions.get("matter_map_values").unwrap();
+        let map_ptr_val = self
+            .builder
+            .build_int_to_ptr(
+                map,
+                self.i8_type().ptr_type(inkwell::AddressSpace::default()),
+                "map_ptr",
+            )
+            .map_err(|e| format!("Failed: {:?}", e))?;
+
+        let list_ptr_val = self
+            .builder
+            .build_call(*fn_map_values, &[map_ptr_val.into()], "call_map_values")
+            .map_err(|e| format!("Failed: {:?}", e))?
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_pointer_value();
+
+        let list_handle = self
+            .builder
+            .build_ptr_to_int(list_ptr_val, self.i64_type(), "values_handle")
+            .map_err(|e| format!("Failed: {:?}", e))?;
+
+        self.stack.push(list_handle);
 
         Ok(())
     }

@@ -1,0 +1,7 @@
+﻿let i = 0
+let s = ""
+while i < 10000 {
+    set s = s + "a"
+    set i = i + 1
+}
+print string.len(s)

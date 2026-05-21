@@ -1,0 +1,128 @@
+// ============================================================================
+// MATTER CORE - UNIFIED CLOSED-LOOP BIO-NEUROMORPHIC ENGINE DEMO
+// ============================================================================
+// Esta demonstração unifica os 5 pilares fundamentais da realidade virtualizada:
+// 1. FÍSICA QUÂNTICA-RELATIVÍSTICA (GenesisParticle)
+// 2. REDES NEURAIS PULSANTES (SNN / LIF Neurons)
+// 3. ORGANOIDE CEREBRAL BIOLÓGICO (Wetware / MEA)
+// 4. PLASTICIDADE SINÁPTICA E RECOMPENSA QUÍMICA (STDP + Dopamine Feedback)
+// ============================================================================
+
+print("=============================================================================");
+print("         Matter Core OS v3.5.0 - Closed-Loop Bio-Neuromorphic Engine         ");
+print("=============================================================================");
+print("");
+
+// ----------------------------------------------------------------------------
+// PASSO 1: O ESTÍMULO FÍSICO / QUÂNTICO (GENESIS ENGINE)
+// ----------------------------------------------------------------------------
+print("[1/5] INICIANDO GERADOR DE EVENTOS QUÂNTICOS (GENESIS)...");
+// Criando uma partícula quântica sob campo relativístico
+genesis.create_particle("quantum_stimulus", 1.0, 1.0, -2.0, 1.5);
+genesis.evolve("quantum_stimulus", 20, 0.05, 0.8);
+
+// Medindo a posição da partícula para gerar o evento quântico colapsado
+let raw_position = genesis.measure("quantum_stimulus");
+print("-> Partícula medida. Colapso quântico na posição: " + raw_position);
+print("");
+
+// ----------------------------------------------------------------------------
+// PASSO 2: CAMADA NEUROMÓRFICA (SNN)
+// ----------------------------------------------------------------------------
+print("[2/5] CONFIGURANDO REDE NEUROMÓRFICA SENSORIAL...");
+let num_neurons = 10;
+let dt = 0.1;
+neuromorphic.init(num_neurons, dt);
+neuromorphic.add_synapse(0, 1, 0.8);
+neuromorphic.add_synapse(1, 2, 0.7);
+print("-> Rede SNN com 10 neurônios LIF e conexões sinápticas configuradas.");
+print("");
+
+// ----------------------------------------------------------------------------
+// PASSO 3: INICIALIZAÇÃO DO ORGANOIDE BIOLÓGICO (WETWARE)
+// ----------------------------------------------------------------------------
+print("[3/5] PREPARANDO A INTERFACE WETWARE (ORGANOIDE CEREBRAL)...");
+let name = wetware.id();
+let initial_health = wetware.health();
+let initial_synapses = wetware.synapses();
+print("-> Organoide Ativo ID: " + name);
+print("   Saúde Celular:     " + initial_health);
+print("   Sinapses Ativas:   " + initial_synapses);
+print("");
+
+// ----------------------------------------------------------------------------
+// PASSO 4: EXECUÇÃO DO LOOP FECHADO DE APRENDIZADO
+// ----------------------------------------------------------------------------
+print("[4/5] INICIANDO O LOOP FECHADO DE APRENDIZADO SINÁPTICO/QUÍMICO...");
+
+// Mapeamos a posição quântica para correntes elétricas de entrada para a SNN.
+// Se a posição quântica for maior que -1.5, injetamos corrente forte no neurônio 0.
+let input_currents = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+if raw_position > 0.0 - 1.5 {
+    set input_currents = [180.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+    print("-> Posição quântica favorável: Injetando 180mV na camada sensorial.");
+} else {
+    set input_currents = [10.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+    print("-> Posição quântica desfavorável: Injetando apenas 10mV na camada sensorial.");
+}
+
+print("");
+print("-> Executando loop de treinamento por 5 ciclos de biofeedback...");
+
+let cycle = 0;
+while cycle < 5 {
+    print("   --- Ciclo de Feedback #" + (cycle + 1) + " ---");
+
+    // 1. Processamento Neuromórfico
+    let snn_spikes = neuromorphic.step(input_currents);
+    print("      Disparos SNN (Spikes): " + snn_spikes);
+
+    // 2. Mapeamento SNN -> Wetware MEA (Microelectrode Array)
+    // Se algum neurônio sensorial disparou, estimulamos a cultura biológica
+    let has_spikes = list.len(snn_spikes) > 0;
+    let spike_train = [has_spikes];
+    
+    // 3. Estimulação da Cultura de Organoide
+    let response = wetware.stimulate(spike_train);
+    print("      Resposta da Cultura MEA: " + response);
+
+    // 4. Reforço Químico (Recompensa por Dopamina ou Punição por Estresse Celular)
+    // Regra: Se a cultura responder ativamente (true), o sistema recompensa
+    let action_success = false;
+    if list.len(response) > 0 {
+        if response[0] == true {
+            set action_success = true;
+        }
+    }
+
+    if action_success == true {
+        wetware.reward(0.2); // Injeta dopamina
+        print("      [RECOMPENSA] Dopamina liberada no meio biológico (+0.2).");
+    } else {
+        wetware.punish(0.1); // Injeta sinal de estresse
+        print("      [PUNIÇÃO] Estresse celular induzido no meio biológico (-0.1).");
+    }
+
+    // 5. Atualização de Neuroplasticidade (Dissipação Dopaminérgica + STDP)
+    wetware.tick();
+    neuromorphic.apply_learning();
+
+    print("      Concentração de Dopamina: " + wetware.dopamine());
+    print("      Saúde do Organoide:       " + wetware.health());
+    print("      Sinapses Biológicas:      " + wetware.synapses());
+    print("");
+
+    set cycle = cycle + 1;
+}
+
+// ----------------------------------------------------------------------------
+// PASSO 5: RESULTADO DO APRENDIZADO SINÁPTICO
+// ----------------------------------------------------------------------------
+print("[5/5] AVALIANDO APRENDIZADO SINÁPTICO COMBINADO...");
+print("-> Frequência de disparos pós-treino (Hz) na janela de 100ms:");
+print("   Neurônio Sensorial 0: " + neuromorphic.spike_rate(0, 100.0) + " Hz");
+print("   Neurônio Associativo 1: " + neuromorphic.spike_rate(1, 100.0) + " Hz");
+print("");
+print("=============================================================================");
+print("           UNIFICAÇÃO E LOOP FECHADO CONCLUÍDOS COM SUCESSO!                 ");
+print("=============================================================================");

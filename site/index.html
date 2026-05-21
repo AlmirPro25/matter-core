@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Matter Core | Beta Windows x64</title>
+    <meta
+      name="description"
+      content="Matter Core e uma linguagem experimental com VM propria, bytecode, reflexao segura e automacao por JSON. Baixe o beta Windows x64."
+    />
+    <link rel="stylesheet" href="assets/styles.css" />
+  </head>
+  <body>
+    <div class="ambient ambient-one"></div>
+    <div class="ambient ambient-two"></div>
+
+    <header class="topbar">
+      <a class="brand" href="#top" aria-label="Matter Core">
+        <span class="brand-mark">M</span>
+        <span>
+          <strong>Matter Core</strong>
+          <small>0.1.0 beta</small>
+        </span>
+      </a>
+      <nav aria-label="Principal">
+        <a href="#what">O que e</a>
+        <a href="#who">Para quem</a>
+        <a href="#demo">Demo</a>
+        <a href="#install">Instalar</a>
+      </nav>
+      <a class="nav-cta" href="downloads/matter-core-beta-setup.exe" download>Download</a>
+    </header>
+
+    <main id="top" class="shell">
+      <section class="hero">
+        <div class="hero-copy reveal">
+          <p class="eyebrow">Beta Windows x64</p>
+          <h1>A linguagem para runtimes pequenos, agentes e automacao verificavel.</h1>
+          <p class="lead">
+            Matter Core transforma scripts <code>.matter</code> em bytecode, roda em uma VM
+            propria e expoe comandos JSON para ferramentas, agentes e pipelines que precisam
+            inspecionar codigo antes de executar.
+          </p>
+          <div class="actions">
+            <a class="button primary" href="downloads/matter-core-beta-setup.exe" download>
+              Baixar setup Windows
+            </a>
+            <a class="button ghost" href="downloads/matter-core-windows-x64.zip" download>Baixar zip verificavel</a>
+          </div>
+          <div class="terminal-card" aria-label="Comandos rapidos">
+            <span>PowerShell</span>
+            <code>matter capabilities-json</code>
+            <code>matter run examples\agent_policy_demo.matter</code>
+          </div>
+          <div class="signal-row" aria-label="Sinais do beta">
+            <span>VM propria</span>
+            <span>Reflexao segura</span>
+            <span>Sem Rust no usuario final</span>
+            <span>SHA-256 verificado</span>
+          </div>
+        </div>
+
+        <aside class="release-card reveal" aria-label="Resumo do release">
+          <span class="card-label">Setup atual</span>
+          <strong id="artifact-name">matter-core-beta-setup.exe</strong>
+          <dl>
+            <div>
+              <dt>Canal</dt>
+              <dd id="release-channel">beta</dd>
+            </div>
+            <div>
+              <dt>Versao</dt>
+              <dd id="release-version">carregando...</dd>
+            </div>
+            <div>
+              <dt>Tamanho</dt>
+              <dd id="artifact-size">carregando...</dd>
+            </div>
+            <div>
+              <dt>SHA-256</dt>
+              <dd><code id="artifact-sha">carregando...</code></dd>
+            </div>
+            <div>
+              <dt>Assinatura</dt>
+              <dd id="artifact-signature">nao assinado</dd>
+            </div>
+            <div>
+              <dt>Gerado em</dt>
+              <dd id="artifact-date">carregando...</dd>
+            </div>
+          </dl>
+        </aside>
+      </section>
+
+      <section class="metrics reveal" aria-label="Resumo tecnico">
+        <article>
+          <strong>VM</strong>
+          <span>execucao propria, bytecode MBC1 e CLI para automacao</span>
+        </article>
+        <article>
+          <strong>JSON</strong>
+          <span>saidas previsiveis para agentes, CI, diagnostico e integracao</span>
+        </article>
+        <article>
+          <strong>Beta</strong>
+          <span>instalavel hoje, validado com checksum e guia de teste</span>
+        </article>
+      </section>
+
+      <section id="what" class="story-section reveal" aria-label="O que e Matter Core">
+        <div class="section-heading">
+          <p class="eyebrow">O que e Matter Core</p>
+          <h2>Um runtime de linguagem feito para ser pequeno, auditavel e controlavel.</h2>
+          <p>
+            O Matter Core nao tenta substituir Rust, Python ou JavaScript. Ele cria uma camada
+            menor para rodar logica controlada, inspecionar estrutura do programa e conectar
+            ferramentas externas por comandos estaveis.
+          </p>
+        </div>
+        <div class="story-grid">
+          <article class="story-card">
+            <span>01</span>
+            <h3>Codigo vira bytecode</h3>
+            <p>
+              Programas <code>.matter</code> passam por parser, AST e bytecode antes da VM
+              executar. Isso abre espaco para validacao, diagnostico e portabilidade.
+            </p>
+          </article>
+          <article class="story-card">
+            <span>02</span>
+            <h3>Reflexao antes da execucao</h3>
+            <p>
+              Comandos como <code>reflect-json</code> e <code>reflexive-guard-json</code>
+              ajudam ferramentas a entenderem o programa antes de confiar nele.
+            </p>
+          </article>
+          <article class="story-card">
+            <span>03</span>
+            <h3>CLI para maquinas</h3>
+            <p>
+              <code>matter capabilities-json</code>, diagnosticos e manifests tornam o runtime
+              simples de plugar em agentes, scripts, instaladores e testes automatizados.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section id="who" class="audience-section reveal" aria-label="Para quem e Matter Core">
+        <div class="section-heading compact">
+          <p class="eyebrow">Para quem</p>
+          <h2>Feito para builders que precisam de execucao previsivel.</h2>
+        </div>
+        <div class="audience-grid">
+          <article>
+            <strong>Times de IA e agentes</strong>
+            <p>Quando o agente precisa ler, validar e executar uma regra pequena sem depender de um runtime gigante.</p>
+          </article>
+          <article>
+            <strong>Criadores de DSLs</strong>
+            <p>Quando voce quer uma linguagem de dominio com VM, exemplos, testes e caminho para embed.</p>
+          </article>
+          <article>
+            <strong>Automacao interna</strong>
+            <p>Quando scripts precisam ser distribuidos, diagnosticados e verificados por checksum antes de rodar.</p>
+          </article>
+          <article>
+            <strong>Pesquisa de linguagens</strong>
+            <p>Quando o objetivo e estudar parser, bytecode, VM, reflexao e tooling em um sistema real.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="demo" class="demo-section reveal" aria-label="Demo principal">
+        <div class="demo-copy">
+          <p class="eyebrow">Demo principal</p>
+          <h2>Uma regra de agente que roda, pode ser refletida e pode ser bloqueada.</h2>
+          <p>
+            O exemplo <code>agent_policy_demo.matter</code> calcula risco para uma acao de
+            agente. O ponto nao e o calculo em si. O ponto e que a regra vira programa,
+            bytecode, saida de VM e estrutura JSON inspecionavel.
+          </p>
+        </div>
+        <div class="demo-flow" aria-label="Fluxo do demo">
+          <span>script .matter</span>
+          <span>bytecode</span>
+          <span>VM</span>
+          <span>reflect-json</span>
+          <span>guard-json</span>
+        </div>
+        <pre><code>matter run examples\agent_policy_demo.matter
+matter reflect-json examples\agent_policy_demo.matter
+matter reflexive-guard-json examples\agent_policy_demo.matter</code></pre>
+      </section>
+
+      <section class="compare-section reveal" aria-label="Comparacao honesta">
+        <div>
+          <p class="eyebrow">Comparacao honesta</p>
+          <h2>Onde Matter entra.</h2>
+        </div>
+        <div class="compare-grid">
+          <article>
+            <strong>Node/Python</strong>
+            <p>Otimos para ecossistema grande. Matter entra quando voce quer regra pequena, VM propria e inspecao antes de executar.</p>
+          </article>
+          <article>
+            <strong>Rust</strong>
+            <p>Otimo para construir sistemas. Matter entra como camada distribuivel para usuario final sem exigir toolchain Rust.</p>
+          </article>
+          <article>
+            <strong>Arquivos de config</strong>
+            <p>Simples, mas limitados. Matter entra quando a configuracao precisa de logica, funcoes, eventos e guarda automatizada.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="pitch-strip reveal" aria-label="Proposta de valor">
+        <p class="eyebrow">Por que baixar agora</p>
+        <h2>O beta prova a base: instalar, rodar, inspecionar, diagnosticar e remover com seguranca.</h2>
+        <p>
+          Quem testar agora ajuda a validar o caminho mais importante do produto: uma linguagem
+          experimental que pode ser baixada por qualquer pessoa, verificada sem fe cega e operada
+          por humanos ou maquinas.
+        </p>
+      </section>
+
+      <section id="install" class="install-grid" aria-label="Como instalar">
+        <article class="panel command-panel reveal">
+          <p class="eyebrow">Caminho recomendado</p>
+          <h2>Setup EXE agora, assinatura real depois do certificado.</h2>
+          <pre><code>.\matter-core-beta-setup.exe
+
+# ou clique duplo no fallback CMD:
+.\install-matter-beta.cmd
+
+# ou manualmente:
+powershell -ExecutionPolicy Bypass -File .\install-release-zip.ps1 `
+  -ZipPath .\matter-core-windows-x64.zip `
+  -ChecksumJsonPath .\release-checksums.json `
+  -Sha256Path .\SHA256SUMS.txt
+
+matter run examples\first_run.matter
+matter run examples\agent_policy_demo.matter
+matter capabilities-json</code></pre>
+        </article>
+
+        <article class="panel checklist reveal">
+          <p class="eyebrow">Dentro do pacote</p>
+          <h2>Pronto para tester serio.</h2>
+          <ul>
+            <li><span></span> <code>matter.exe</code> e <code>matter-cli.exe</code></li>
+            <li><span></span> setup Windows <code>.exe</code> unsigned</li>
+            <li><span></span> instalador de clique duplo</li>
+            <li><span></span> exemplos executaveis</li>
+            <li><span></span> manifesto de instalacao</li>
+            <li><span></span> diagnostico pos-instalacao</li>
+            <li><span></span> desinstalador seguro</li>
+            <li><span></span> checksums SHA-256</li>
+          </ul>
+        </article>
+      </section>
+
+      <section id="integrity" class="beta-strip reveal" aria-label="Status beta">
+        <div>
+          <p class="eyebrow">Status beta</p>
+          <h2>Polido para teste publico, honesto sobre limites.</h2>
+        </div>
+        <p>
+          Este beta entrega setup EXE, instalacao local, checksum, diagnostico e desinstalacao segura.
+          Ainda faltam assinatura de codigo real, MSI assinado, auto-update e instaladores Linux/macOS.
+        </p>
+      </section>
+
+      <section class="roadmap-section reveal" aria-label="Roadmap beta">
+        <div>
+          <p class="eyebrow">Roadmap</p>
+          <h2>Proximos passos para sair de beta.</h2>
+        </div>
+        <ol>
+          <li>Instalador MSI ou EXE assinado.</li>
+          <li>Auto-update e verificacao de release.</li>
+          <li>Mais exemplos reais para agentes, DSLs e automacao interna.</li>
+          <li>Linux/macOS depois do Windows x64 estabilizar.</li>
+        </ol>
+      </section>
+
+      <section id="tester" class="downloads reveal" aria-label="Arquivos para baixar">
+        <div>
+          <p class="eyebrow">Arquivos oficiais</p>
+          <h2>Downloads diretos do beta.</h2>
+        </div>
+        <div class="download-list">
+          <a href="downloads/matter-core-beta-setup.exe" download>Setup Windows EXE</a>
+          <a href="downloads/matter-core-windows-x64.zip" download>Pacote Windows x64</a>
+          <a href="downloads/install-matter-beta.cmd" download>Instalador clique duplo</a>
+          <a href="downloads/install-release-zip.ps1" download>Instalador verificavel</a>
+          <a href="downloads/release-checksums.json" download>Checksums JSON</a>
+          <a href="downloads/SHA256SUMS.txt" download>SHA256SUMS</a>
+          <a href="TESTER_GUIDE.md">Guia do tester</a>
+          <a href="BETA_NOTES.md">Notas beta</a>
+          <a href="https://github.com/AlmirPro25/matter/issues/new/choose" rel="noreferrer">Enviar feedback</a>
+        </div>
+      </section>
+    </main>
+
+    <script src="assets/app.js"></script>
+  </body>
+</html>

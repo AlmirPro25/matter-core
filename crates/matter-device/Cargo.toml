@@ -1,0 +1,11 @@
+[package]
+name = "matter-device"
+version = "0.1.0"
+edition = "2021"
+authors = ["Matter Core Team"]
+license = "MIT"
+
+[dependencies]
+cpal = "0.15"
+matter-backend = { path = "../matter-backend" }
+nokhwa = { version = "0.10.11", default-features = false, features = ["input-native", "decoding"] }

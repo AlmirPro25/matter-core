@@ -1,0 +1,31 @@
+// Benchmark: Testando velocidade de processamento bruto no código de máquina nativo
+
+fn fib(n) {
+    if (n < 2) {
+        return n;
+    }
+    return fib(n - 1) + fib(n - 2);
+}
+
+print("Iniciando Teste de Furia (LLVM Nativo)...");
+
+print("1. Fibonacci(35)...");
+// Fib(35) vai exigir mais de 18 milhoes de chamadas recursivas!
+// Em uma VM interpretada normal, isso demoraria segundos. Em LLVM nativo, deve ser quase instantaneo.
+let start_fib = fib(35);
+print("Resultado: ");
+print(start_fib);
+
+print("2. Loop pesado com manipulacao de Dicionario/Map na Heap");
+let dict = {"contador": 0};
+
+let i = 0;
+while (i < 10000) {
+    set dict["contador"] = dict["contador"] + 1;
+    set i = i + 1;
+}
+
+print("Contador processado: ");
+print(dict["contador"]);
+
+print("Benchmark concluido! O LLVM transformou a Matter Core num dragao de execucao!");

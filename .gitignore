@@ -38,3 +38,10 @@ Thumbs.db
 env/*.env
 apps/matter-studio/.env
 apps/matter-studio/.matter-studio-events.json
+
+# Release builds, local cargo/rustup, and temporary metadata
+dist/
+.rustup_home/
+.tmp_crates.txt
+.tmp_metadata.json
+.tmp_metadata_full.json

@@ -22,6 +22,7 @@ impl JavaScriptTypeConverter {
     pub fn matter_to_json(&self, value: &Value) -> Result<serde_json::Value, String> {
         match value {
             Value::Unit => Ok(serde_json::Value::Null),
+            Value::Null => Ok(serde_json::Value::Null),
             Value::Bool(b) => Ok(serde_json::Value::Bool(*b)),
             Value::Int(i) => Ok(serde_json::Value::Number((*i).into())),
             Value::Float(f) => serde_json::Number::from_f64(*f)
@@ -117,6 +118,10 @@ mod tests {
             .matter_to_json(&Value::new_list(vec![Value::Int(1), Value::Int(2)]))
             .unwrap();
         assert_eq!(json, serde_json::json!([1, 2]));
+
+        // Null
+        let json = converter.matter_to_json(&Value::Null).unwrap();
+        assert_eq!(json, serde_json::Value::Null);
     }
 
     #[test]

@@ -57,7 +57,7 @@ fn sum_values(numbers) {
 }
 
 # Análise completa
-fn analyze_data(numbers) {
+fn analyze_data(numbers) with io {
     print "=== Data Analysis ==="
     print "Dataset size: " + numbers.len()
     print "Sum: " + sum_values(numbers)

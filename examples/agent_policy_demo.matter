@@ -1,0 +1,60 @@
+# Agent policy demo: a small rule that can be run and inspected.
+
+fn risk_score(network_access, file_write, unsigned_source, human_review) {
+    let score = 0
+
+    if network_access == 1 {
+        set score = score + 35
+    }
+
+    if file_write == 1 {
+        set score = score + 25
+    }
+
+    if unsigned_source == 1 {
+        set score = score + 30
+    }
+
+    if human_review == 1 {
+        set score = score - 20
+    }
+
+    return score
+}
+
+fn decision(score) {
+    if score >= 70 {
+        return "block"
+    }
+
+    if score >= 40 {
+        return "review"
+    }
+
+    return "allow"
+}
+
+let agent_rule = {
+    "name": "release-bot-write-access",
+    "network_access": 1,
+    "file_write": 1,
+    "unsigned_source": 0,
+    "human_review": 1
+}
+
+let score = risk_score(
+    agent_rule.network_access,
+    agent_rule.file_write,
+    agent_rule.unsigned_source,
+    agent_rule.human_review
+)
+
+print "Matter Core agent policy demo"
+print "rule"
+print agent_rule.name
+print "risk_score"
+print score
+print "decision"
+print decision(score)
+print "inspect with: matter reflect-json examples\\agent_policy_demo.matter"
+print "guard with: matter reflexive-guard-json examples\\agent_policy_demo.matter"

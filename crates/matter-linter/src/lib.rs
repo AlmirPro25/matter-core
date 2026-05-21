@@ -184,6 +184,15 @@ fn collect_stmt_defs_uses(
                 collect_stmt_defs_uses(inner, defined, used);
             }
         }
+        Statement::Match { subject, arms } => {
+            collect_expr_uses(subject, used);
+            for arm in arms {
+                collect_expr_uses(&arm.pattern, used);
+                for stmt in &arm.body {
+                    collect_stmt_defs_uses(stmt, defined, used);
+                }
+            }
+        }
         Statement::Import { .. }
         | Statement::StructDef { .. }
         | Statement::Spawn { .. }
@@ -243,6 +252,15 @@ fn collect_stmt_calls(stmt: &Statement, called: &mut HashSet<String>) {
                 collect_stmt_calls(inner, called);
             }
         }
+        Statement::Match { subject, arms } => {
+            collect_expr_calls(subject, called);
+            for arm in arms {
+                collect_expr_calls(&arm.pattern, called);
+                for stmt in &arm.body {
+                    collect_stmt_calls(stmt, called);
+                }
+            }
+        }
         Statement::Import { .. }
         | Statement::StructDef { .. }
         | Statement::Spawn { .. }
@@ -297,6 +315,7 @@ fn collect_expr_uses(expr: &Expression, used: &mut HashSet<String>) {
         | Expression::Float(_)
         | Expression::Bool(_)
         | Expression::String(_)
+        | Expression::Null
         | Expression::Unit => {}
     }
 }
@@ -348,6 +367,7 @@ fn collect_expr_calls(expr: &Expression, called: &mut HashSet<String>) {
         | Expression::Float(_)
         | Expression::Bool(_)
         | Expression::String(_)
+        | Expression::Null
         | Expression::Unit => {}
     }
 }

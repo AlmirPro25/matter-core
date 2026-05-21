@@ -1,0 +1,253 @@
+﻿{
+    "generated_at":  "2026-05-18T20:19:46.6508391-03:00",
+    "environment":  {
+                        "powershell":  "5.1.19041.3803",
+                        "python_cmd":  "python",
+                        "node_cmd":  "node",
+                        "lua_cmd":  null
+                    },
+    "tests":  {
+                  "list_ops_10k":  {
+                                       "matter":  {
+                                                      "median_ms":  4225.3600000000006,
+                                                      "errors":  [
+
+                                                                 ],
+                                                      "runs_ms":  [
+                                                                      4009.0916,
+                                                                      4225.3600000000006,
+                                                                      4068.8983000000003
+                                                                  ],
+                                                      "available":  true
+                                                  },
+                                       "lua":  {
+                                                   "median_ms":  null,
+                                                   "error":  "runtime not found",
+                                                   "runs_ms":  [
+
+                                                               ],
+                                                   "available":  false
+                                               },
+                                       "node":  {
+                                                    "median_ms":  4.0691000000000059,
+                                                    "errors":  [
+
+                                                               ],
+                                                    "runs_ms":  [
+                                                                    4.0691000000000059,
+                                                                    1.5998000000000019,
+                                                                    1.478999999999985
+                                                                ],
+                                                    "available":  true
+                                                },
+                                       "python":  {
+                                                      "median_ms":  0.32769999234005809,
+                                                      "errors":  [
+
+                                                                 ],
+                                                      "runs_ms":  [
+                                                                      0.30179996974766254,
+                                                                      0.32769999234005809,
+                                                                      0.28719997499138117
+                                                                  ],
+                                                      "available":  true
+                                                  }
+                                   },
+                  "string_concat_10k":  {
+                                            "matter":  {
+                                                           "median_ms":  1748.2203000000002,
+                                                           "errors":  [
+
+                                                                      ],
+                                                           "runs_ms":  [
+                                                                           1748.2203000000002,
+                                                                           1631.0345,
+                                                                           1424.6239
+                                                                       ],
+                                                           "available":  true
+                                                       },
+                                            "lua":  {
+                                                        "median_ms":  null,
+                                                        "error":  "runtime not found",
+                                                        "runs_ms":  [
+
+                                                                    ],
+                                                        "available":  false
+                                                    },
+                                            "node":  {
+                                                         "median_ms":  0.34009999999999252,
+                                                         "errors":  [
+
+                                                                    ],
+                                                         "runs_ms":  [
+                                                                         0.32609999999999673,
+                                                                         0.34009999999999252,
+                                                                         0.33389999999999986
+                                                                     ],
+                                                         "available":  true
+                                                     },
+                                            "python":  {
+                                                           "median_ms":  3.4600999788381159,
+                                                           "errors":  [
+
+                                                                      ],
+                                                           "runs_ms":  [
+                                                                           3.4367000334896147,
+                                                                           3.2974999630823731,
+                                                                           3.4600999788381159
+                                                                       ],
+                                                           "available":  true
+                                                       }
+                                        },
+                  "loop_sum":  {
+                                   "matter":  {
+                                                  "median_ms":  6679.2438,
+                                                  "errors":  [
+
+                                                             ],
+                                                  "runs_ms":  [
+                                                                  6295.6190000000006,
+                                                                  6679.2438,
+                                                                  6524.7233000000006
+                                                              ],
+                                                  "available":  true
+                                              },
+                                   "lua":  {
+                                               "median_ms":  null,
+                                               "error":  "runtime not found",
+                                               "runs_ms":  [
+
+                                                           ],
+                                               "available":  false
+                                           },
+                                   "node":  {
+                                                "median_ms":  15.86699999999999,
+                                                "errors":  [
+
+                                                           ],
+                                                "runs_ms":  [
+                                                                13.353600000000029,
+                                                                5.3353999999999928,
+                                                                15.86699999999999
+                                                            ],
+                                                "available":  true
+                                            },
+                                   "python":  {
+                                                  "median_ms":  207.15829997789115,
+                                                  "errors":  [
+
+                                                             ],
+                                                  "runs_ms":  [
+                                                                  139.40240000374615,
+                                                                  196.96390000171959,
+                                                                  207.15829997789115
+                                                              ],
+                                                  "available":  true
+                                              }
+                               },
+                  "fib30":  {
+                                "matter":  {
+                                               "median_ms":  8366.4061,
+                                               "errors":  [
+
+                                                          ],
+                                               "runs_ms":  [
+                                                               7741.4863000000005,
+                                                               7695.6732,
+                                                               8366.4061
+                                                           ],
+                                               "available":  true
+                                           },
+                                "lua":  {
+                                            "median_ms":  null,
+                                            "error":  "runtime not found",
+                                            "runs_ms":  [
+
+                                                        ],
+                                            "available":  false
+                                        },
+                                "node":  {
+                                             "median_ms":  23.8438,
+                                             "errors":  [
+
+                                                        ],
+                                             "runs_ms":  [
+                                                             23.8438,
+                                                             18.534599999999998,
+                                                             14.349900000000019
+                                                         ],
+                                             "available":  true
+                                         },
+                                "python":  {
+                                               "median_ms":  296.30779998842627,
+                                               "errors":  [
+
+                                                          ],
+                                               "runs_ms":  [
+                                                               296.30779998842627,
+                                                               280.00770002836362,
+                                                               289.79129996150732
+                                                           ],
+                                               "available":  true
+                                           }
+                            }
+              },
+    "rankings":  {
+                     "list_ops_10k":  [
+                                          {
+                                              "lang":  "python",
+                                              "median_ms":  0.32769999234005809
+                                          },
+                                          {
+                                              "lang":  "node",
+                                              "median_ms":  4.0691000000000059
+                                          },
+                                          {
+                                              "lang":  "matter",
+                                              "median_ms":  4225.3600000000006
+                                          }
+                                      ],
+                     "string_concat_10k":  [
+                                               {
+                                                   "lang":  "node",
+                                                   "median_ms":  0.34009999999999252
+                                               },
+                                               {
+                                                   "lang":  "python",
+                                                   "median_ms":  3.4600999788381159
+                                               },
+                                               {
+                                                   "lang":  "matter",
+                                                   "median_ms":  1748.2203000000002
+                                               }
+                                           ],
+                     "loop_sum":  [
+                                      {
+                                          "lang":  "node",
+                                          "median_ms":  15.86699999999999
+                                      },
+                                      {
+                                          "lang":  "python",
+                                          "median_ms":  207.15829997789115
+                                      },
+                                      {
+                                          "lang":  "matter",
+                                          "median_ms":  6679.2438
+                                      }
+                                  ],
+                     "fib30":  [
+                                   {
+                                       "lang":  "node",
+                                       "median_ms":  23.8438
+                                   },
+                                   {
+                                       "lang":  "python",
+                                       "median_ms":  296.30779998842627
+                                   },
+                                   {
+                                       "lang":  "matter",
+                                       "median_ms":  8366.4061
+                                   }
+                               ]
+                 }
+}

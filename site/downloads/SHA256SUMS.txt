@@ -1,0 +1,1 @@
+97a227c9d2bcea31ea471418bf9bbfc3dea9afbbea9e627270bc224d4d7b4b45  dist\matter-core-windows-x64.zip

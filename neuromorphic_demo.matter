@@ -1,0 +1,78 @@
+// ============================================================================
+// MATTER CORE NEUROMORPHIC COMPUTING ENGINE DEMO
+// ============================================================================
+// Prova de conceito do motor computacional neuromórfico:
+// 1. Inicialização de rede de 10 neurônios LIF (Leaky Integrate-and-Fire)
+// 2. Criação de conexões sinápticas com pesos dinâmicos
+// 3. Aplicação de estímulos elétricos e detecção de propagação de spikes
+// 4. Aprendizado via STDP (Spike-Timing-Dependent Plasticity)
+// ============================================================================
+
+print("=============================================================================");
+print("          Matter Core OS v3.5.0 - Neuromorphic Computing Engine              ");
+print("=============================================================================");
+print("");
+
+// ----------------------------------------------------------------------------
+// 1. INICIALIZACÃO DA REDE
+// ----------------------------------------------------------------------------
+print("[1/4] INICIALIZANDO REDE DE NEURÔNIOS PULSANTES...");
+let num_neurons = 10;
+let dt = 0.1; // ms
+neuromorphic.init(num_neurons, dt);
+print("-> Rede inicializada com 10 neurônios Leaky Integrate-and-Fire (dt = 0.1ms).");
+print("");
+
+// ----------------------------------------------------------------------------
+// 2. SINAPSES E TOPOLOGIA
+// ----------------------------------------------------------------------------
+print("[2/4] ESTABELECENDO CONEXÕES SINÁPTICAS...");
+// Conectar neurônio 0 (entrada) -> neurônio 1 (resposta) com peso 0.8
+neuromorphic.add_synapse(0, 1, 0.8);
+// Conectar neurônio 1 -> neurônio 2 com peso 0.6
+neuromorphic.add_synapse(1, 2, 0.6);
+print("-> Sinapse adicionada: Neurônio 0 -> Neurônio 1 (Peso = 0.8)");
+print("-> Sinapse adicionada: Neurônio 1 -> Neurônio 2 (Peso = 0.6)");
+print("");
+
+// ----------------------------------------------------------------------------
+// 3. ESTÍMULO ELÉTRICO E SIMULACÃO
+// ----------------------------------------------------------------------------
+print("[3/4] ESTIMULANDO A REDE (INJETANDO CORRENTE CONSTANTE NO NEURÔNIO 0)...");
+
+// Definir a lista de correntes de entrada para os 10 neurônios.
+// Injetamos 150.0 mV no neurônio 0 para fazê-lo disparar rapidamente.
+let input_currents = [150.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+
+print("-> Iniciando simulação temporal por 150 passos...");
+let steps = 0;
+while steps < 150 {
+    let fired = neuromorphic.step(input_currents);
+    if list.len(fired) > 0 {
+        print("   [Tempo: " + (steps * dt) + "ms] Disparos (IDs dos neurônios): " + fired);
+    }
+    set steps = steps + 1;
+}
+print("");
+
+// ----------------------------------------------------------------------------
+// 4. PLASTICIDADE SINÁPTICA (STDP) E FREQUÊNCIA DE DISPARO
+// ----------------------------------------------------------------------------
+print("[4/4] ANALISANDO APRENDIZADO STDP (PLASTICIDADE SINÁPTICA)...");
+// O STDP ajusta pesos baseado no delta de tempo entre o spike pré e pós-sináptico.
+neuromorphic.apply_learning();
+print("-> Regra STDP executada. Pesos sinápticos atualizados na rede.");
+
+let rate_0 = neuromorphic.spike_rate(0, 100.0);
+let rate_1 = neuromorphic.spike_rate(1, 100.0);
+let rate_2 = neuromorphic.spike_rate(2, 100.0);
+
+print("-> Frequência de disparos (Hz) na janela de 100ms:");
+print("   Neurônio 0 (Estímulo direto): " + rate_0 + " Hz");
+print("   Neurônio 1 (Sinapse 1):        " + rate_1 + " Hz");
+print("   Neurônio 2 (Sinapse 2):        " + rate_2 + " Hz");
+print("");
+
+print("=============================================================================");
+print("             SIMULAÇÃO NEUROMÓRFICA CONCLUÍDA COM SUCESSO!                   ");
+print("=============================================================================");

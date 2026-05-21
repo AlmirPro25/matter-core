@@ -438,3 +438,127 @@ fn test_uber_real_prod_orchestrator_sim_example() {
     assert!(output.iter().any(|line| line.contains("SLA_BREACH")));
     assert!(output.iter().any(|line| line.contains("REVENUE")));
 }
+
+#[test]
+fn test_null_literal() {
+    let source = r#"
+        let value = null
+        print value
+        
+        let is_null = value == null
+        print is_null
+    "#;
+
+    let output = run_matter_code(source).expect("Failed to run null literal test");
+    assert_eq!(output, vec!["null", "true"]);
+}
+
+#[test]
+fn test_pattern_matching_match() {
+    let source = r#"
+        let status = 200
+        match status {
+            200 => {
+                print "Success"
+            }
+            404 => {
+                print "Not Found"
+            }
+            500 => {
+                print "Server Error"
+            }
+        }
+        
+        let value = null
+        match value {
+            null => {
+                print "Is Null"
+            }
+            100 => {
+                print "Is Hundred"
+            }
+        }
+    "#;
+
+    let output = run_matter_code(source).expect("Failed to run pattern matching match test");
+    assert_eq!(output, vec!["Success", "Is Null"]);
+}
+
+#[test]
+fn test_compound_assignment() {
+    let source = r#"
+        let x = 10
+        set x += 5
+        print x
+        
+        set x -= 3
+        print x
+        
+        set x *= 2
+        print x
+        
+        set x /= 4
+        print x
+        
+        let items = [100, 200]
+        set items[0] += 50
+        print items[0]
+    "#;
+
+    let output = run_matter_code(source).expect("Failed to run compound assignment test");
+    assert_eq!(output, vec!["15", "12", "24", "6", "150"]);
+}
+
+#[test]
+fn test_string_interpolation() {
+    let source = r#"
+        let name = "Alice"
+        let age = 30
+        let message = "Hello {name}, you are {age} years old next year you will be {age + 1}!"
+        print message
+    "#;
+
+    let output = run_matter_code(source).expect("Failed to run string interpolation test");
+    assert_eq!(
+        output,
+        vec!["Hello Alice, you are 30 years old next year you will be 31!"]
+    );
+}
+
+#[test]
+fn test_parameter_mutation() {
+    let source = r#"
+        fn mutate_param(x) {
+            set x = x + 10
+            return x
+        }
+
+        fn mutate_list_param(lst, val) {
+            lst.push(val)
+            return lst
+        }
+
+        fn mutate_map_param(mp, key, val) {
+            set mp[key] = val
+            return mp
+        }
+
+        print mutate_param(5)
+
+        let my_list = [1, 2]
+        print mutate_list_param(my_list, 3)
+
+        let my_map = {"a": 1}
+        print mutate_map_param(my_map, "b", 2)
+    "#;
+
+    let output = run_matter_code(source).expect("Failed to run parameter mutation test");
+    assert_eq!(
+        output,
+        vec![
+            "15",
+            "[1, 2, 3]",
+            "{a: 1, b: 2}"
+        ]
+    );
+}

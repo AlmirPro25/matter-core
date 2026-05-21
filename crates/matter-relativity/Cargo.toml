@@ -1,0 +1,11 @@
+[package]
+name = "matter-relativity"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Einstein's Relativistic Space-Time Computing for Matter Core"
+
+[dependencies]
+matter-backend = { path = "../matter-backend" }
+num-complex = "0.4"

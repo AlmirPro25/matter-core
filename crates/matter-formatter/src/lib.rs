@@ -225,6 +225,27 @@ impl Formatter {
             Statement::Continue => format!("{}continue", i),
             Statement::Return(value) => format!("{}return {}", i, self.format_expr(value)),
             Statement::Expression(expr) => format!("{}{}", i, self.format_expr(expr)),
+            Statement::Match { subject, arms } => {
+                let mut out = format!("{}match {} {{", i, self.format_expr(subject));
+                if !arms.is_empty() {
+                    out.push('\n');
+                    for arm in arms {
+                        out.push_str(&format!(
+                            "{}    {} => {{\n",
+                            i,
+                            self.format_expr(&arm.pattern)
+                        ));
+                        for stmt in &arm.body {
+                            out.push_str(&self.format_statement(stmt, indent + 2));
+                            out.push('\n');
+                        }
+                        out.push_str(&format!("{}    }}\n", i));
+                    }
+                    out.push_str(&i);
+                }
+                out.push('}');
+                out
+            }
         }
     }
 
@@ -310,6 +331,7 @@ impl Formatter {
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
+            Expression::Null => "null".to_string(),
         }
     }
 }

@@ -1,0 +1,5 @@
+python.import_module("math")
+print python.call("math", "sqrt", [16])
+
+node.import_module("path")
+print node.call("path", "basename", ["a/b.txt"])

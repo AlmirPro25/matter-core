@@ -1,4 +1,9 @@
 param(
+    [switch]$Quick,
+    [switch]$QuickJson,
+    [string]$JsonOut,
+    [string]$CiOutputFile,
+    [switch]$EmitCiOutput,
     [switch]$RequireLLVM,
     [switch]$SkipFmt,
     [switch]$SkipRunnableExamples,
@@ -11,7 +16,12 @@ param(
     [switch]$RunDoctor,
     [switch]$RequireDoctorPass,
     [switch]$CiMode,
-    [int]$PreflightMinFreeGB = 10
+    [int]$PreflightMinFreeGB = 10,
+    [switch]$RunAiCanonicalFlow,
+    [string]$AiFlowProgramPath = "examples\\first_run.matter",
+    [string]$AiFlowOutDir = "target\\ai-flow",
+    [int]$AiFlowBenchmarkIterations = 20,
+    [switch]$AiFlowSkipBenchmarkGate
 )
 
 $ErrorActionPreference = "Stop"
@@ -20,6 +30,26 @@ Set-Location $root
 
 $results = New-Object System.Collections.Generic.List[Object]
 $startTime = Get-Date
+
+if ($QuickJson) {
+    $Quick = $true
+    $JsonSummary = $true
+}
+
+if ($JsonOut) {
+    $JsonSummary = $true
+}
+
+if ($CiOutputFile) {
+    $EmitCiOutput = $true
+}
+
+if ($Quick) {
+    # Fast local feedback: keep core quality gates and skip heavier release/smoke checks.
+    $SkipRunnableExamples = $true
+    $SkipRustFfiSmoke = $true
+    $SkipNativeFfiSmoke = $true
+}
 
 # Optional preflight to fail early on common environment issues.
 if ($RunPreflight) {
@@ -227,6 +257,18 @@ try {
     Run-Step -Name "Clippy workspace (strict)" -Command $workspaceClippyCmd -Critical
     Run-Step -Name "Workspace tests" -Command $workspaceTestCmd -Critical
 
+    if ($RunAiCanonicalFlow) {
+        $aiFlowCommand = "powershell -ExecutionPolicy Bypass -File .\scripts\ai-app-canonical-flow.ps1 -ProgramPath `"$AiFlowProgramPath`" -BenchmarkIterations $AiFlowBenchmarkIterations"
+        $aiFlowCommand = "$aiFlowCommand -OutDir `"$AiFlowOutDir`""
+        if ($AiFlowSkipBenchmarkGate) {
+            $aiFlowCommand = "$aiFlowCommand -SkipBenchmarkGate"
+        }
+        Run-Step -Name "AI app canonical flow" -Command $aiFlowCommand -Critical
+    }
+    else {
+        Add-Result -Name "AI app canonical flow" -Passed $true -DurationSec 0 -Details "skipped"
+    }
+
     if (-not $SkipRunnableExamples) {
         Run-Step -Name "Runnable examples contract" -Command "powershell -ExecutionPolicy Bypass -File .\scripts\test-runnable-examples.ps1 -JsonSummary" -Critical
     }
@@ -312,6 +354,37 @@ foreach ($r in $results) {
 Write-Host ("Total duration: {0}s" -f [Math]::Round($elapsed, 2)) -ForegroundColor Yellow
 Write-Host ("Result: {0}" -f ($(if ($success) { "PASS" } else { "FAIL" }))) -ForegroundColor $(if ($success) { "Green" } else { "Red" })
 
+if ($EmitCiOutput) {
+    $statusValue = if ($success) { "pass" } else { "fail" }
+    $lines = @(
+        "status=$statusValue"
+        "success=$($success.ToString().ToLowerInvariant())"
+        "elapsed_sec=$([Math]::Round($elapsed, 2))"
+        "llvm_detected=$($llvmDetected.ToString().ToLowerInvariant())"
+        "failed_steps=$($failed.Count)"
+    )
+
+    if ($CiOutputFile) {
+        $ciOutputPath = $CiOutputFile
+        if (-not [System.IO.Path]::IsPathRooted($ciOutputPath)) {
+            $ciOutputPath = Join-Path $root $ciOutputPath
+        }
+        $ciOutputDir = Split-Path -Parent $ciOutputPath
+        if ($ciOutputDir) {
+            New-Item -ItemType Directory -Path $ciOutputDir -Force | Out-Null
+        }
+        Set-Content -Path $ciOutputPath -Value $lines -Encoding UTF8
+        Write-Host "Wrote CI output to $ciOutputPath" -ForegroundColor Green
+    }
+    else {
+        Write-Host ""
+        Write-Host "CI Outputs:" -ForegroundColor Yellow
+        foreach ($line in $lines) {
+            Write-Host $line
+        }
+    }
+}
+
 if ($JsonSummary) {
     $summary = [PSCustomObject]@{
         timestamp     = (Get-Date).ToString("o")
@@ -320,10 +393,31 @@ if ($JsonSummary) {
         llvm_detected = $llvmDetected
         llvm_version  = $llvmVersion
         elapsed_sec   = [Math]::Round($elapsed, 2)
+        ai_flow       = [PSCustomObject]@{
+            enabled = [bool]$RunAiCanonicalFlow
+            program = $AiFlowProgramPath
+            out_dir = $AiFlowOutDir
+            benchmark_iterations = $AiFlowBenchmarkIterations
+            skip_benchmark_gate = [bool]$AiFlowSkipBenchmarkGate
+        }
         steps         = $results
     }
     Write-Host ""
-    $summary | ConvertTo-Json -Depth 6
+    $summaryJson = $summary | ConvertTo-Json -Depth 6
+    $summaryJson
+
+    if ($JsonOut) {
+        $jsonOutPath = $JsonOut
+        if (-not [System.IO.Path]::IsPathRooted($jsonOutPath)) {
+            $jsonOutPath = Join-Path $root $jsonOutPath
+        }
+        $jsonOutDir = Split-Path -Parent $jsonOutPath
+        if ($jsonOutDir) {
+            New-Item -ItemType Directory -Path $jsonOutDir -Force | Out-Null
+        }
+        Set-Content -Path $jsonOutPath -Value $summaryJson -Encoding UTF8
+        Write-Host "Wrote JSON summary to $jsonOutPath" -ForegroundColor Green
+    }
 }
 
 if ($success) {

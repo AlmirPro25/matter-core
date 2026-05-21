@@ -10,7 +10,10 @@ pub struct Parser {
     spans: Vec<Span>,
     position: usize,
     allow_struct_literals: bool,
+    recursion_depth: usize,
 }
+
+const MAX_RECURSION_DEPTH: usize = 256;
 
 #[derive(Debug)]
 pub struct ParseError {
@@ -49,6 +52,7 @@ impl Parser {
             spans,
             position: 0,
             allow_struct_literals: true,
+            recursion_depth: 0,
         }
     }
 
@@ -65,6 +69,7 @@ impl Parser {
             spans,
             position: 0,
             allow_struct_literals: true,
+            recursion_depth: 0,
         }
     }
 
@@ -98,6 +103,14 @@ impl Parser {
         }
     }
 
+    fn check_recursion(&mut self) -> ParseResult<()> {
+        if self.recursion_depth > MAX_RECURSION_DEPTH {
+            Err(self.error("Maximum recursion depth exceeded (AST is too deep)"))
+        } else {
+            Ok(())
+        }
+    }
+
     pub fn parse(&mut self) -> ParseResult<Program> {
         let mut statements = Vec::new();
 
@@ -120,31 +133,38 @@ impl Parser {
     }
 
     fn parse_statement(&mut self) -> ParseResult<Statement> {
-        if self.is_energy_profile_start() {
-            return self.parse_energy_profile_statement();
-        }
+        self.recursion_depth += 1;
+        self.check_recursion()?;
 
-        match self.current() {
-            Token::Let => self.parse_let(),
-            Token::Set => self.parse_set(),
-            Token::Print => self.parse_print(),
-            Token::Fn => self.parse_function(),
-            Token::Struct => self.parse_struct_def(),
-            Token::Import => self.parse_import(),
-            Token::On => self.parse_on_event(),
-            Token::Spawn => self.parse_spawn(),
-            Token::If => self.parse_if(),
-            Token::While => self.parse_while(),
-            Token::For => self.parse_for(),
-            Token::Loop => self.parse_loop(),
-            Token::Break => self.parse_break(),
-            Token::Continue => self.parse_continue(),
-            Token::Return => self.parse_return(),
-            _ => {
-                let expr = self.parse_expression()?;
-                Ok(Statement::Expression(expr))
+        let res = if self.is_energy_profile_start() {
+            self.parse_energy_profile_statement()
+        } else {
+            match self.current() {
+                Token::Let => self.parse_let(),
+                Token::Set => self.parse_set(),
+                Token::Print => self.parse_print(),
+                Token::Fn => self.parse_function(),
+                Token::Struct => self.parse_struct_def(),
+                Token::Import => self.parse_import(),
+                Token::On => self.parse_on_event(),
+                Token::Spawn => self.parse_spawn(),
+                Token::If => self.parse_if(),
+                Token::While => self.parse_while(),
+                Token::For => self.parse_for(),
+                Token::Loop => self.parse_loop(),
+                Token::Break => self.parse_break(),
+                Token::Continue => self.parse_continue(),
+                Token::Return => self.parse_return(),
+                Token::Match => self.parse_match(),
+                _ => {
+                    let expr = self.parse_expression()?;
+                    Ok(Statement::Expression(expr))
+                }
             }
-        }
+        };
+
+        self.recursion_depth -= 1;
+        res
     }
 
     fn is_energy_profile_start(&self) -> bool {
@@ -318,8 +338,30 @@ impl Parser {
                 self.advance();
                 let index = self.parse_expression()?;
                 self.expect(Token::RBracket)?;
-                self.expect(Token::Eq)?;
-                let value = self.parse_expression()?;
+
+                let is_compound = match self.current() {
+                    Token::PlusEq => Some(BinaryOp::Add),
+                    Token::MinusEq => Some(BinaryOp::Sub),
+                    Token::StarEq => Some(BinaryOp::Mul),
+                    Token::SlashEq => Some(BinaryOp::Div),
+                    _ => None,
+                };
+
+                let value = if let Some(op) = is_compound {
+                    self.advance();
+                    let right_expr = self.parse_expression()?;
+                    Expression::Binary {
+                        left: Box::new(Expression::Index {
+                            target: Box::new(Expression::Identifier(name.clone())),
+                            index: Box::new(index.clone()),
+                        }),
+                        op,
+                        right: Box::new(right_expr),
+                    }
+                } else {
+                    self.expect(Token::Eq)?;
+                    self.parse_expression()?
+                };
 
                 return Ok(Statement::SetIndex {
                     target: Expression::Identifier(name),
@@ -334,8 +376,30 @@ impl Parser {
                     _ => return Err(self.error("Expected field name")),
                 };
                 self.advance();
-                self.expect(Token::Eq)?;
-                let value = self.parse_expression()?;
+
+                let is_compound = match self.current() {
+                    Token::PlusEq => Some(BinaryOp::Add),
+                    Token::MinusEq => Some(BinaryOp::Sub),
+                    Token::StarEq => Some(BinaryOp::Mul),
+                    Token::SlashEq => Some(BinaryOp::Div),
+                    _ => None,
+                };
+
+                let value = if let Some(op) = is_compound {
+                    self.advance();
+                    let right_expr = self.parse_expression()?;
+                    Expression::Binary {
+                        left: Box::new(Expression::Field {
+                            target: Box::new(Expression::Identifier(name.clone())),
+                            field: field.clone(),
+                        }),
+                        op,
+                        right: Box::new(right_expr),
+                    }
+                } else {
+                    self.expect(Token::Eq)?;
+                    self.parse_expression()?
+                };
 
                 return Ok(Statement::SetField {
                     target: name,
@@ -346,9 +410,27 @@ impl Parser {
             _ => {}
         }
 
-        // Regular assignment: set x = value
-        self.expect(Token::Eq)?;
-        let value = self.parse_expression()?;
+        // Regular or compound assignment: set x = value or set x += value
+        let is_compound = match self.current() {
+            Token::PlusEq => Some(BinaryOp::Add),
+            Token::MinusEq => Some(BinaryOp::Sub),
+            Token::StarEq => Some(BinaryOp::Mul),
+            Token::SlashEq => Some(BinaryOp::Div),
+            _ => None,
+        };
+
+        let value = if let Some(op) = is_compound {
+            self.advance();
+            let right_expr = self.parse_expression()?;
+            Expression::Binary {
+                left: Box::new(Expression::Identifier(name.clone())),
+                op,
+                right: Box::new(right_expr),
+            }
+        } else {
+            self.expect(Token::Eq)?;
+            self.parse_expression()?
+        };
 
         Ok(Statement::Set { name, value })
     }
@@ -619,6 +701,47 @@ impl Parser {
         Ok(Statement::Continue)
     }
 
+    fn parse_match(&mut self) -> ParseResult<Statement> {
+        self.advance(); // skip 'match'
+
+        let subject = self.parse_control_condition()?;
+
+        self.expect(Token::LBrace)?;
+
+        let mut arms = Vec::new();
+
+        while self.current() != &Token::RBrace && self.current() != &Token::Eof {
+            // Skip newlines between arms
+            if matches!(self.current(), Token::Newline | Token::Semicolon) {
+                self.advance();
+                continue;
+            }
+
+            // Parse pattern expression
+            let pattern = self.parse_expression()?;
+
+            // Expect '=>' (parsed as Eq followed by Gt)
+            self.expect(Token::Eq)?;
+            self.expect(Token::Gt)?;
+
+            // Parse arm body
+            self.expect(Token::LBrace)?;
+            let body = self.parse_block()?;
+            self.expect(Token::RBrace)?;
+
+            arms.push(MatchArm { pattern, body });
+
+            // Optional comma between arms
+            if self.current() == &Token::Comma {
+                self.advance();
+            }
+        }
+
+        self.expect(Token::RBrace)?;
+
+        Ok(Statement::Match { subject, arms })
+    }
+
     fn parse_block(&mut self) -> ParseResult<Vec<Statement>> {
         let mut statements = Vec::new();
 
@@ -638,7 +761,11 @@ impl Parser {
     }
 
     fn parse_expression(&mut self) -> ParseResult<Expression> {
-        self.parse_logical_or()
+        self.recursion_depth += 1;
+        self.check_recursion()?;
+        let res = self.parse_logical_or();
+        self.recursion_depth -= 1;
+        res
     }
 
     fn parse_control_condition(&mut self) -> ParseResult<Expression> {
@@ -809,6 +936,27 @@ impl Parser {
                     let method = match self.current() {
                         Token::Ident(m) => m.clone(),
                         Token::Set => "set".to_string(),
+                        Token::And => "and".to_string(),
+                        Token::Or => "or".to_string(),
+                        Token::Not => "not".to_string(),
+                        Token::Let => "let".to_string(),
+                        Token::Fn => "fn".to_string(),
+                        Token::Return => "return".to_string(),
+                        Token::If => "if".to_string(),
+                        Token::Else => "else".to_string(),
+                        Token::On => "on".to_string(),
+                        Token::Print => "print".to_string(),
+                        Token::While => "while".to_string(),
+                        Token::For => "for".to_string(),
+                        Token::In => "in".to_string(),
+                        Token::Loop => "loop".to_string(),
+                        Token::Break => "break".to_string(),
+                        Token::Continue => "continue".to_string(),
+                        Token::Struct => "struct".to_string(),
+                        Token::Import => "import".to_string(),
+                        Token::Match => "match".to_string(),
+                        Token::Null => "null".to_string(),
+                        Token::Spawn => "spawn".to_string(),
                         _ => return Err(self.error("Expected method name")),
                     };
                     self.advance();
@@ -877,11 +1025,19 @@ impl Parser {
             }
             Token::String(s) => {
                 self.advance();
-                Ok(Expression::String(s))
+                if s.contains('{') {
+                    self.parse_interpolated_string(&s)
+                } else {
+                    Ok(Expression::String(s))
+                }
             }
             Token::Ident(name) => {
                 self.advance();
                 Ok(Expression::Identifier(name))
+            }
+            Token::Null => {
+                self.advance();
+                Ok(Expression::Null)
             }
             Token::LParen => {
                 self.advance();
@@ -962,6 +1118,90 @@ impl Parser {
 
         self.expect(Token::RBrace)?;
         Ok(fields)
+    }
+
+    fn parse_interpolated_string(&self, s: &str) -> ParseResult<Expression> {
+        let mut segments = Vec::new();
+        let mut current_literal = String::new();
+        let mut chars = s.chars().peekable();
+
+        while let Some(ch) = chars.next() {
+            if ch == '{' {
+                // Check if it's an escaped '{{'
+                if chars.peek() == Some(&'{') {
+                    chars.next();
+                    current_literal.push('{');
+                    continue;
+                }
+
+                // We have a dynamic segment!
+                // First, push the current literal if it's not empty
+                if !current_literal.is_empty() {
+                    segments.push(Expression::String(current_literal.clone()));
+                    current_literal.clear();
+                }
+
+                // Extract the expression inside braces
+                let mut expr_str = String::new();
+                let mut brace_count = 1;
+                while let Some(&next_ch) = chars.peek() {
+                    if next_ch == '{' {
+                        brace_count += 1;
+                    } else if next_ch == '}' {
+                        brace_count -= 1;
+                        if brace_count == 0 {
+                            chars.next(); // Consume '}'
+                            break;
+                        }
+                    }
+                    expr_str.push(chars.next().unwrap());
+                }
+
+                if brace_count != 0 {
+                    return Err(self.error("Unmatched '{' in string interpolation"));
+                }
+
+                // Parse the expression using a sub-parser!
+                let mut sub_parser = Parser::from_source(&expr_str);
+                let parsed_expr = sub_parser.parse_expression().map_err(|e| {
+                    self.error(format!(
+                        "Failed to parse expression '{}' in string interpolation: {}",
+                        expr_str, e.message
+                    ))
+                })?;
+                segments.push(parsed_expr);
+            } else if ch == '}' {
+                // Check if it's an escaped '}}'
+                if chars.peek() == Some(&'}') {
+                    chars.next();
+                    current_literal.push('}');
+                } else {
+                    return Err(self.error("Unmatched '}' in string literal"));
+                }
+            } else {
+                current_literal.push(ch);
+            }
+        }
+
+        if !current_literal.is_empty() {
+            segments.push(Expression::String(current_literal));
+        }
+
+        if segments.is_empty() {
+            return Ok(Expression::String("".to_string()));
+        }
+
+        // Concatenate all segments with addition
+        let mut result = segments.remove(0);
+        for segment in segments {
+            result = Expression::Binary {
+                left: Box::new(result),
+                op: BinaryOp::Add,
+                right: Box::new(segment),
+            };
+        }
+
+        Ok(result)
     }
 }
 

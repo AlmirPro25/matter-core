@@ -84,6 +84,10 @@ jobs:
         shell: pwsh
         run: .\scripts\test-release-package-contract.ps1 -RustSummary target\ffi\rust-smoke-release.json -NativeSummary target\ffi\native-smoke-release.json -MatrixPath target\ffi\ffi-validation-matrix-release.json
 
+      - name: Test release artifact checksum contract
+        shell: pwsh
+        run: .\scripts\test-release-artifact-checksums-contract.ps1
+
       - name: Prepare package
         shell: pwsh
         run: |
@@ -112,6 +116,16 @@ jobs:
           Copy-Item scripts\test-ffi-validation-report-contract.ps1 dist\matter-core-windows-x64\scripts\test-ffi-validation-report-contract.ps1
           Copy-Item scripts\test-release-readiness-contract.ps1 dist\matter-core-windows-x64\scripts\test-release-readiness-contract.ps1
           Copy-Item scripts\test-release-package-contract.ps1 dist\matter-core-windows-x64\scripts\test-release-package-contract.ps1
+          Copy-Item scripts\test-release-install-contract.ps1 dist\matter-core-windows-x64\scripts\test-release-install-contract.ps1
+          Copy-Item scripts\test-release-artifact-checksums-contract.ps1 dist\matter-core-windows-x64\scripts\test-release-artifact-checksums-contract.ps1
+          Copy-Item scripts\test-release-zip-installer-contract.ps1 dist\matter-core-windows-x64\scripts\test-release-zip-installer-contract.ps1
+          Copy-Item scripts\diagnose-local-install.ps1 dist\matter-core-windows-x64\scripts\diagnose-local-install.ps1
+          Copy-Item scripts\install-release-local.ps1 dist\matter-core-windows-x64\scripts\install-release-local.ps1
+          Copy-Item scripts\install-release-zip.ps1 dist\matter-core-windows-x64\scripts\install-release-zip.ps1
+          Copy-Item scripts\uninstall-local.ps1 dist\matter-core-windows-x64\scripts\uninstall-local.ps1
+          Copy-Item scripts\build-release-package.ps1 dist\matter-core-windows-x64\scripts\build-release-package.ps1
+          Copy-Item scripts\export-release-artifact-checksums.ps1 dist\matter-core-windows-x64\scripts\export-release-artifact-checksums.ps1
+          Copy-Item scripts\verify-release-artifact-checksums.ps1 dist\matter-core-windows-x64\scripts\verify-release-artifact-checksums.ps1
           Copy-Item scripts\verify-release-package.ps1 dist\matter-core-windows-x64\scripts\verify-release-package.ps1
           Copy-Item scripts\rust-ffi-plugin-smoke.ps1 dist\matter-core-windows-x64\scripts\rust-ffi-plugin-smoke.ps1
           Copy-Item scripts\native-ffi-smoke.ps1 dist\matter-core-windows-x64\scripts\native-ffi-smoke.ps1
@@ -126,14 +140,23 @@ jobs:
           Copy-Item apps\matter-studio dist\matter-core-windows-x64\apps\matter-studio -Recurse
           .\scripts\export-release-package-manifest.ps1 -PackageRoot dist\matter-core-windows-x64
           .\scripts\verify-release-package.ps1 -PackageRoot dist\matter-core-windows-x64
+          .\scripts\test-release-install-contract.ps1 -PackageRoot dist\matter-core-windows-x64
           Compress-Archive -Path dist\matter-core-windows-x64\* -DestinationPath dist\matter-core-windows-x64.zip -Force
+          .\scripts\export-release-artifact-checksums.ps1 -ArtifactPaths dist\matter-core-windows-x64.zip -JsonOut dist\release-checksums.json -Sha256Out dist\SHA256SUMS.txt
+          .\scripts\verify-release-artifact-checksums.ps1 -JsonPath dist\release-checksums.json -Sha256Path dist\SHA256SUMS.txt
           .\scripts\verify-release-package.ps1 -ZipPath dist\matter-core-windows-x64.zip
+          .\scripts\test-release-install-contract.ps1 -ZipPath dist\matter-core-windows-x64.zip
+          .\scripts\test-release-zip-installer-contract.ps1 -ZipPath dist\matter-core-windows-x64.zip -ChecksumJsonPath dist\release-checksums.json -Sha256Path dist\SHA256SUMS.txt
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: matter-core-windows-x64
-          path: dist\matter-core-windows-x64.zip
+          path: |
+            dist\matter-core-windows-x64.zip
+            dist\release-checksums.json
+            dist\SHA256SUMS.txt
+            scripts\install-release-zip.ps1
 
       - name: Upload FFI smoke summaries
         uses: actions/upload-artifact@v4
@@ -145,11 +168,23 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist\matter-core-windows-x64.zip
+          files: |
+            dist\matter-core-windows-x64.zip
+            dist\release-checksums.json
+            dist\SHA256SUMS.txt
+            scripts\install-release-zip.ps1
           body: |
             Matter Core Windows x64 binary.
 
             First run:
+
+            ```powershell
+            .\scripts\install-release-zip.ps1 -ZipPath dist\matter-core-windows-x64.zip -ChecksumJsonPath dist\release-checksums.json -Sha256Path dist\SHA256SUMS.txt
+            matter run examples\first_run.matter
+            matter capabilities-json
+            ```
+
+            Portable run:
 
             ```powershell
             .\matter-cli.exe run examples\first_run.matter

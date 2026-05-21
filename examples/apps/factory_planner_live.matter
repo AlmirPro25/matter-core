@@ -1,0 +1,113 @@
+﻿# Factory Planner Live App
+# Versao orientada a eventos para o ciclo de construcao de software
+
+struct Task {
+    id: int,
+    name: string,
+    complexity: int,
+    done: bool
+}
+
+fn ensure_state() with io {
+    if !store.has("factory_tasks") {
+        store.set("factory_tasks", [])
+    }
+    if !store.has("factory_next_id") {
+        store.set("factory_next_id", 1)
+    }
+}
+
+fn add_task(name, complexity) with io {
+    ensure_state()
+    let tasks = store.get("factory_tasks")
+    let next_id = store.get("factory_next_id")
+    let task = Task {
+        id: next_id,
+        name: name,
+        complexity: complexity,
+        done: false
+    }
+    tasks.push(task)
+    store.set("factory_tasks", tasks)
+    store.set("factory_next_id", next_id + 1)
+    print "Task criada: " + name
+}
+
+fn complete_task(id) with io {
+    ensure_state()
+    let tasks = store.get("factory_tasks")
+    let i = 0
+    while i < tasks.len() {
+        let item = tasks[i]
+        if item.id == id {
+            set item.done = true
+            set tasks[i] = item
+            store.set("factory_tasks", tasks)
+            print "Task concluida: " + item.name
+            return 0
+        }
+        set i = i + 1
+    }
+    print "Task nao encontrada"
+}
+
+fn show_board() with io {
+    ensure_state()
+    let tasks = store.get("factory_tasks")
+    print "=== FACTORY LIVE BOARD ==="
+    for item in tasks {
+        let status = "[ ]"
+        if item.done {
+            set status = "[X]"
+        }
+        print status + " #" + item.id + " " + item.name + " (c=" + item.complexity + ")"
+    }
+    print "==========================="
+}
+
+fn score() with io {
+    ensure_state()
+    let tasks = store.get("factory_tasks")
+    let total = tasks.len()
+    let done = 0
+    let complexity_done = 0
+
+    for item in tasks {
+        if item.done {
+            set done = done + 1
+            set complexity_done = complexity_done + item.complexity
+        }
+    }
+
+    print "Total tasks: " + total
+    print "Concluidas: " + done
+    print "Complexidade entregue: " + complexity_done
+}
+
+on boot {
+    print "[BOOT] Iniciando Factory Planner Live"
+    store.set("factory_tasks", [])
+    store.set("factory_next_id", 1)
+    add_task("Definir escopo", 2)
+    add_task("Gerar codigo inicial", 5)
+    add_task("Validar arquitetura", 4)
+    add_task("Rodar testes", 3)
+    add_task("Publicar release", 4)
+    show_board()
+}
+
+on tap {
+    print "[TAP] IA executando sprint rapido"
+    complete_task(1)
+    complete_task(2)
+    complete_task(4)
+    show_board()
+}
+
+on shutdown {
+    print "[SHUTDOWN] Encerrando ciclo"
+    score()
+}
+
+print "Factory Planner Live pronto"
+print "Use: emit ... boot | tap | shutdown"

@@ -11,3 +11,7 @@ matter-jit = { workspace = true }
 matter-native = { workspace = true }
 matter-energy = { workspace = true }
 matter-vcpu = { workspace = true }
+
+[features]
+default = []
+jit-exec = ["matter-native/jit-exec"]

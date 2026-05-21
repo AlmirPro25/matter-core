@@ -1,0 +1,60 @@
+﻿{
+    "generated_at":  "2026-05-17T12:50:24.7924588-03:00",
+    "format":  "matter-download-site-release-v1",
+    "version":  "0.1.0-beta",
+    "channel":  "beta",
+    "status":  "beta-ready",
+    "production_ready":  false,
+    "install_command":  ".\\matter-core-beta-setup.exe",
+    "artifacts":  [
+                      {
+                          "name":  "matter-core-windows-x64.zip",
+                          "path":  "downloads/matter-core-windows-x64.zip",
+                          "size_bytes":  3887005,
+                          "sha256":  "97a227c9d2bcea31ea471418bf9bbfc3dea9afbbea9e627270bc224d4d7b4b45"
+                      },
+                      {
+                          "name":  "matter-core-beta-setup.exe",
+                          "path":  "downloads/matter-core-beta-setup.exe",
+                          "size_bytes":  3899392,
+                          "sha256":  "aa1a984ee7415e54e6cd9a4e0ef5cd03cd5c5391443be8376c59bff1163b0144",
+                          "signed":  false
+                      },
+                      {
+                          "name":  "install-release-zip.ps1",
+                          "path":  "downloads/install-release-zip.ps1",
+                          "size_bytes":  4303,
+                          "sha256":  "d2965d91f9854e4f1696310b252ce04467d65f59216d0ee3974538a71a293e9d"
+                      },
+                      {
+                          "name":  "install-matter-beta.cmd",
+                          "path":  "downloads/install-matter-beta.cmd",
+                          "size_bytes":  1175,
+                          "sha256":  "0777b49c80db3907f73377d05addcc91910b1d7f1a4f18fa6de70c92361c63a0"
+                      },
+                      {
+                          "name":  "release-checksums.json",
+                          "path":  "downloads/release-checksums.json",
+                          "size_bytes":  539,
+                          "sha256":  "50eb23c9723ef07d5899e07680b705ea1b6cf67de3998dc03991e04821052f70"
+                      },
+                      {
+                          "name":  "SHA256SUMS.txt",
+                          "path":  "downloads/SHA256SUMS.txt",
+                          "size_bytes":  100,
+                          "sha256":  "dfef0cf42f4ebd927e572805dcbef1c2b86bcd4829081362644ccb17ca07fc7a"
+                      },
+                      {
+                          "name":  "TESTER_GUIDE.md",
+                          "path":  "TESTER_GUIDE.md",
+                          "size_bytes":  1925,
+                          "sha256":  "740a04ec16b8fcbaf388971b0975ef8019d506e4f4ddac26eacd7bd7d0a3ea44"
+                      },
+                      {
+                          "name":  "BETA_NOTES.md",
+                          "path":  "BETA_NOTES.md",
+                          "size_bytes":  1327,
+                          "sha256":  "3aa1e475c98ef528a40dbe63b78a8559d8aef3794d072a534bdb54b8577522ef"
+                      }
+                  ]
+}

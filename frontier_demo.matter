@@ -1,0 +1,129 @@
+// ============================================================================
+// MATTER CORE FRONTIER COMPUTING DEMO
+// ============================================================================
+// Prova de conceito e orquestração de 5 tecnologias de computação de fronteira:
+// 1. Quantum Computing (Simulação de Qubits, Grover e QFT)
+// 2. Memristive Computing (Crossbars Analógicos e Resistência Dinâmica)
+// 3. Photonic Computing (Luz Coerente, Portas Ópticas e Vazão de Alta Velocidade)
+// 4. Spintronics Computing (Transferência de Spin MTJ e Magnons Lógicos)
+// 5. Molecular Computing (Armazenamento molecular de DNA e Hibridização Térmica)
+// ============================================================================
+
+print("=============================================================================");
+print("       Matter Core OS v3.5.0 - Frontier Computing Orchestration Engine       ");
+print("=============================================================================");
+print("");
+
+// ----------------------------------------------------------------------------
+// 1. QUANTUM COMPUTING BACKEND
+// ----------------------------------------------------------------------------
+print("[1/5] TESTANDO QUANTUM COMPUTING BACKEND...");
+print("-> Criando estado emaranhado de Bell (|Φ+⟩)...");
+let bell = quantum.bell_state();
+print("   Resultado medido do par emaranhado:");
+print(bell);
+
+print("-> Executando Busca de Grover para 3 qubits (procurando índice 5)...");
+let grover_result = quantum.grover(5);
+print("   Índice localizado por amplificação de amplitude:");
+print(grover_result);
+
+print("-> Executando Transformada de Fourier Quântica (QFT) de 4 qubits...");
+let qft_result = quantum.qft(4);
+print("   Estado final medido após QFT:");
+print(qft_result);
+print("");
+
+// ----------------------------------------------------------------------------
+// 2. MEMRISTIVE COMPUTING BACKEND
+// ----------------------------------------------------------------------------
+print("[2/5] TESTANDO MEMRISTIVE COMPUTING BACKEND...");
+print("-> Lendo resistência inicial na célula (2, 3)...");
+let initial_r = memristive.resistance(2, 3);
+print("   Resistência inicial (HRS):");
+print(initial_r);
+
+print("-> Aplicando pulso de 2.5V por 50ns para programar estado (SET)...");
+memristive.write(2, 3, 2.5, 50.0);
+
+let final_r = memristive.resistance(2, 3);
+print("   Resistência final após programação (LRS):");
+print(final_r);
+
+print("-> Lendo corrente resultante com voltagem de leitura 0.2V...");
+let current = memristive.read(2, 3, 0.2);
+print("   Corrente analógica (Amperes):");
+print(current);
+print("");
+
+// ----------------------------------------------------------------------------
+// 3. PHOTONIC COMPUTING BACKEND
+// ----------------------------------------------------------------------------
+print("[3/5] TESTANDO PHOTONIC COMPUTING BACKEND...");
+print("-> Executando lógica de portas ópticas de Mach-Zehnder (MZI) & SOA...");
+let intensity_a = 0.9;
+let intensity_b = 0.8;
+let optical_and = photonic.and(intensity_a, intensity_b);
+let optical_or  = photonic.or(intensity_a, 0.1);
+let optical_not = photonic.not(intensity_a);
+
+print("   Fótons Coerentes A (0.9) E B (0.8) -> AND óptico:");
+print(optical_and);
+print("   Fótons Coerentes A (0.9) OU B (0.1) -> OR óptico:");
+print(optical_or);
+print("   Inversor de Fase por Amplificador SOA (NOT óptico de A):");
+print(optical_not);
+
+print("-> Buscando estatísticas em tempo real do processador óptico...");
+let phot_metrics = photonic.metrics();
+print("   Métricas do Guia de Onda e Fibras Ópticas:");
+print(phot_metrics);
+print("");
+
+// ----------------------------------------------------------------------------
+// 4. SPINTRONICS COMPUTING BACKEND
+// ----------------------------------------------------------------------------
+print("[4/5] TESTANDO SPINTRONICS COMPUTING BACKEND...");
+print("-> Escrevendo estado Magnético por STT no registrador spintrônico 42...");
+spintronics.write(42, 1);
+
+let spin_read = spintronics.read(42);
+print("   Magnetorresistência Túnel (MTJ) de leitura no endereço 42:");
+print(spin_read);
+
+print("-> Executando lógica de portas magnônicas (XOR spintrônica)...");
+let spin_gate = spintronics.gate("XOR", true, false);
+print("   Resultado lógico da porta magnônica XOR (true, false):");
+print(spin_gate);
+
+print("-> Coletando telemetria de consumo energético femtojoule (fJ)...");
+let spin_stats = spintronics.stats();
+print("   Telemetria spintrônica:");
+print(spin_stats);
+print("");
+
+// ----------------------------------------------------------------------------
+// 5. MOLECULAR COMPUTING BACKEND
+// ----------------------------------------------------------------------------
+print("[5/5] TESTANDO MOLECULAR COMPUTING BACKEND...");
+print("-> Codificando string ASCII 'MATTER' em sequências complementares de DNA...");
+molecular.write("MATTER");
+
+let decoded = molecular.read();
+print("   Decodificando DNA e sintetizando a string novamente:");
+print(decoded);
+
+print("-> Simulando Hibridização Térmica de cadeias complementares...");
+let check_match = molecular.hybridize("ATCGATCG", "TAGCTAGC");
+print("   Compatibilidade de hibridização ('ATCGATCG' vs 'TAGCTAGC'):");
+print(check_match);
+
+let check_mismatch = molecular.hybridize("ATCGATCG", "AAAAAAAA");
+print("   Compatibilidade de hibridização ('ATCGATCG' vs 'AAAAAAAA'):");
+print(check_mismatch);
+print("");
+
+print("=============================================================================");
+print("  CONEXÃO DE TODAS AS 5 TECNOLOGIAS DE COMPUTAÇÃO DE FRONTEIRA CONCLUÍDA!    ");
+print("      Ecosistema Matter Core unificado de alta performance integrado!        ");
+print("=============================================================================");

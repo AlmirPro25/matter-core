@@ -14,7 +14,35 @@ Secondary users:
 
 ## First Three Commands
 
-After downloading a release archive and opening PowerShell in the extracted folder:
+After downloading a release archive and opening PowerShell in the extracted folder, users can install Matter for the current Windows account without Rust:
+
+```powershell
+.\scripts\install-release-local.ps1
+matter run examples\first_run.matter
+matter capabilities-json
+```
+
+When the release zip and checksum files are side by side, use the verified installer path:
+
+```powershell
+.\scripts\install-release-zip.ps1 -ZipPath dist\matter-core-windows-x64.zip -ChecksumJsonPath dist\release-checksums.json -Sha256Path dist\SHA256SUMS.txt
+matter run examples\first_run.matter
+matter capabilities-json
+```
+
+If something looks wrong after installing, run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Matter\scripts\diagnose-local-install.ps1"
+```
+
+To remove Matter, run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Matter\scripts\uninstall-local.ps1"
+```
+
+Portable use is still supported from the extracted folder:
 
 ```powershell
 .\matter-cli.exe run examples\first_run.matter
@@ -32,6 +60,9 @@ The next command teaches syntax:
 
 ## Release Friction Checklist
 
+- static download site exists at `site\index.html`
+- static download site has copied artifacts under `site\downloads\`
+- static download site metadata exists at `site\release.json`
 - Windows zip contains `matter-cli.exe`
 - zip contains `examples\README.md`
 - zip contains `examples\first_run.matter`
@@ -48,11 +79,21 @@ The next command teaches syntax:
 - zip contains `scripts\export-ffi-validation-report.ps1`
 - zip contains `scripts\export-release-readiness.ps1`
 - zip contains `scripts\export-release-package-manifest.ps1`
+- zip contains `scripts\install-release-local.ps1`
+- zip contains `scripts\install-release-zip.ps1`
+- zip contains `scripts\diagnose-local-install.ps1`
+- zip contains `scripts\uninstall-local.ps1`
+- zip contains `scripts\build-release-package.ps1`
+- zip contains `scripts\export-release-artifact-checksums.ps1`
+- zip contains `scripts\verify-release-artifact-checksums.ps1`
 - zip contains `scripts\ffi-smoke-all.ps1`
 - zip contains `scripts\test-ffi-validation-matrix-contract.ps1`
 - zip contains `scripts\test-ffi-validation-report-contract.ps1`
 - zip contains `scripts\test-release-readiness-contract.ps1`
 - zip contains `scripts\test-release-package-contract.ps1`
+- zip contains `scripts\test-release-install-contract.ps1`
+- zip contains `scripts\test-release-artifact-checksums-contract.ps1`
+- zip contains `scripts\test-release-zip-installer-contract.ps1`
 - zip contains `scripts\verify-release-package.ps1`
 - zip contains `scripts\rust-ffi-plugin-smoke.ps1`
 - zip contains `scripts\native-ffi-smoke.ps1`

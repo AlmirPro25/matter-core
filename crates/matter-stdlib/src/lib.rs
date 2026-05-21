@@ -3,6 +3,7 @@
 
 use matter_backend::{Backend, Value};
 use std::collections::HashMap;
+use std::io::Write;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Math backend - operações matemáticas
@@ -53,26 +54,22 @@ impl Backend for MathBackend {
                 if args.len() != 2 {
                     return Err(format!("math.pow expects 2 arguments, got {}", args.len()));
                 }
-                let base = args[0].as_int().map_err(|e| format!("math.pow: {}", e))?;
-                let exp = args[1].as_int().map_err(|e| format!("math.pow: {}", e))?;
-                if exp < 0 {
-                    return Err(
-                        "math.pow: negative exponent not supported for integers".to_string()
-                    );
-                }
-                Ok(Value::Int(base.pow(exp as u32)))
+                let base = args[0].as_float().map_err(|e| format!("math.pow: {}", e))?;
+                let exp = args[1].as_float().map_err(|e| format!("math.pow: {}", e))?;
+                Ok(Value::Float(base.powf(exp)))
             }
 
             "sqrt" => {
                 if args.len() != 1 {
                     return Err(format!("math.sqrt expects 1 argument, got {}", args.len()));
                 }
-                let n = args[0].as_int().map_err(|e| format!("math.sqrt: {}", e))?;
-                if n < 0 {
+                let n = args[0]
+                    .as_float()
+                    .map_err(|e| format!("math.sqrt: {}", e))?;
+                if n < 0.0 {
                     return Err("math.sqrt: negative number not supported".to_string());
                 }
-                let result = (n as f64).sqrt() as i64;
-                Ok(Value::Int(result))
+                Ok(Value::Float(n.sqrt()))
             }
 
             "mod" => {
@@ -98,6 +95,78 @@ impl Backend for MathBackend {
                 let min = args[1].as_int().map_err(|e| format!("math.clamp: {}", e))?;
                 let max = args[2].as_int().map_err(|e| format!("math.clamp: {}", e))?;
                 Ok(Value::Int(value.clamp(min, max)))
+            }
+
+            "pi" => Ok(Value::Float(std::f64::consts::PI)),
+            "e" => Ok(Value::Float(std::f64::consts::E)),
+
+            "sin" => {
+                if args.len() != 1 {
+                    return Err(format!("math.sin expects 1 argument, got {}", args.len()));
+                }
+                let x = args[0].as_float().map_err(|e| format!("math.sin: {}", e))?;
+                Ok(Value::Float(x.sin()))
+            }
+            "cos" => {
+                if args.len() != 1 {
+                    return Err(format!("math.cos expects 1 argument, got {}", args.len()));
+                }
+                let x = args[0].as_float().map_err(|e| format!("math.cos: {}", e))?;
+                Ok(Value::Float(x.cos()))
+            }
+            "tan" => {
+                if args.len() != 1 {
+                    return Err(format!("math.tan expects 1 argument, got {}", args.len()));
+                }
+                let x = args[0].as_float().map_err(|e| format!("math.tan: {}", e))?;
+                Ok(Value::Float(x.tan()))
+            }
+            "log" => {
+                if args.len() != 1 {
+                    return Err(format!("math.log expects 1 argument, got {}", args.len()));
+                }
+                let x = args[0].as_float().map_err(|e| format!("math.log: {}", e))?;
+                if x <= 0.0 {
+                    return Err("math.log: argument must be positive".to_string());
+                }
+                Ok(Value::Float(x.log10()))
+            }
+            "ln" => {
+                if args.len() != 1 {
+                    return Err(format!("math.ln expects 1 argument, got {}", args.len()));
+                }
+                let x = args[0].as_float().map_err(|e| format!("math.ln: {}", e))?;
+                if x <= 0.0 {
+                    return Err("math.ln: argument must be positive".to_string());
+                }
+                Ok(Value::Float(x.ln()))
+            }
+            "floor" => {
+                if args.len() != 1 {
+                    return Err(format!("math.floor expects 1 argument, got {}", args.len()));
+                }
+                let x = args[0]
+                    .as_float()
+                    .map_err(|e| format!("math.floor: {}", e))?;
+                Ok(Value::Int(x.floor() as i64))
+            }
+            "ceil" => {
+                if args.len() != 1 {
+                    return Err(format!("math.ceil expects 1 argument, got {}", args.len()));
+                }
+                let x = args[0]
+                    .as_float()
+                    .map_err(|e| format!("math.ceil: {}", e))?;
+                Ok(Value::Int(x.ceil() as i64))
+            }
+            "round" => {
+                if args.len() != 1 {
+                    return Err(format!("math.round expects 1 argument, got {}", args.len()));
+                }
+                let x = args[0]
+                    .as_float()
+                    .map_err(|e| format!("math.round: {}", e))?;
+                Ok(Value::Int(x.round() as i64))
             }
 
             _ => Err(format!("Unknown math method: {}", method)),
@@ -251,6 +320,123 @@ impl Backend for StringBackend {
                 Ok(Value::new_string(s.replace(&from, &to)))
             }
 
+            "starts_with" => {
+                if args.len() != 2 {
+                    return Err(format!(
+                        "string.starts_with expects 2 arguments, got {}",
+                        args.len()
+                    ));
+                }
+                let s = args[0]
+                    .as_string()
+                    .map_err(|e| format!("string.starts_with: {}", e))?;
+                let prefix = args[1]
+                    .as_string()
+                    .map_err(|e| format!("string.starts_with: {}", e))?;
+                Ok(Value::Bool(s.starts_with(&prefix)))
+            }
+            "ends_with" => {
+                if args.len() != 2 {
+                    return Err(format!(
+                        "string.ends_with expects 2 arguments, got {}",
+                        args.len()
+                    ));
+                }
+                let s = args[0]
+                    .as_string()
+                    .map_err(|e| format!("string.ends_with: {}", e))?;
+                let suffix = args[1]
+                    .as_string()
+                    .map_err(|e| format!("string.ends_with: {}", e))?;
+                Ok(Value::Bool(s.ends_with(&suffix)))
+            }
+            "substring" => {
+                if args.len() != 3 {
+                    return Err(format!(
+                        "string.substring expects 3 arguments, got {}",
+                        args.len()
+                    ));
+                }
+                let s = args[0]
+                    .as_string()
+                    .map_err(|e| format!("string.substring: {}", e))?;
+                let start = args[1]
+                    .as_int()
+                    .map_err(|e| format!("string.substring: {}", e))?
+                    as usize;
+                let end = args[2]
+                    .as_int()
+                    .map_err(|e| format!("string.substring: {}", e))?
+                    as usize;
+                let len = s.len();
+                if start > len || end > len || start > end {
+                    return Err(format!(
+                        "string.substring: index out of bounds (start={}, end={}, len={})",
+                        start, end, len
+                    ));
+                }
+                Ok(Value::new_string(s[start..end].to_string()))
+            }
+            "repeat" => {
+                if args.len() != 2 {
+                    return Err(format!(
+                        "string.repeat expects 2 arguments, got {}",
+                        args.len()
+                    ));
+                }
+                let s = args[0]
+                    .as_string()
+                    .map_err(|e| format!("string.repeat: {}", e))?;
+                let n = args[1]
+                    .as_int()
+                    .map_err(|e| format!("string.repeat: {}", e))?;
+                if n < 0 {
+                    return Err("string.repeat: count must be non-negative".to_string());
+                }
+                Ok(Value::new_string(s.repeat(n as usize)))
+            }
+            "index_of" => {
+                if args.len() != 2 {
+                    return Err(format!(
+                        "string.index_of expects 2 arguments, got {}",
+                        args.len()
+                    ));
+                }
+                let s = args[0]
+                    .as_string()
+                    .map_err(|e| format!("string.index_of: {}", e))?;
+                let needle = args[1]
+                    .as_string()
+                    .map_err(|e| format!("string.index_of: {}", e))?;
+                match s.find(&needle) {
+                    Some(pos) => Ok(Value::Int(pos as i64)),
+                    None => Ok(Value::Int(-1)),
+                }
+            }
+            "char_at" => {
+                if args.len() != 2 {
+                    return Err(format!(
+                        "string.char_at expects 2 arguments, got {}",
+                        args.len()
+                    ));
+                }
+                let s = args[0]
+                    .as_string()
+                    .map_err(|e| format!("string.char_at: {}", e))?;
+                let idx = args[1]
+                    .as_int()
+                    .map_err(|e| format!("string.char_at: {}", e))?
+                    as usize;
+                if idx >= s.len() {
+                    return Err(format!(
+                        "string.char_at: index {} out of bounds (len={})",
+                        idx,
+                        s.len()
+                    ));
+                }
+                Ok(Value::new_string(s.chars().nth(idx).unwrap().to_string()))
+            }
+
             _ => Err(format!("Unknown string method: {}", method)),
         }
     }
@@ -373,6 +559,116 @@ impl Backend for ListBackend {
                 }
             }
 
+            "push" => {
+                if args.len() != 2 {
+                    return Err(format!("list.push expects 2 arguments, got {}", args.len()));
+                }
+                if let Value::List(items) = args[0].clone() {
+                    let mut new_items = (*items).to_vec();
+                    new_items.push(args[1].clone());
+                    Ok(Value::new_list(new_items))
+                } else {
+                    Err("list.push: first argument must be a list".to_string())
+                }
+            }
+
+            "pop" => {
+                if args.len() != 1 {
+                    return Err(format!("list.pop expects 1 argument, got {}", args.len()));
+                }
+                if let Value::List(items) = args[0].clone() {
+                    let mut new_items = (*items).to_vec();
+                    new_items.pop();
+                    Ok(Value::new_list(new_items))
+                } else {
+                    Err("list.pop: argument must be a list".to_string())
+                }
+            }
+
+            "slice" => {
+                if args.len() != 3 {
+                    return Err(format!(
+                        "list.slice expects 3 arguments, got {}",
+                        args.len()
+                    ));
+                }
+                if let Value::List(items) = &args[0] {
+                    let start =
+                        args[1].as_int().map_err(|e| format!("list.slice: {}", e))? as usize;
+                    let end = args[2].as_int().map_err(|e| format!("list.slice: {}", e))? as usize;
+                    if start > items.len() || end > items.len() || start > end {
+                        return Err(format!(
+                            "list.slice: index out of bounds (start={}, end={}, len={})",
+                            start,
+                            end,
+                            items.len()
+                        ));
+                    }
+                    Ok(Value::new_list(items[start..end].to_vec()))
+                } else {
+                    Err("list.slice: first argument must be a list".to_string())
+                }
+            }
+
+            "range" => {
+                if args.len() == 1 {
+                    let end = args[0].as_int().map_err(|e| format!("list.range: {}", e))?;
+                    let items: Vec<Value> = (0..end).map(Value::Int).collect();
+                    Ok(Value::new_list(items))
+                } else if args.len() == 2 {
+                    let start = args[0].as_int().map_err(|e| format!("list.range: {}", e))?;
+                    let end = args[1].as_int().map_err(|e| format!("list.range: {}", e))?;
+                    let items: Vec<Value> = (start..end).map(Value::Int).collect();
+                    Ok(Value::new_list(items))
+                } else {
+                    Err(format!(
+                        "list.range expects 1 or 2 arguments, got {}",
+                        args.len()
+                    ))
+                }
+            }
+
+            "concat" => {
+                if args.len() != 2 {
+                    return Err(format!(
+                        "list.concat expects 2 arguments, got {}",
+                        args.len()
+                    ));
+                }
+                if let (Value::List(a), Value::List(b)) = (&args[0], &args[1]) {
+                    let mut new_items = (*a).to_vec();
+                    new_items.extend((*b).to_vec());
+                    Ok(Value::new_list(new_items))
+                } else {
+                    Err("list.concat: both arguments must be lists".to_string())
+                }
+            }
+
+            "contains" => {
+                if args.len() != 2 {
+                    return Err(format!(
+                        "list.contains expects 2 arguments, got {}",
+                        args.len()
+                    ));
+                }
+                if let Value::List(items) = &args[0] {
+                    Ok(Value::Bool(items.contains(&args[1])))
+                } else {
+                    Err("list.contains: first argument must be a list".to_string())
+                }
+            }
+
+            "len" => {
+                if args.len() != 1 {
+                    return Err(format!("list.len expects 1 argument, got {}", args.len()));
+                }
+                if let Value::List(items) = &args[0] {
+                    Ok(Value::Int(items.len() as i64))
+                } else {
+                    Err("list.len: argument must be a list".to_string())
+                }
+            }
+
             _ => Err(format!("Unknown list method: {}", method)),
         }
     }
@@ -411,7 +707,7 @@ mod tests {
         let result = math
             .call("pow", vec![Value::Int(2), Value::Int(3)])
             .unwrap();
-        assert_eq!(result, Value::Int(8));
+        assert_eq!(result, Value::Float(8.0));
     }
 
     #[test]
@@ -785,6 +1081,7 @@ fn value_to_json(value: &Value) -> Result<String, String> {
         Value::Bool(b) => Ok(b.to_string()),
         Value::String(s) => Ok(format!("\"{}\"", (**s).replace('\"', "\\\""))),
         Value::Unit => Ok("null".to_string()),
+        Value::Null => Ok("null".to_string()),
         Value::List(items) => {
             let json_items: Result<Vec<String>, String> = items.iter().map(value_to_json).collect();
             let json_items = json_items?;
@@ -877,4 +1174,535 @@ fn json_to_value(json: &str) -> Result<Value, String> {
     }
 
     Err(format!("json.parse: invalid JSON: {}", json))
+}
+
+/// Map backend - operações com dicionários
+pub struct MapBackend;
+
+impl MapBackend {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for MapBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Backend for MapBackend {
+    fn call(&mut self, method: &str, args: Vec<Value>) -> Result<Value, String> {
+        match method {
+            "new" => Ok(Value::new_map(HashMap::new())),
+
+            "get" => {
+                if args.len() != 2 {
+                    return Err(format!("map.get expects 2 arguments, got {}", args.len()));
+                }
+                if let Value::Map(m) = &args[0] {
+                    let key = args[1].as_string().map_err(|e| format!("map.get: {}", e))?;
+                    Ok(m.get(&key).cloned().unwrap_or(Value::Unit))
+                } else {
+                    Err("map.get: first argument must be a map".to_string())
+                }
+            }
+
+            "set" => {
+                if args.len() != 3 {
+                    return Err(format!("map.set expects 3 arguments, got {}", args.len()));
+                }
+                if let Value::Map(m) = &args[0] {
+                    let key = args[1].as_string().map_err(|e| format!("map.set: {}", e))?;
+                    let mut new_map = (**m).clone();
+                    new_map.insert(key, args[2].clone());
+                    Ok(Value::new_map(new_map))
+                } else {
+                    Err("map.set: first argument must be a map".to_string())
+                }
+            }
+
+            "remove" => {
+                if args.len() != 2 {
+                    return Err(format!(
+                        "map.remove expects 2 arguments, got {}",
+                        args.len()
+                    ));
+                }
+                if let Value::Map(m) = &args[0] {
+                    let key = args[1]
+                        .as_string()
+                        .map_err(|e| format!("map.remove: {}", e))?;
+                    let mut new_map = (**m).clone();
+                    new_map.remove(&key);
+                    Ok(Value::new_map(new_map))
+                } else {
+                    Err("map.remove: first argument must be a map".to_string())
+                }
+            }
+
+            "has" => {
+                if args.len() != 2 {
+                    return Err(format!("map.has expects 2 arguments, got {}", args.len()));
+                }
+                if let Value::Map(m) = &args[0] {
+                    let key = args[1].as_string().map_err(|e| format!("map.has: {}", e))?;
+                    Ok(Value::Bool(m.contains_key(&key)))
+                } else {
+                    Err("map.has: first argument must be a map".to_string())
+                }
+            }
+
+            "keys" => {
+                if args.len() != 1 {
+                    return Err(format!("map.keys expects 1 argument, got {}", args.len()));
+                }
+                if let Value::Map(m) = &args[0] {
+                    let keys: Vec<Value> = m.keys().map(|k| Value::new_string(k.clone())).collect();
+                    Ok(Value::new_list(keys))
+                } else {
+                    Err("map.keys: argument must be a map".to_string())
+                }
+            }
+
+            "values" => {
+                if args.len() != 1 {
+                    return Err(format!("map.values expects 1 argument, got {}", args.len()));
+                }
+                if let Value::Map(m) = &args[0] {
+                    let values: Vec<Value> = m.values().cloned().collect();
+                    Ok(Value::new_list(values))
+                } else {
+                    Err("map.values: argument must be a map".to_string())
+                }
+            }
+
+            "size" => {
+                if args.len() != 1 {
+                    return Err(format!("map.size expects 1 argument, got {}", args.len()));
+                }
+                if let Value::Map(m) = &args[0] {
+                    Ok(Value::Int(m.len() as i64))
+                } else {
+                    Err("map.size: argument must be a map".to_string())
+                }
+            }
+
+            "merge" => {
+                if args.len() != 2 {
+                    return Err(format!("map.merge expects 2 arguments, got {}", args.len()));
+                }
+                if let (Value::Map(a), Value::Map(b)) = (&args[0], &args[1]) {
+                    let mut merged = (**a).clone();
+                    for (k, v) in b.iter() {
+                        merged.insert(k.clone(), v.clone());
+                    }
+                    Ok(Value::new_map(merged))
+                } else {
+                    Err("map.merge: both arguments must be maps".to_string())
+                }
+            }
+
+            _ => Err(format!("Unknown map method: {}", method)),
+        }
+    }
+}
+
+/// Type backend - inspeção e conversão de tipos
+pub struct TypeBackend;
+
+impl TypeBackend {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for TypeBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Backend for TypeBackend {
+    fn call(&mut self, method: &str, args: Vec<Value>) -> Result<Value, String> {
+        match method {
+            "of" => {
+                if args.len() != 1 {
+                    return Err(format!("type.of expects 1 argument, got {}", args.len()));
+                }
+                let t = match &args[0] {
+                    Value::Int(_) => "int",
+                    Value::Float(_) => "float",
+                    Value::Bool(_) => "bool",
+                    Value::String(_) => "string",
+                    Value::List(_) => "list",
+                    Value::Map(_) => "map",
+                    Value::Struct { .. } => "struct",
+                    Value::Function(_) => "function",
+                    Value::Unit => "unit",
+                    Value::Null => "null",
+                };
+                Ok(Value::new_string(t.to_string()))
+            }
+
+            "to_int" => {
+                if args.len() != 1 {
+                    return Err(format!(
+                        "type.to_int expects 1 argument, got {}",
+                        args.len()
+                    ));
+                }
+                match &args[0] {
+                    Value::Int(n) => Ok(Value::Int(*n)),
+                    Value::Float(f) => Ok(Value::Int(*f as i64)),
+                    Value::Bool(b) => Ok(Value::Int(if *b { 1 } else { 0 })),
+                    Value::String(s) => s
+                        .parse::<i64>()
+                        .map(Value::Int)
+                        .map_err(|_| format!("type.to_int: cannot convert '{}' to int", s)),
+                    _ => Err(format!("type.to_int: cannot convert {:?} to int", args[0])),
+                }
+            }
+
+            "to_float" => {
+                if args.len() != 1 {
+                    return Err(format!(
+                        "type.to_float expects 1 argument, got {}",
+                        args.len()
+                    ));
+                }
+                match &args[0] {
+                    Value::Float(f) => Ok(Value::Float(*f)),
+                    Value::Int(n) => Ok(Value::Float(*n as f64)),
+                    Value::String(s) => s
+                        .parse::<f64>()
+                        .map(Value::Float)
+                        .map_err(|_| format!("type.to_float: cannot convert '{}' to float", s)),
+                    _ => Err(format!(
+                        "type.to_float: cannot convert {:?} to float",
+                        args[0]
+                    )),
+                }
+            }
+
+            "to_string" => {
+                if args.len() != 1 {
+                    return Err(format!(
+                        "type.to_string expects 1 argument, got {}",
+                        args.len()
+                    ));
+                }
+                Ok(Value::new_string(args[0].to_display_string()))
+            }
+
+            "is_int" => {
+                if args.len() != 1 {
+                    return Err(format!(
+                        "type.is_int expects 1 argument, got {}",
+                        args.len()
+                    ));
+                }
+                Ok(Value::Bool(matches!(&args[0], Value::Int(_))))
+            }
+            "is_float" => {
+                if args.len() != 1 {
+                    return Err(format!(
+                        "type.is_float expects 1 argument, got {}",
+                        args.len()
+                    ));
+                }
+                Ok(Value::Bool(matches!(&args[0], Value::Float(_))))
+            }
+            "is_string" => {
+                if args.len() != 1 {
+                    return Err(format!(
+                        "type.is_string expects 1 argument, got {}",
+                        args.len()
+                    ));
+                }
+                Ok(Value::Bool(matches!(&args[0], Value::String(_))))
+            }
+            "is_list" => {
+                if args.len() != 1 {
+                    return Err(format!(
+                        "type.is_list expects 1 argument, got {}",
+                        args.len()
+                    ));
+                }
+                Ok(Value::Bool(matches!(&args[0], Value::List(_))))
+            }
+            "is_map" => {
+                if args.len() != 1 {
+                    return Err(format!(
+                        "type.is_map expects 1 argument, got {}",
+                        args.len()
+                    ));
+                }
+                Ok(Value::Bool(matches!(&args[0], Value::Map(_))))
+            }
+            "is_bool" => {
+                if args.len() != 1 {
+                    return Err(format!(
+                        "type.is_bool expects 1 argument, got {}",
+                        args.len()
+                    ));
+                }
+                Ok(Value::Bool(matches!(&args[0], Value::Bool(_))))
+            }
+
+            _ => Err(format!("Unknown type method: {}", method)),
+        }
+    }
+}
+
+/// Console backend - I/O interativo
+pub struct ConsoleBackend;
+
+impl ConsoleBackend {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for ConsoleBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Backend for ConsoleBackend {
+    fn call(&mut self, method: &str, args: Vec<Value>) -> Result<Value, String> {
+        match method {
+            "read_line" | "read" => {
+                if args.len() > 1 {
+                    return Err(format!(
+                        "console.read expects 0 or 1 arguments, got {}",
+                        args.len()
+                    ));
+                }
+                // Optional prompt
+                if args.len() == 1 {
+                    let prompt = args[0]
+                        .as_string()
+                        .map_err(|e| format!("console.read: {}", e))?;
+                    print!("{}", prompt);
+                    std::io::stdout()
+                        .flush()
+                        .map_err(|e| format!("console.read: {}", e))?;
+                }
+                let mut input = String::new();
+                std::io::stdin()
+                    .read_line(&mut input)
+                    .map_err(|e| format!("console.read: {}", e))?;
+                Ok(Value::new_string(
+                    input
+                        .trim_end_matches('\n')
+                        .trim_end_matches('\r')
+                        .to_string(),
+                ))
+            }
+
+            "write" => {
+                if args.len() != 1 {
+                    return Err(format!(
+                        "console.write expects 1 argument, got {}",
+                        args.len()
+                    ));
+                }
+                let text = args[0].to_display_string();
+                print!("{}", text);
+                std::io::stdout()
+                    .flush()
+                    .map_err(|e| format!("console.write: {}", e))?;
+                Ok(Value::Unit)
+            }
+
+            _ => Err(format!("Unknown console method: {}", method)),
+        }
+    }
+}
+
+/// File backend - leitura e escrita de arquivos
+pub struct FileBackend;
+
+impl FileBackend {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for FileBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Backend for FileBackend {
+    fn call(&mut self, method: &str, args: Vec<Value>) -> Result<Value, String> {
+        match method {
+            "read" => {
+                if args.len() != 1 {
+                    return Err(format!("file.read expects 1 argument, got {}", args.len()));
+                }
+                let path = args[0]
+                    .as_string()
+                    .map_err(|e| format!("file.read: {}", e))?;
+                let content = std::fs::read_to_string(&path)
+                    .map_err(|e| format!("file.read: failed to read '{}': {}", path, e))?;
+                Ok(Value::new_string(content))
+            }
+
+            "write" => {
+                if args.len() != 2 {
+                    return Err(format!(
+                        "file.write expects 2 arguments, got {}",
+                        args.len()
+                    ));
+                }
+                let path = args[0]
+                    .as_string()
+                    .map_err(|e| format!("file.write: {}", e))?;
+                let content = args[1]
+                    .as_string()
+                    .map_err(|e| format!("file.write: {}", e))?;
+                std::fs::write(&path, &content)
+                    .map_err(|e| format!("file.write: failed to write '{}': {}", path, e))?;
+                Ok(Value::Bool(true))
+            }
+
+            "exists" => {
+                if args.len() != 1 {
+                    return Err(format!(
+                        "file.exists expects 1 argument, got {}",
+                        args.len()
+                    ));
+                }
+                let path = args[0]
+                    .as_string()
+                    .map_err(|e| format!("file.exists: {}", e))?;
+                Ok(Value::Bool(std::path::Path::new(&path).exists()))
+            }
+
+            "delete" => {
+                if args.len() != 1 {
+                    return Err(format!(
+                        "file.delete expects 1 argument, got {}",
+                        args.len()
+                    ));
+                }
+                let path = args[0]
+                    .as_string()
+                    .map_err(|e| format!("file.delete: {}", e))?;
+                std::fs::remove_file(&path)
+                    .map_err(|e| format!("file.delete: failed to delete '{}': {}", path, e))?;
+                Ok(Value::Bool(true))
+            }
+
+            "append" => {
+                if args.len() != 2 {
+                    return Err(format!(
+                        "file.append expects 2 arguments, got {}",
+                        args.len()
+                    ));
+                }
+                let path = args[0]
+                    .as_string()
+                    .map_err(|e| format!("file.append: {}", e))?;
+                let content = args[1]
+                    .as_string()
+                    .map_err(|e| format!("file.append: {}", e))?;
+                use std::io::Write;
+                let mut file = std::fs::OpenOptions::new()
+                    .append(true)
+                    .create(true)
+                    .open(&path)
+                    .map_err(|e| format!("file.append: failed to open '{}': {}", path, e))?;
+                file.write_all(content.as_bytes())
+                    .map_err(|e| format!("file.append: failed to append to '{}': {}", path, e))?;
+                Ok(Value::Bool(true))
+            }
+
+            _ => Err(format!("Unknown file method: {}", method)),
+        }
+    }
+}
+
+/// Audio backend - síntese de áudio nativa retrô
+pub struct AudioBackend;
+
+impl AudioBackend {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for AudioBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(target_os = "windows")]
+extern "system" {
+    fn Beep(dwFreq: u32, dwDuration: u32) -> i32;
+}
+
+impl Backend for AudioBackend {
+    fn call(&mut self, method: &str, args: Vec<Value>) -> Result<Value, String> {
+        match method {
+            "beep" => {
+                if args.len() != 2 {
+                    return Err(format!(
+                        "audio.beep expects 2 arguments (freq, duration_ms), got {}",
+                        args.len()
+                    ));
+                }
+                let freq = args[0].as_int().map_err(|e| format!("audio.beep: {}", e))? as u32;
+                let duration = args[1].as_int().map_err(|e| format!("audio.beep: {}", e))? as u32;
+
+                #[cfg(target_os = "windows")]
+                unsafe {
+                    Beep(freq, duration);
+                }
+                #[cfg(not(target_os = "windows"))]
+                {
+                    print!("\x07");
+                    let _ = std::io::stdout().flush();
+                }
+                Ok(Value::Bool(true))
+            }
+
+            "laser" => {
+                #[cfg(target_os = "windows")]
+                unsafe {
+                    for f in (200..=800).rev().step_by(50) {
+                        Beep(f, 15);
+                    }
+                }
+                #[cfg(not(target_os = "windows"))]
+                {
+                    print!("\x07");
+                    let _ = std::io::stdout().flush();
+                }
+                Ok(Value::Bool(true))
+            }
+
+            "jump" => {
+                #[cfg(target_os = "windows")]
+                unsafe {
+                    for f in (150..=600).step_by(40) {
+                        Beep(f, 12);
+                    }
+                }
+                #[cfg(not(target_os = "windows"))]
+                {
+                    print!("\x07");
+                    let _ = std::io::stdout().flush();
+                }
+                Ok(Value::Bool(true))
+            }
+
+            _ => Err(format!("Unknown audio method: {}", method)),
+        }
+    }
 }

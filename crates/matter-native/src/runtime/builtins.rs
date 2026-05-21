@@ -168,6 +168,105 @@ pub unsafe extern "C" fn matter_list_resize(
     true
 }
 
+/// Push a value to the list
+///
+/// # Safety
+///
+/// `list_ptr` must be a valid MatterList pointer.
+#[no_mangle]
+pub unsafe extern "C" fn matter_list_push(list_ptr: *mut MatterList, value: i64) -> bool {
+    if list_ptr.is_null() {
+        return false;
+    }
+    let list = unsafe { &mut *list_ptr };
+    if list.length >= list.capacity {
+        let new_cap = if list.capacity == 0 {
+            4
+        } else {
+            list.capacity * 2
+        };
+        if !matter_list_resize(list_ptr, new_cap as usize) {
+            return false;
+        }
+    }
+    unsafe {
+        *list.data_ptr.add(list.length as usize) = value;
+    }
+    list.length += 1;
+    true
+}
+
+/// Pop a value from the list
+///
+/// # Safety
+///
+/// `list_ptr` must be a valid MatterList pointer.
+#[no_mangle]
+pub unsafe extern "C" fn matter_list_pop(list_ptr: *mut MatterList) -> i64 {
+    if list_ptr.is_null() {
+        return 0;
+    }
+    let list = unsafe { &mut *list_ptr };
+    if list.length == 0 {
+        return 0;
+    }
+    list.length -= 1;
+    unsafe { *list.data_ptr.add(list.length as usize) }
+}
+
+/// Get length of list
+///
+/// # Safety
+///
+/// `list_ptr` must be a valid MatterList pointer.
+#[no_mangle]
+pub unsafe extern "C" fn matter_list_len(list_ptr: *mut MatterList) -> i64 {
+    if list_ptr.is_null() {
+        return 0;
+    }
+    let list = unsafe { &*list_ptr };
+    list.length as i64
+}
+
+/// Get value by index
+///
+/// # Safety
+///
+/// `list_ptr` must be a valid MatterList pointer.
+#[no_mangle]
+pub unsafe extern "C" fn matter_list_get(list_ptr: *mut MatterList, index: i64) -> i64 {
+    if list_ptr.is_null() || index < 0 {
+        return 0;
+    }
+    let list = unsafe { &*list_ptr };
+    if (index as u64) >= list.length {
+        return 0;
+    }
+    unsafe { *list.data_ptr.add(index as usize) }
+}
+
+/// Set value by index
+///
+/// # Safety
+///
+/// `list_ptr` must be a valid MatterList pointer.
+#[no_mangle]
+pub unsafe extern "C" fn matter_list_set(
+    list_ptr: *mut MatterList,
+    index: i64,
+    value: i64,
+) -> bool {
+    if list_ptr.is_null() || index < 0 {
+        return false;
+    }
+    let list = unsafe { &mut *list_ptr };
+    if (index as u64) >= list.length {
+        return false;
+    }
+    unsafe { *list.data_ptr.add(index as usize) = value };
+    true
+}
+
 /// Free a list
 ///
 /// # Safety
@@ -185,6 +284,59 @@ pub unsafe extern "C" fn matter_list_free(list_ptr: *mut MatterList) {
     unsafe {
         matter_free(list.data_ptr as *mut u8, data_size);
         matter_free(list_ptr as *mut u8, std::mem::size_of::<MatterList>());
+    }
+}
+
+/// Generic collection structure header
+#[repr(C)]
+pub struct MatterCollection {
+    type_tag: u64,
+}
+
+/// Generic get by index or key
+///
+/// # Safety
+///
+/// `collection_ptr` must be a valid MatterCollection pointer.
+#[no_mangle]
+pub unsafe extern "C" fn matter_collection_get(
+    collection_ptr: *mut MatterCollection,
+    key: i64,
+) -> i64 {
+    if collection_ptr.is_null() {
+        return 0;
+    }
+    let tag = (*collection_ptr).type_tag;
+    if tag == 0x01 {
+        matter_list_get(collection_ptr as *mut MatterList, key)
+    } else if tag == 0x02 {
+        matter_map_lookup(collection_ptr as *mut MatterMap, key)
+    } else {
+        0
+    }
+}
+
+/// Generic set by index or key
+///
+/// # Safety
+///
+/// `collection_ptr` must be a valid MatterCollection pointer.
+#[no_mangle]
+pub unsafe extern "C" fn matter_collection_set(
+    collection_ptr: *mut MatterCollection,
+    key: i64,
+    value: i64,
+) -> bool {
+    if collection_ptr.is_null() {
+        return false;
+    }
+    let tag = (*collection_ptr).type_tag;
+    if tag == 0x01 {
+        matter_list_set(collection_ptr as *mut MatterList, key, value)
+    } else if tag == 0x02 {
+        matter_map_insert(collection_ptr as *mut MatterMap, key, value)
+    } else {
+        false
     }
 }
 

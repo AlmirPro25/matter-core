@@ -149,6 +149,9 @@ fn serialize_constant<W: Write>(constant: &Constant, writer: &mut W) -> Result<(
         Constant::Unit => {
             writer.write_all(&[0x04])?;
         }
+        Constant::Null => {
+            writer.write_all(&[0x06])?;
+        }
     }
     Ok(())
 }

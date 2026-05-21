@@ -262,6 +262,7 @@ impl JavaBridge {
                 Ok(code)
             }
             Value::Unit => Ok("null".to_string()),
+            Value::Null => Ok("null".to_string()),
             Value::Function(_) => Err(BridgeError::ConversionError(
                 "Cannot convert Matter function to Java".to_string(),
             )),
@@ -416,6 +417,7 @@ mod tests {
         );
         assert_eq!(bridge.value_to_java(&Value::Bool(true)).unwrap(), "true");
         assert_eq!(bridge.value_to_java(&Value::Unit).unwrap(), "null");
+        assert_eq!(bridge.value_to_java(&Value::Null).unwrap(), "null");
     }
 
     #[test]

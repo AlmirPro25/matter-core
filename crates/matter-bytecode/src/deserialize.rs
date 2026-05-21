@@ -146,6 +146,10 @@ fn deserialize_constant<R: Read>(reader: &mut R) -> Result<Constant> {
             // Unit
             Ok(Constant::Unit)
         }
+        0x06 => {
+            // Null
+            Ok(Constant::Null)
+        }
         0x05 => {
             // Float
             let mut bytes = [0u8; 8];

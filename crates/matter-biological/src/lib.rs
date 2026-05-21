@@ -21,6 +21,8 @@ use std::collections::HashMap;
 use std::fmt;
 use thiserror::Error;
 
+pub mod backend;
+
 #[derive(Error, Debug)]
 pub enum BiologicalError {
     #[error("Invalid DNA sequence: {0}")]

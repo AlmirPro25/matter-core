@@ -1,0 +1,15 @@
+print "================================================================"
+print " 📱 INICIANDO MATTER ZAP SERVER "
+print "================================================================"
+
+let html = file.read("MatterZap/index.html")
+
+let rotas = map.new()
+set rotas = map.set(rotas, "/", html)
+
+print " "
+print "  🌐 Servidor Assíncrono iniciado!"
+print "  🚀 Abra seu navegador em: http://localhost:8080/"
+print " "
+
+net.serve_routes(8080, rotas)

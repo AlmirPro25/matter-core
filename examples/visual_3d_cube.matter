@@ -1,0 +1,203 @@
+# 🌋 MATTER CORE V25: 3D GRAPHICS JIT ENGINE
+# Um renderizador 3D ASCII completo rodando na placa de vídeo/JIT!
+
+print "╔════════════════════════════════════════════════════╗"
+print "║   🌋 MATTER 3D SPINNING CUBE ENGINE (ASCII V25) 🌋  ║"
+print "╚════════════════════════════════════════════════════╝"
+print ""
+
+# Estrutura para pontos 3D
+struct Vertex3D {
+    x: float,
+    y: float,
+    z: float
+}
+
+# Inicializar o buffer da tela com espaços vazios
+fn init_buffer(w, h) {
+    let buf = []
+    let y = 0
+    while y < h {
+        let row = []
+        let x = 0
+        while x < w {
+            row.push(" ")
+            set x = x + 1
+        }
+        buf.push(row)
+        set y = y + 1
+    }
+    return buf
+}
+
+# Algoritmo de Linha de Bresenham para desenhar no buffer
+fn draw_line(buffer, x0, y0, x1, y1, char) {
+    let dx = math.abs(x1 - x0)
+    let dy = math.abs(y1 - y0)
+    let sx = 1
+    if x0 > x1 {
+        set sx = 0 - 1
+    }
+    let sy = 1
+    if y0 > y1 {
+        set sy = 0 - 1
+    }
+    let err = dx - dy
+    
+    let x = x0
+    let y = y0
+    let running = true
+    
+    while running {
+        # Desenhar pixel se estiver dentro das bordas da tela
+        if y >= 0 {
+            if y < buffer.len() {
+                let row = buffer[y]
+                if x >= 0 {
+                    if x < row.len() {
+                        set row[x] = char
+                        set buffer[y] = row
+                    }
+                }
+            }
+        }
+        
+        if x == x1 {
+            if y == y1 {
+                set running = false
+            }
+        }
+        
+        if running {
+            let e2 = 2 * err
+            if e2 > (0 - dy) {
+                set err = err - dy
+                set x = x + sx
+            }
+            if e2 < dx {
+                set err = err + dx
+                set y = y + sy
+            }
+        }
+    }
+    return 0
+}
+
+# Rotacionar um vértice 3D usando matrizes de rotação Euler (Eixos X, Y, Z)
+fn rotate_vertex(v, ax, ay, az) {
+    # 1. Rotação no eixo X
+    let cos_x = math.cos(ax)
+    let sin_x = math.sin(ax)
+    let y1 = v.y * cos_x - v.z * sin_x
+    let z1 = v.y * sin_x + v.z * cos_x
+    let x1 = v.x
+    
+    # 2. Rotação no eixo Y
+    let cos_y = math.cos(ay)
+    let sin_y = math.sin(ay)
+    let x2 = x1 * cos_y + z1 * sin_y
+    let z2 = (0.0 - x1) * sin_y + z1 * cos_y
+    let y2 = y1
+    
+    # 3. Rotação no eixo Z
+    let cos_z = math.cos(az)
+    let sin_z = math.sin(az)
+    let x3 = x2 * cos_z - y2 * sin_z
+    let y3 = x2 * sin_z + y2 * cos_z
+    let z3 = z2
+    
+    return Vertex3D { x: x3, y: y3, z: z3 }
+}
+
+# Projeção de perspectiva 3D para coordenadas 2D da tela
+fn project_vertex(v, w, h, distance) {
+    # Shift Z para colocar o cubo à frente da câmera
+    let z_shifted = v.z + distance
+    
+    # Fator de FOV e escala
+    let fov = 20.0
+    let x_proj = v.x * fov / z_shifted
+    let y_proj = v.y * fov / z_shifted
+    
+    # Converter para coordenadas discretas de tela (X multiplicado por 2.2 devido ao aspecto das fontes do terminal)
+    let screen_x = math.round(w / 2.0 + x_proj * 2.2)
+    let screen_y = math.round(h / 2.0 - y_proj)
+    
+    return [screen_x, screen_y]
+}
+
+# 1. Declarar os 8 vértices de um cubo 3D unitário
+let vertices = [
+    Vertex3D { x: 0.0 - 1.0, y: 0.0 - 1.0, z: 0.0 - 1.0 },
+    Vertex3D { x: 1.0,       y: 0.0 - 1.0, z: 0.0 - 1.0 },
+    Vertex3D { x: 1.0,       y: 1.0,       z: 0.0 - 1.0 },
+    Vertex3D { x: 0.0 - 1.0, y: 1.0,       z: 0.0 - 1.0 },
+    Vertex3D { x: 0.0 - 1.0, y: 0.0 - 1.0, z: 1.0 },
+    Vertex3D { x: 1.0,       y: 0.0 - 1.0, z: 1.0 },
+    Vertex3D { x: 1.0,       y: 1.0,       z: 1.0 },
+    Vertex3D { x: 0.0 - 1.0, y: 1.0,       z: 1.0 }
+]
+
+# 2. Declarar as 12 arestas do cubo ligando os vértices
+let edges = [
+    [0, 1], [1, 2], [2, 3], [3, 0], # Face Traseira
+    [4, 5], [5, 6], [6, 7], [7, 4], # Face Dianteira
+    [0, 4], [1, 5], [2, 6], [3, 7]  # Arestas de Conexão
+]
+
+# Configurações globais da renderização
+let w = 55
+let h = 20
+let distance = 3.2
+let angle_x = 0.0
+let angle_y = 0.0
+let angle_z = 0.0
+
+# Executar a animação 3D por 8 frames
+let frame = 0
+while frame < 8 {
+    print "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    print "🎥 RENDER FRAME: " + frame + " (Rotacoes: X=" + angle_x + ", Y=" + angle_y + ")"
+    print "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    
+    # 1. Iniciar o buffer vazio da tela
+    let buffer = init_buffer(w, h)
+    
+    # 2. Rotacionar e projetar todos os vértices do cubo
+    let projected = []
+    for v in vertices {
+        let rotated = rotate_vertex(v, angle_x, angle_y, angle_z)
+        let proj = project_vertex(rotated, w, h, distance)
+        projected.push(proj)
+    }
+    
+    # 3. Desenhar todas as 12 arestas do cubo usando o traçador de linhas de Bresenham
+    for edge in edges {
+        let p1 = projected[edge[0]]
+        let p2 = projected[edge[1]]
+        let val = draw_line(buffer, p1[0], p1[1], p2[0], p2[1], "#")
+    }
+    
+    # 4. Imprimir o buffer resultante na tela linha por linha
+    let y = 0
+    while y < h {
+        let row = buffer[y]
+        let row_str = ""
+        for char in row {
+            set row_str = row_str + char
+        }
+        print row_str
+        set y = y + 1
+    }
+    
+    # 5. Incrementar as rotações trigonométricas para o próximo frame
+    set angle_x = angle_x + 0.35
+    set angle_y = angle_y + 0.45
+    set angle_z = angle_z + 0.15
+    
+    set frame = frame + 1
+}
+
+print ""
+print "🌋 ENGINE 3D FINALIZADA COM SUCESSO DE EXECUÇÃO JIT!"
+print ""

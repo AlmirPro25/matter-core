@@ -1,0 +1,13 @@
+[package]
+name = "matter-genesis"
+version = "0.1.0"
+edition = "2021"
+authors = ["Matter Core Team"]
+license = "MIT"
+
+[dependencies]
+matter-backend = { path = "../matter-backend" }
+matter-relativity = { path = "../matter-relativity" }
+matter-chemistry = { path = "../matter-chemistry" }
+
+[dev-dependencies]

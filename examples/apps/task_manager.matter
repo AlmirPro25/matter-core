@@ -13,7 +13,7 @@ let tasks = []
 let next_id = 1
 
 # Criar nova tarefa
-fn create_task(title) {
+fn create_task(title) with io {
     let task = Task {
         id: next_id,
         title: title,
@@ -28,12 +28,12 @@ fn create_task(title) {
 }
 
 # Listar todas as tarefas
-fn list_tasks() {
+fn list_tasks() with io {
     print "=== Task List ==="
     
     if tasks.len() == 0 {
         print "No tasks yet"
-        return ()
+        return 0
     }
     
     for task in tasks {
@@ -48,7 +48,7 @@ fn list_tasks() {
 }
 
 # Completar tarefa
-fn complete_task(task_id) {
+fn complete_task(task_id) with io {
     let i = 0
     while i < tasks.len() {
         let task = tasks[i]
@@ -56,7 +56,7 @@ fn complete_task(task_id) {
             set task.completed = true
             set tasks[i] = task
             print "Task " + task_id + " completed!"
-            return ()
+            return 0
         }
         set i = i + 1
     }
@@ -64,7 +64,7 @@ fn complete_task(task_id) {
 }
 
 # Remover tarefa
-fn remove_task(task_id) {
+fn remove_task(task_id) with io {
     let new_tasks = []
     for task in tasks {
         if task.id != task_id {
@@ -76,7 +76,7 @@ fn remove_task(task_id) {
 }
 
 # Contar tarefas
-fn count_tasks() {
+fn count_tasks() with io {
     let total = tasks.len()
     let completed = 0
     

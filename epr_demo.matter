@@ -1,0 +1,84 @@
+// ============================================================================
+// MATTER CORE - GEDANKENEXPERIMENT: O PARADOXO EPR E O EMARANHAMENTO
+// ============================================================================
+// Este script simula o famoso paradoxo Einstein-Podolsky-Rosen (EPR) de 1935,
+// demonstrando o colapso instantâneo correlacionado de um par de partículas
+// emaranhadas sob a perspectiva de observadores móveis.
+// ============================================================================
+
+print("=============================================================================");
+print("           Matter Core OS v3.5.0 - Einstein-Podolsky-Rosen (EPR)             ");
+print("=============================================================================");
+print("");
+
+// ----------------------------------------------------------------------------
+// 1. CRIAÇÃO E EMARANHAMENTO DO PAR EPR
+// ----------------------------------------------------------------------------
+print("[1/3] PREPARANDO O PAR EMARANHADO DE PARTÍCULAS:");
+genesis.create_particle("particula_a", 1.0, 0.0, 0.0, 1.0);  // Partícula A
+genesis.create_particle("particula_b", 1.0, 0.0, 0.0, -1.0); // Partícula B (momento oposto)
+
+// Emaranhando o par no nível do vácuo quântico
+genesis.entangle("particula_a", "particula_b");
+print("-> Partícula A e Partícula B estão agora entrelaçadas quanticamente.");
+print("");
+
+// Evolve ambas no tempo (elas se propagam em direções opostas)
+genesis.evolve("particula_a", 5, 0.1, 0.0);
+genesis.evolve("particula_b", 5, 0.1, 0.0);
+print("-> Evolução temporal de 0.5s executada. Partículas afastadas no espaço.");
+print("");
+
+// ----------------------------------------------------------------------------
+// 2. MEDIÇÃO EPR SOB REFERENCIAL EM REPOUSO (v = 0.0c)
+// ----------------------------------------------------------------------------
+print("[2/3] MEDIÇÃO CONJUNTA EM REPOUSO (v_obs = 0.0c):");
+let coordenadas_repouso = genesis.measure_entangled("particula_a", "particula_b", 0.0);
+let x_a_rep = coordenadas_repouso[0];
+let x_b_rep = coordenadas_repouso[1];
+
+print("-> Medição da Partícula A colapsou em x_A: " + x_a_rep);
+print("-> Ação fantasmagórica! Partícula B colapsou em x_B: " + x_b_rep);
+
+let info_a_rep = genesis.particle_info("particula_a");
+let info_b_rep = genesis.particle_info("particula_b");
+let p_a_rep = info_a_rep.mom_4[1];
+let p_b_rep = info_b_rep.mom_4[1];
+let p_total_rep = p_a_rep + p_b_rep;
+
+print("-> Conservação de Momento: p_A = " + p_a_rep + " | p_B = " + p_b_rep);
+print("   Momento Linear Total do Sistema: " + p_total_rep);
+print("");
+
+// ----------------------------------------------------------------------------
+// 3. MEDIÇÃO EPR SOB REFERENCIAL EM MOVIMENTO RELATIVÍSTICO (v = 0.6c)
+// ----------------------------------------------------------------------------
+print("[3/3] MEDIÇÃO CONJUNTA SOB O REFERENCIAL RELATIVÍSTICO (v_obs = 0.6c):");
+// Reiniciando o par para as mesmas condições iniciais
+genesis.create_particle("particula_a", 1.0, 0.0, 0.0, 1.0);
+genesis.create_particle("particula_b", 1.0, 0.0, 0.0, -1.0);
+genesis.entangle("particula_a", "particula_b");
+genesis.evolve("particula_a", 5, 0.1, 0.0);
+genesis.evolve("particula_b", 5, 0.1, 0.0);
+
+let coordenadas_mov = genesis.measure_entangled("particula_a", "particula_b", 0.6);
+let x_a_mov = coordenadas_mov[0];
+let x_b_mov = coordenadas_mov[1];
+
+print("-> Medição da Partícula A vista pelo observador em movimento x'_A: " + x_a_mov);
+print("-> Medição da Partícula B vista pelo observador em movimento x'_B: " + x_b_mov);
+
+let info_a_mov = genesis.particle_info("particula_a");
+let info_b_mov = genesis.particle_info("particula_b");
+let p_a_mov = info_a_mov.mom_4[1];
+let p_b_mov = info_b_mov.mom_4[1];
+let p_total_mov = p_a_mov + p_b_mov;
+
+print("-> Conservação de Momento Relativístico com Retroação:");
+print("   p'_A = " + p_a_mov + " | p'_B = " + p_b_mov);
+print("   Momento Linear Total do Sistema Relativístico: " + p_total_mov);
+print("");
+print("=============================================================================");
+print("     \"Deus não joga dados, mas a realidade se entrelaça através da luz.\"     ");
+print("                             - Albert Einstein                               ");
+print("=============================================================================");

@@ -1,0 +1,21 @@
+// Test Lists and Maps in native LLVM compilation
+print("Testing LLVM Data Structures!");
+
+// List test
+let my_list = [10, 20, 30];
+print(my_list[0]);
+print(my_list[1]);
+print(my_list[2]);
+
+set my_list[1] = 99;
+print(my_list[1]);
+
+// Map test
+let my_map = {"a": 100, "b": 200};
+print(my_map["a"]);
+print(my_map["b"]);
+
+set my_map["a"] = 999;
+print(my_map["a"]);
+
+print("All tests passed!");

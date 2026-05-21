@@ -1,0 +1,76 @@
+// Native realtime call contract for Matter Core.
+
+let status = device.status()
+let microphones = device.microphones()
+let cameras = device.cameras()
+let sensors = device.sensors()
+let speakers = device.speakers()
+let displays = device.displays()
+let batteries = device.batteries()
+let network_adapters = device.network_adapters()
+let storage_devices = device.storage_devices()
+let usb_devices = device.usb_devices()
+let bluetooth_devices = device.bluetooth_devices()
+let printers = device.printers()
+let inventory = device.inventory()
+
+print "Matter Native Call Center"
+print status
+print microphones
+print cameras
+print sensors
+print speakers
+print displays
+print batteries
+print network_adapters
+print storage_devices
+print usb_devices
+print bluetooth_devices
+print printers
+
+let call = device.start_call("matter-native-room", {"mic": true, "camera": true, "sensors": true})
+print call
+
+let frame_a = device.sensor_frame()
+let mic_a = device.mic_level()
+let frame_b = device.sensor_frame()
+let mic_b = device.mic_level()
+let camera_frame = device.camera_frame()
+let state = device.call_state()
+
+print frame_a
+print mic_a
+print frame_b
+print mic_b
+print camera_frame
+print state
+
+let report = {
+    "app": "Matter Native Call Center",
+    "contract": "MATTER_DEVICE_1",
+    "status": status,
+    "microphones": microphones,
+    "cameras": cameras,
+    "sensors": sensors,
+    "speakers": speakers,
+    "displays": displays,
+    "batteries": batteries,
+    "network_adapters": network_adapters,
+    "storage_devices": storage_devices,
+    "usb_devices": usb_devices,
+    "bluetooth_devices": bluetooth_devices,
+    "printers": printers,
+    "inventory": inventory,
+    "call": call,
+    "frame_a": frame_a,
+    "frame_b": frame_b,
+    "camera_frame": camera_frame,
+    "mic_a": mic_a,
+    "mic_b": mic_b,
+    "state": state
+}
+
+file.write("F:\\Users\\almir\\Desktop\\Matter_Native_Call\\native_call_report.json", json.stringify(report))
+
+let closed = device.end_call()
+print closed

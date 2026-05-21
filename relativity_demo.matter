@@ -1,0 +1,99 @@
+// ============================================================================
+// MATTER CORE EINSTEIN RELATIVITY ENGINE DEMO
+// ============================================================================
+// Prova de conceito e orquestração de Física Relativística e Espaço-Tempo:
+// 1. Relatividade Restrita (Dilatação temporal, Lorentz Boost, E = mc^2)
+// 2. Relatividade Geral (Geodésicas gravitacionais Schwarzschild)
+// 3. Acoplamento Quântico-Gravitacional (Decoerência de Qubits sob Gravidade)
+// ============================================================================
+
+print("=============================================================================");
+print("        Matter Core OS v3.5.0 - Einstein Relativity & Space-Time Engine      ");
+print("=============================================================================");
+print("");
+
+// ----------------------------------------------------------------------------
+// 1. RELATIVIDADE RESTRITA (SPECIAL RELATIVITY)
+// ----------------------------------------------------------------------------
+print("[1/3] TESTANDO RELATIVIDADE RESTRITA...");
+print("-> Calculando Lorentz Boost a v = 0.8c para coordenadas x = 10.0, t = 0.0...");
+let boost = relativity.lorentz_boost(0.8, 10.0, 0.0);
+print("   Fator Lorentz (Gamma):");
+print(boost.gamma);
+print("   Coordenada Espacial Contraída (x'):");
+print(boost.x_prime);
+print("   Coordenada Temporal Dilatada (t'):");
+print(boost.t_prime);
+print("");
+
+print("-> Equivalência Massa-Energia para rest_mass m0 = 5.0 kg a v = 0.6c...");
+let energy_map = relativity.mass_energy(5.0, 0.6);
+print("   Energia de Repouso (E = m0 * c^2):");
+print(energy_map.rest_energy);
+print("   Energia Relativística Total:");
+print(energy_map.total_energy);
+print("   Energia Cinética Relativística:");
+print(energy_map.kinetic_energy);
+print("   Momento Linear Relativístico (p):");
+print(energy_map.momentum);
+print("");
+
+// ----------------------------------------------------------------------------
+// 2. RELATIVIDADE GERAL (GENERAL RELATIVITY)
+// ----------------------------------------------------------------------------
+print("[2/3] TESTANDO RELATIVIDADE GERAL (MÉTRICA DE SCHWARZSCHILD)...");
+let blackhole_mass = 5.0; // Rs = 2 * G * M = 10.0
+let r_orbit = 25.0;
+let coordinate_seconds = 100.0;
+
+print("-> Gravidade de Schwarzschild para Buraco Negro de Massa M = 5.0 (Rs = 10.0)");
+print("-> Dilatação Temporal Gravitacional a r = 25.0 (para 100s externos)...");
+let proper_time = relativity.gravitational_dilation(blackhole_mass, r_orbit, coordinate_seconds);
+print("   Tempo Próprio experimentado no referencial orbital (segundos):");
+print(proper_time);
+print("");
+
+print("-> Traçando Geodésica Relativística (Bending de luz/órbita decaindo perto do horizonte)...");
+let x = 15.0;
+let y = 0.0;
+let vx = 0.0;
+let vy = 0.35;
+let dt = 0.2;
+
+print("   Posição Inicial do Fóton/Partícula:");
+print("   x: 15.0, y: 0.0, vx: 0.0, vy: 0.35");
+
+let p1 = relativity.geodesic_step(blackhole_mass, x, y, vx, vy, dt);
+print("   Passo 1 -> Posição:");
+print(p1.x);
+print(p1.y);
+
+let p2 = relativity.geodesic_step(blackhole_mass, p1.x, p1.y, p1.vx, p1.vy, dt);
+print("   Passo 2 -> Posição:");
+print(p2.x);
+print(p2.y);
+
+let p3 = relativity.geodesic_step(blackhole_mass, p2.x, p2.y, p2.vx, p2.vy, dt);
+print("   Passo 3 -> Posição:");
+print(p3.x);
+print(p3.y);
+print("");
+
+// ----------------------------------------------------------------------------
+// 3. ACOPLAMENTO QUÂNTICO-GRAVITACIONAL
+// ----------------------------------------------------------------------------
+print("[3/3] TESTANDO INTERFACE QUÂNTICO-GRAVITACIONAL...");
+let base_coherence = 1000.0; // Tempo de coerência base do Qubit em ms
+let radius_closer = 11.5;    // Próximo ao horizonte de eventos (Rs = 10.0)
+let alpha = 0.15;            // Acoplamento térmico gravitacional
+
+print("-> Qubit com tempo de coerência base de 1000.0 ms.");
+print("-> Medindo tempo de coerência residual a r = 11.5 da singularidade...");
+let final_coherence = relativity.quantum_decoherence(base_coherence, blackhole_mass, radius_closer, alpha);
+print("   Tempo de Coerência do Qubit sob gravidade extrema (ms):");
+print(final_coherence);
+print("");
+
+print("=============================================================================");
+print("              SIMULAÇÃO DE FÍSICA RELATIVÍSTICA DE EINSTEIN CONCLUÍDA!        ");
+print("=============================================================================");

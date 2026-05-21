@@ -1,0 +1,11 @@
+print "================================================================"
+print " 📱 INICIANDO MATTER ZAP NATIVO (GUI DESKTOP) "
+print "================================================================"
+
+// Vamos usar o novo backend visual para disparar uma janela Desktop Nativa!
+visual.create_window("MatterZap Nativo - v25")
+
+print " "
+print "  🖥️ Janela nativa iniciada via Rust Egui!"
+print "  Feche a janela para finalizar a execução."
+print " "

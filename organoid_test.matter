@@ -1,0 +1,22 @@
+// Organoid Intelligence Test
+
+print("Initializing Wetware Organoid Culture...");
+let health = wetware.health();
+print("Culture Health:");
+print(health);
+
+print("Active Synapses:");
+print(wetware.synapses());
+
+print("Stimulating Organoid with Spike Train [1, 0, 1, 1]...");
+let response = wetware.stimulate([1, 0, 1, 1]);
+print("Biological Neural Response:");
+print(response);
+
+print("Injecting Dopamine Reward (0.5)...");
+wetware.reward(0.5);
+
+print("Active Synapses after reward:");
+print(wetware.synapses());
+print("Culture Health after reward:");
+print(wetware.health());

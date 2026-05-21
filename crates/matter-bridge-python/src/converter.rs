@@ -81,6 +81,7 @@ impl PythonTypeConverter {
     pub fn from_matter(&self, py: Python, value: &Value) -> PyResult<PyObject> {
         match value {
             Value::Unit => Ok(py.None()),
+            Value::Null => Ok(py.None()),
             Value::Bool(b) => Ok(b.to_object(py)),
             Value::Int(i) => Ok(i.to_object(py)),
             Value::Float(f) => Ok(f.to_object(py)),
@@ -184,6 +185,15 @@ mod tests {
                     .unwrap(),
                 "Matter"
             );
+        });
+    }
+
+    #[test]
+    fn test_convert_null_to_python_none() {
+        Python::with_gil(|py| {
+            let converter = PythonTypeConverter;
+            let py_obj = converter.from_matter(py, &Value::Null).unwrap();
+            assert!(py_obj.is_none(py));
         });
     }
 }

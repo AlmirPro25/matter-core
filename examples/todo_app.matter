@@ -4,17 +4,17 @@ print "=== Matter Todo App ==="
 print ""
 
 # Funções de gerenciamento
-fn add_todo(title) {
+fn add_todo(title) with io {
     print "Added todo:"
     print title
 }
 
-fn mark_done(id) {
+fn mark_done(id) with io {
     print "Todo marked as done:"
     print id
 }
 
-fn list_todos() {
+fn list_todos() with io {
     print "Listing todos..."
     let has_todos = store.has("last_todo")
     print "Has todos:"

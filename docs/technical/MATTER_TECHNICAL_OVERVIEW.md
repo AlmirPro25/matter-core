@@ -1,5 +1,9 @@
 # Matter Core: Technical Overview 🔧
 
+> Status note (2026-05-19): este documento inclui material tecnico historico.
+> Nao use claims de performance aqui como baseline oficial.
+> Para estado atual validado, use `docs/status/REALIDADE_ATUAL_HONESTA.md`, `docs/technical/JIT_EXEC_EXPERIMENTAL.md` e `docs/roadmap/JIT_V2.md`.
+
 **Versão:** v1.0.5  
 **Audience:** Desenvolvedores, Arquitetos, Tech Leads  
 **Data:** Maio 2026
@@ -701,3 +705,4 @@ matter compile app.matter -O3
 **Docs:** https://docs.matter-lang.org  
 **GitHub:** https://github.com/matter-lang/matter-core  
 **Discord:** https://discord.gg/matter-lang
+

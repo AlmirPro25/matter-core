@@ -1,0 +1,12 @@
+[package]
+name = "matter-wetware"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Organoid Intelligence (Wetware Computing) backend for Matter Core"
+
+[dependencies]
+matter-error = { path = "../matter-error" }
+matter-bytecode = { path = "../matter-bytecode" }
+matter-backend = { path = "../matter-backend" }

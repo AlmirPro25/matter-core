@@ -1,0 +1,72 @@
+// ============================================================================
+// MATTER CORE BIOLOGICAL COMPUTING ENGINE DEMO
+// ============================================================================
+// Prova de conceito do motor computacional biológico:
+// 1. Transcrição de DNA para RNA
+// 2. Tradução de RNA para Proteína (aminoácidos)
+// 3. GC Content e Massa Molecular de Proteínas (Daltons)
+// 4. Hibridização e Ligação de fitas de DNA para computação molecular
+// ============================================================================
+
+print("=============================================================================");
+print("          Matter Core OS v3.5.0 - Biological Computing Engine               ");
+print("=============================================================================");
+print("");
+
+// ----------------------------------------------------------------------------
+// 1. TRANSCRICÃO E TRADUCÃO GENÉTICA
+// ----------------------------------------------------------------------------
+print("[1/3] SIMULANDO FLUXO GENÉTICO (TRANSCRICÃO E TRADUCÃO)...");
+let dna_strand = "ATGCGTACGTTAGCTAGC";
+print("-> Fita de DNA inicial:");
+print(dna_strand);
+
+let gc = biology.gc_content(dna_strand);
+print("   Teor de GC (%):");
+print(gc);
+
+let rna = biology.transcribe(dna_strand);
+print("-> Transcrevendo DNA para RNA:");
+print(rna);
+
+let protein = biology.translate(rna);
+print("-> Traduzindo RNA para Proteína:");
+print(protein);
+
+let weight = biology.protein_weight(protein);
+print("   Massa Molecular da Proteína (Da):");
+print(weight);
+print("");
+
+// ----------------------------------------------------------------------------
+// 2. HIBRIDIZACÃO DE DNA (COMPUTACÃO EM DNA)
+// ----------------------------------------------------------------------------
+print("[2/3] COMPUTACÃO EM DNA: PAREAMENTO POR HIBRIDIZACÃO COMPLEMENTAR...");
+// Criamos 3 fitas de DNA. A primeira ("ATGC") deve hibridizar com a segunda ("TACG")
+let strands = ["ATGC", "TACG", "GGGG"];
+print("-> Conjunto de fitas de DNA no computador molecular:");
+print(strands);
+
+let pairs = biology.dna_hybridize(strands);
+print("   Pares de fitas que se hibridizaram (índices):");
+print(pairs);
+print("");
+
+// ----------------------------------------------------------------------------
+// 3. LIGACÃO DE FITAS (LIGATION)
+// ----------------------------------------------------------------------------
+print("[3/3] LIGACÃO QUÍMICA DE FITAS DE DNA (LIGATION)...");
+let strand_a = "ATGC";
+let strand_b = "TACG";
+print("-> Ligando fita A com fita B:");
+print(strand_a);
+print(strand_b);
+
+let ligated = biology.dna_ligate(strand_a, strand_b);
+print("   Fita combinada final:");
+print(ligated);
+print("");
+
+print("=============================================================================");
+print("              SIMULAÇÃO BIOLÓGICA CONCLUÍDA COM SUCESSO!                     ");
+print("=============================================================================");

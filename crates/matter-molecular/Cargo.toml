@@ -6,3 +6,6 @@ authors = ["Matter Core Team"]
 license = "MIT"
 
 [dependencies]
+matter-backend = { path = "../matter-backend" }
+
+[dev-dependencies]

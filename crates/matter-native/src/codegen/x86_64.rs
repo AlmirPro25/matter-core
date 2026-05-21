@@ -1568,6 +1568,11 @@ impl X86CodeGen {
                 self.emit_mov_imm(Register::RAX, 0);
                 self.emit_push(Register::RAX);
             }
+            Constant::Null => {
+                // mov rax, 0
+                self.emit_mov_imm(Register::RAX, 0);
+                self.emit_push(Register::RAX);
+            }
         }
 
         Ok(())

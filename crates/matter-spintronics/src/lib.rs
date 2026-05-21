@@ -32,6 +32,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::f64::consts::PI;
 
+pub mod backend;
+
 // ============================================================================
 // SPIN STATES
 // ============================================================================

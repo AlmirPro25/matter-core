@@ -1,0 +1,94 @@
+// ============================================================================
+// MATTER CORE QUANTUM-RELATIVISTIC-CHEMICAL UNIFICATION DEMO
+// ============================================================================
+// Prova de conceito da unificação fundamental (O DNA da Realidade):
+// 1. Instanciação de pacotes de onda quânticos gaussianos com rest mass e charge
+// 2. Evolução em espaço-tempo curvo sob métrica gravitacional e dilatação temporal local
+// 3. Colapso quântico por medição posicional
+// 4. Overlap de funções de onda complexas para predição de ligação química
+// ============================================================================
+
+print("=============================================================================");
+print("          Matter Core OS v3.5.0 - Genesis Unification Engine                 ");
+print("=============================================================================");
+print("");
+
+// ----------------------------------------------------------------------------
+// 1. INICIALIZAÇÃO DE PARTÍCULAS
+// ----------------------------------------------------------------------------
+print("[1/4] INICIALIZANDO PACOTES DE ONDA QUÂNTICOS...");
+// Partícula A (Elétron-like): massa=1.0, carga=-1.0, posição x0 = -2.0, momentum p0 = 1.0 (movendo-se para a direita)
+genesis.create_particle("electron1", 1.0, -1.0, -2.0, 1.0);
+print("-> Partícula 'electron1' criada:");
+let info1 = genesis.particle_info("electron1");
+print("   Massa de Repouso (m0):");
+print(info1.rest_mass);
+print("   Carga (q):");
+print(info1.charge);
+print("   Posição média inicial <x>:");
+print(info1.expectation_x);
+print("   4-Vetor Posição inicial (t, x, y, z):");
+print(info1.pos_4);
+print("   4-Vetor Momentum inicial (E, px, py, pz):");
+print(info1.mom_4);
+print("");
+
+// Partícula B (Elétron-like): posicionada em x0 = 0.0, estática
+genesis.create_particle("electron2", 1.0, -1.0, 0.0, 0.0);
+print("-> Partícula 'electron2' criada em x = 0.0.");
+print("");
+
+// ----------------------------------------------------------------------------
+// 2. EVOLUÇÃO TEMPORAL NO ESPAÇO-TEMPO CURVO
+// ----------------------------------------------------------------------------
+print("[2/4] SIMULANDO EVOLUÇÃO TEMPORAL SOB GRAVIDADE DE SCHWARZSCHILD...");
+print("-> Evoluindo 'electron1' por 100 passos perto de uma massa estelar (M = 1.2)...");
+// evolve(id, steps, dt, gravity_mass)
+genesis.evolve("electron1", 100, 0.05, 1.2);
+
+let info1_after = genesis.particle_info("electron1");
+print("   Novo tempo coordenado (t):");
+let pos_list = info1_after.pos_4;
+print(pos_list);
+print("   Nova posição média <x> (propagada/desviada pela gravidade):");
+print(info1_after.expectation_x);
+print("   Novo Momentum px:");
+let mom_list = info1_after.mom_4;
+print(mom_list);
+print("");
+
+// ----------------------------------------------------------------------------
+// 3. MEDIÇÃO E COLAPSO DA FUNÇÃO DE ONDA
+// ----------------------------------------------------------------------------
+print("[3/4] REALIZANDO MEDIÇÃO QUÂNTICA E COLAPSO...");
+print("-> Medindo a posição de 'electron1' (colapsando a densidade de probabilidade)...");
+let measured_x = genesis.measure("electron1");
+print("   Posição medida clássica:");
+print(measured_x);
+
+let info1_collapsed = genesis.particle_info("electron1");
+print("   Posição média pós-colapso <x>:");
+print(info1_collapsed.expectation_x);
+print("   Novo Momentum px após colapso:");
+print(info1_collapsed.mom_4);
+print("");
+
+// ----------------------------------------------------------------------------
+// 4. OVERLAP ORBITAL E PREDIÇÃO QUÍMICA
+// ----------------------------------------------------------------------------
+print("[4/4] CALCULANDO OVERLAP DE FUNÇÕES DE ONDA (INTERAÇÃO QUÍMICA)...");
+// O overlap dá o acoplamento eletrônico/quântico entre as partículas, base de toda ligação química
+let wave_overlap = genesis.overlap("electron1", "electron2");
+print("   Overlap integral quântico (|S|):");
+print(wave_overlap);
+
+if (wave_overlap > 0.1) {
+    print("   -> Resultado: Acoplamento quântico forte. Possibilidade de formação de ligação molecular!");
+} else {
+    print("   -> Resultado: Acoplamento quântico fraco. Partículas espacialmente isoladas.");
+}
+print("");
+
+print("=============================================================================");
+print("              SIMULAÇÃO UNIFICADA DE GÊNESIS CONCLUÍDA COM SUCESSO!          ");
+print("=============================================================================");

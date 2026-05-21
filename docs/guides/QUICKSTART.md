@@ -103,6 +103,16 @@ cargo run -q -p matter-cli -- project-imports-json
 cargo run -q -p matter-cli -- project-lock-json
 ```
 
+## One-Command App Flow
+
+For `create -> check -> run` in one script:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\app-bootstrap-smoke.ps1 -ProjectDir target\quick-app
+```
+
+Guide: [APP_BOOTSTRAP_SMOKE.md](APP_BOOTSTRAP_SMOKE.md)
+
 ## Tests
 
 Fast focused validation:

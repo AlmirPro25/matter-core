@@ -423,7 +423,7 @@ entry = "api_bridge_project_event_entry.matter"
     if ($null -ne $json) {
         Assert-Equal $json.ok $true "run-json com stdlib deveria retornar ok=true"
         Assert-Equal @($json.output)[1] "10" "stdlib math.abs deveria funcionar"
-        Assert-Equal @($json.output)[4] "256" "stdlib math.pow deveria funcionar"
+        Assert-Equal @($json.output)[4] "256.0" "stdlib math.pow deveria funcionar"
         Assert-Equal @($json.output)[7] "HELLO WORLD" "stdlib string.upper deveria funcionar"
         Assert-Equal @($json.output)[17] "31" "stdlib list.sum deveria funcionar"
         Pass "run-json stdlib"

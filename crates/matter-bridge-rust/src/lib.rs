@@ -132,8 +132,6 @@ impl LanguageBridge for RustBridge {
 
         match output {
             Ok(output) if output.status.success() => {
-                let version = String::from_utf8_lossy(&output.stdout);
-                println!("Cargo version: {}", version.trim());
                 self.initialized = true;
                 Ok(())
             }
@@ -265,6 +263,12 @@ pub fn encode_value_json(value: &Value) -> serde_json::Value {
                 serde_json::Value::String(name.as_str().to_string()),
             );
         }
+        Value::Null => {
+            object.insert(
+                "type".to_string(),
+                serde_json::Value::String("null".to_string()),
+            );
+        }
     }
     serde_json::Value::Object(object)
 }
@@ -310,6 +314,7 @@ pub fn decode_value_json(json: &serde_json::Value) -> Result<Value, String> {
                 .to_string(),
         )),
         "unit" => Ok(Value::Unit),
+        "null" => Ok(Value::Null),
         "list" => {
             let values = object
                 .get("value")
@@ -415,6 +420,7 @@ mod tests {
             Value::Bool(false),
             Value::new_string("hello".to_string()),
             Value::Unit,
+            Value::Null,
             Value::new_list(vec![Value::Int(1), Value::new_string("two".to_string())]),
             Value::new_map(map),
             Value::new_struct("Config".to_string(), fields),

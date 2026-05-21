@@ -8,8 +8,8 @@ license = "MIT"
 repository = "https://github.com/matter-lang/matter"
 
 [dependencies]
-matter-core = { path = "../.." }
 matter-types = { path = "../matter-types" }
+matter-backend = { path = "../matter-backend" }
 num-complex = "0.4"
 ndarray = "0.15"
 rayon = "1.7"

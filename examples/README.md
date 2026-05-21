@@ -6,6 +6,13 @@ Esta pasta contém exemplos práticos que demonstram os recursos do Matter Core.
 
 ### Básicos
 
+0. **agent_policy_demo.matter** - Demo principal: regra auditavel para agente
+   ```bash
+   matter run examples/agent_policy_demo.matter
+   matter reflect-json examples/agent_policy_demo.matter
+   matter reflexive-guard-json examples/agent_policy_demo.matter
+   ```
+
 1. **hello.matter** - Hello World simples
    ```bash
    matter run examples/hello.matter

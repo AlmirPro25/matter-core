@@ -89,7 +89,18 @@ pub enum Statement {
     Break,
     Continue,
     Return(Expression),
+    Match {
+        subject: Expression,
+        arms: Vec<MatchArm>,
+    },
     Expression(Expression),
+}
+
+/// A single arm in a match statement
+#[derive(Debug, Clone, PartialEq)]
+pub struct MatchArm {
+    pub pattern: Expression,
+    pub body: Vec<Statement>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -98,6 +109,7 @@ pub enum Expression {
     Float(f64),
     Bool(bool),
     String(String),
+    Null,
     Unit,
     Identifier(String),
     Binary {

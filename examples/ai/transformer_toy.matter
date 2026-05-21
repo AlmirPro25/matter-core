@@ -1,0 +1,184 @@
+﻿# Transformer Toy in Matter
+# Single-head self-attention forward pass (educational version)
+
+fn clamp(x, low, high) {
+    if x < low {
+        return low
+    }
+    if x > high {
+        return high
+    }
+    return x
+}
+
+fn exp_approx(x) {
+    # 4th-order Taylor around 0, with clamped input for stability
+    let t = clamp(x, -3, 3)
+    let t2 = t * t
+    let t3 = t2 * t
+    let t4 = t3 * t
+    return 1 + t + (t2 / 2) + (t3 / 6) + (t4 / 24)
+}
+
+fn dot(a, b) {
+    let i = 0
+    let s = 0
+    while i < a.len() {
+        set s = s + (a[i] * b[i])
+        set i = i + 1
+    }
+    return s
+}
+
+fn mat_vec_mul(w, v) {
+    let out = []
+    let i = 0
+    while i < w.len() {
+        let row = w[i]
+        out.push(dot(row, v))
+        set i = i + 1
+    }
+    return out
+}
+
+fn softmax_fixed(xs, scale_int) {
+    let exps = []
+    let sum_exp = 0
+
+    let i = 0
+    while i < xs.len() {
+        let e = exp_approx(xs[i]) * scale_int
+        exps.push(e)
+        set sum_exp = sum_exp + e
+        set i = i + 1
+    }
+
+    let probs_scaled = []
+    set i = 0
+    while i < exps.len() {
+        probs_scaled.push((exps[i] * scale_int) / sum_exp)
+        set i = i + 1
+    }
+
+    return probs_scaled
+}
+
+fn weighted_sum_scaled(weights_scaled, values, scale_int) {
+    # values: [seq][d_model]
+    let d_model = values[0].len()
+    let out = []
+
+    let j = 0
+    while j < d_model {
+        out.push(0)
+        set j = j + 1
+    }
+
+    let i = 0
+    while i < weights_scaled.len() {
+        let v = values[i]
+        let w = weights_scaled[i]
+
+        set j = 0
+        while j < d_model {
+            set out[j] = out[j] + (w * v[j])
+            set j = j + 1
+        }
+
+        set i = i + 1
+    }
+
+    set j = 0
+    while j < d_model {
+        set out[j] = out[j] / scale_int
+        set j = j + 1
+    }
+
+    return out
+}
+
+fn project_sequence(x, w) {
+    # x: [seq][d_model], w: [d_model][d_model]
+    let y = []
+    let i = 0
+    while i < x.len() {
+        y.push(mat_vec_mul(w, x[i]))
+        set i = i + 1
+    }
+    return y
+}
+
+fn attention_for_token(q_idx, q_all, k_all, v_all, scale) with io {
+    let q = q_all[q_idx]
+    let scores = []
+
+    let i = 0
+    while i < k_all.len() {
+        scores.push(dot(q, k_all[i]) / scale)
+        set i = i + 1
+    }
+
+    let prob_scale = 1000
+    let probs = softmax_fixed(scores, prob_scale)
+    let out = weighted_sum_scaled(probs, v_all, prob_scale)
+
+    print "token=" + q_idx
+    print "scores=" + scores
+    print "weights=" + probs
+    print "out=" + out
+
+    return out
+}
+
+fn transformer_toy_forward() with io {
+    # Tiny input sequence: 3 tokens, d_model = 4
+    # Fixed-point embedding scale (1000 = 1.000)
+    let x = [
+        [1000, 0, 1000, 0],
+        [0, 1000, 0, 1000],
+        [1000, 1000, 0, 0]
+    ]
+
+    # Learned projection matrices (toy values)
+    let w_q = [
+        [1, 0, 0, 0],
+        [0, 1, 0, 0],
+        [0, 0, 1, 0],
+        [0, 0, 0, 1]
+    ]
+
+    let w_k = [
+        [1, 0, 0, 0],
+        [0, 1, 0, 0],
+        [0, 0, 1, 0],
+        [0, 0, 0, 1]
+    ]
+
+    let w_v = [
+        [1, 0, 0, 0],
+        [0, 1, 0, 0],
+        [0, 0, 1, 0],
+        [0, 0, 0, 1]
+    ]
+
+    let q_all = project_sequence(x, w_q)
+    let k_all = project_sequence(x, w_k)
+    let v_all = project_sequence(x, w_v)
+
+    print "=== Transformer Toy (Single Head) ==="
+    print "input=" + x
+
+    # scale = sqrt(d_k) ~ 2 for d_k=4
+    let scale = 2
+
+    let y0 = attention_for_token(0, q_all, k_all, v_all, scale)
+    let y1 = attention_for_token(1, q_all, k_all, v_all, scale)
+    let y2 = attention_for_token(2, q_all, k_all, v_all, scale)
+
+    print "--- final outputs ---"
+    print "y0=" + y0
+    print "y1=" + y1
+    print "y2=" + y2
+}
+
+transformer_toy_forward()

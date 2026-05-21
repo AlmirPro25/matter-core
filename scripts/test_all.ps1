@@ -5,7 +5,11 @@ param(
     [switch]$IncludeJavaNativeSmoke,
     [switch]$IncludeNodeNativeUnitTests,
     [switch]$StrictEnv,
-    [switch]$CiMode
+    [switch]$CiMode,
+    [switch]$RunAiCanonicalFlow,
+    [string]$AiFlowProgramPath = "examples\\first_run.matter",
+    [int]$AiFlowBenchmarkIterations = 20,
+    [switch]$AiFlowSkipBenchmarkGate
 )
 
 # Test: Full Matter Core validation
@@ -112,6 +116,26 @@ Run-Step "bytecode equivalence" {
 
 Run-Step "api bridge json contract" {
     powershell -ExecutionPolicy Bypass -File .\scripts\test_api_bridge.ps1 -CliPath $releaseCliPath
+}
+
+if ($RunAiCanonicalFlow) {
+    Run-Step "ai app canonical flow" {
+        $args = @(
+            "-ExecutionPolicy", "Bypass",
+            "-File", ".\\scripts\\ai-app-canonical-flow.ps1",
+            "-ProgramPath", $AiFlowProgramPath,
+            "-BenchmarkIterations", "$AiFlowBenchmarkIterations",
+            "-CliPath", $releaseCliPath
+        )
+        if ($AiFlowSkipBenchmarkGate) {
+            $args += "-SkipBenchmarkGate"
+        }
+        powershell @args
+    }
+}
+else {
+    Write-Host "PULADO: ai app canonical flow" -ForegroundColor Yellow
+    Write-Host ""
 }
 
 if (-not $SkipRunnableExamples) {

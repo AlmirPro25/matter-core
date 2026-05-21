@@ -63,7 +63,7 @@ impl LanguageBridge for PythonBridge {
         // PyO3 inicializa automaticamente com feature "auto-initialize"
         Python::with_gil(|py| {
             // Verifica se Python está funcionando
-            py.run("import sys; print(f'Python {sys.version}')", None, None)
+            py.run("import sys", None, None)
                 .map_err(|e| format!("Python initialization failed: {}", e))?;
 
             self.initialized = true;

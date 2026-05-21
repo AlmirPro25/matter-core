@@ -23,6 +23,8 @@ use num_complex::Complex64;
 use std::f64::consts::{FRAC_1_SQRT_2, PI};
 use thiserror::Error;
 
+pub mod backend;
+
 #[derive(Error, Debug)]
 pub enum QuantumError {
     #[error("Invalid qubit index: {0}")]

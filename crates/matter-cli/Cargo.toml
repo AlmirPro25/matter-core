@@ -8,8 +8,9 @@ name = "matter-cli"
 path = "src/main.rs"
 
 [features]
-default = []
+default = ["jit-exec"]
 llvm = []
+jit-exec = ["matter-vm/jit-exec"]
 
 [dependencies]
 matter-lexer = { workspace = true }

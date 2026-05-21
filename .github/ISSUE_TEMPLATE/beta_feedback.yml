@@ -1,0 +1,67 @@
+name: Beta feedback
+description: Report Matter Core beta install, diagnosis, uninstall, or first-run feedback.
+title: "beta: "
+labels: ["beta", "feedback"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for Windows x64 beta testing. Please paste command output instead of screenshots when possible.
+  - type: dropdown
+    id: result
+    attributes:
+      label: Test result
+      options:
+        - Installed and first run worked
+        - Install failed
+        - Checksum failed
+        - matter command failed
+        - Diagnosis failed
+        - Uninstall failed
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      placeholder: Windows 11 23H2, Windows 10 22H2
+    validations:
+      required: true
+  - type: input
+    id: powershell
+    attributes:
+      label: PowerShell version
+      placeholder: $PSVersionTable.PSVersion
+    validations:
+      required: true
+  - type: textarea
+    id: commands
+    attributes:
+      label: Commands run
+      render: powershell
+      value: |
+        powershell -ExecutionPolicy Bypass -File .\install-release-zip.ps1 -ZipPath .\matter-core-windows-x64.zip -ChecksumJsonPath .\release-checksums.json -Sha256Path .\SHA256SUMS.txt
+        matter run examples\first_run.matter
+        matter capabilities-json
+        powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Matter\scripts\diagnose-local-install.ps1"
+        powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Matter\scripts\uninstall-local.ps1"
+    validations:
+      required: true
+  - type: textarea
+    id: diagnosis
+    attributes:
+      label: Diagnosis output
+      description: Paste the output of diagnose-local-install.ps1 if install reached that step.
+      render: text
+  - type: textarea
+    id: error
+    attributes:
+      label: Error output
+      description: Paste any failed command output.
+      render: text
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Anything confusing, slow, blocked by antivirus/SmartScreen, or unclear in the instructions.

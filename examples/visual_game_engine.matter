@@ -1,0 +1,59 @@
+# 🌋 MATTER CORE V25/26: PROGRAMMABLE 3D GAME ENGINE & NATIVE AUDIO DEMO
+#
+# Este exemplo lança a novíssima Engine de Jogo 3D Nativa e Acelerada por GPU do Matter Core,
+# agora totalmente customizável via código, com efeitos de áudio retrô de 8-bits!
+# 
+# 🎮 RECURSOS DA ENGINE:
+#   1. Renderizador 3D em Tempo Real com Projeção de Perspectiva (Fov, Câmera X/Y/Z, Pitch, Yaw).
+#   2. Entrada Total de Teclado (W, A, S, D para andar; Espaço/Shift para voar; Setas para olhar).
+#   3. Entrada e Interação de Mouse (Arraste para rotacionar a câmera; Clique Esquerdo para colocar blocos 3D).
+#   4. Simulação de Rede Multiplayer e telemetria ativa de Latência.
+#   5. 100% Customizável: Mude a gravidade, cor do céu e crie estruturas 3D via Matter code!
+#   6. 🎵 AudioBackend Integrado: Toque efeitos sonoros retrô e melodias nativas!
+
+print "╔════════════════════════════════════════════════════╗"
+print "║   🌋 INICIANDO A ENGINE DE JOGO 3D DA MATTER CORE  ║"
+print "║   🎮 Controles: W, A, S, D + Arrastar Mouse         ║"
+print "║   🌐 Configuração Dinâmica & Áudio Retrô Ativo     ║"
+print "╚════════════════════════════════════════════════════╝"
+print ""
+
+# 1. Tocar efeitos sonoros retrô de inicialização (retro laser e jump!)
+print "🔊 Tocando fanfarra retrô de inicialização..."
+audio.jump()
+audio.laser()
+
+# Pequena melodia de chiptune de 8-bits!
+audio.beep(523, 100) # C5
+audio.beep(587, 100) # D5
+audio.beep(659, 100) # E5
+audio.beep(784, 200) # G5
+
+# 2. Configurar o ambiente do mundo 3D em tempo real
+# Gerar blocos de forma programada para formar uma arena espacial!
+let blocos = [
+    [0.0, 0.0, 0.0],
+    [2.0, 0.0, 0.0],
+    [-2.0, 0.0, 0.0],
+    [0.0, 0.0, 2.0],
+    [0.0, 0.0, -2.0],
+    [1.5, 0.5, 1.5],
+    [-1.5, 0.5, -1.5],
+    [0.0, 1.0, 1.0]
+]
+
+# Construir mapa de configuração premium
+let config = {
+    "sky_color": [14, 18, 28],  # Céu azul-escuro cósmico
+    "gravity": 5.5,             # Gravidade reduzida (estilo caminhada na Lua!)
+    "blocks": blocos
+}
+
+let titulo = "Matter 3D JIT Game Engine - Space Moon Walk Arena (v26)"
+let sucesso = visual.run_game_engine(titulo, config)
+
+if sucesso {
+    print "🏁 JANELA GRÁFICA DA ENGINE FINALIZADA COM SUCESSO!"
+} else {
+    print "❌ ERRO AO INICIALIZAR A ACELERAÇÃO DE HARDWARE DA ENGINE."
+}

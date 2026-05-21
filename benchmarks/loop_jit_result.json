@@ -1,0 +1,9 @@
+﻿{
+    "benchmark":  "loop_sum",
+    "timestamp":  "2026-05-18T20:53:45.4398137-03:00",
+    "gain_percent":  3.1392156495373658,
+    "measured_with":  "matter-cli benchmark-json --iterations 5",
+    "baseline_ms":  5017.094,
+    "delta_ms":  157.4974000000002,
+    "after_ms":  4859.5966
+}

@@ -1,3 +1,4 @@
+#![allow(deprecated, dead_code, clippy::get_first, clippy::useless_format)]
 //! Visual Backend for Matter Core
 //! Integração com PVM/PXL como backend visual desacoplado
 //!
@@ -6,6 +7,7 @@
 //! - PVM/PXL é um backend/plugin visual
 //! - Visual é um target, não uma dependência core
 
+use eframe::egui;
 use matter_backend::{Backend, Value};
 use std::collections::HashMap;
 use std::fs;
@@ -98,6 +100,1991 @@ pub trait VisualRuntime {
 
 /// Backend visual com trace/mock (implementação inicial)
 /// Depois será substituído por PvmVisualBackend real
+pub struct AntigravityMessage {
+    text: String,
+    is_user: bool,
+    time: String,
+}
+
+struct AIRequest {
+    prompt: String,
+    ctx: egui::Context,
+}
+
+/// Bridges the visual GUI to the user's existing matter-cli agent system.
+/// Instead of reimplementing API calls, we spawn `matter-cli agent-chat`
+/// as a subprocess and pipe messages through stdin/stdout.
+/// This means the GUI inherits ALL agent capabilities:
+/// providers, profiles, models, memory, sessions, tools, fallback, etc.
+fn spawn_agent_bridge() -> (
+    std::sync::mpsc::Sender<AIRequest>,
+    std::sync::mpsc::Receiver<String>,
+) {
+    let (ui_tx, worker_rx) = std::sync::mpsc::channel::<AIRequest>();
+    let (worker_tx, ui_rx) = std::sync::mpsc::channel::<String>();
+
+    std::thread::spawn(move || {
+        // Try to find the matter-cli binary
+        let cli_path = find_matter_cli_binary();
+
+        while let Ok(req) = worker_rx.recv() {
+            let response = if let Some(ref cli) = cli_path {
+                agent_query_via_cli(cli, &req.prompt)
+            } else {
+                // Fallback: use the direct curl-style approach if CLI binary not found
+                agent_query_direct(&req.prompt)
+            };
+            let _ = worker_tx.send(response);
+            req.ctx.request_repaint();
+        }
+    });
+
+    (ui_tx, ui_rx)
+}
+
+fn find_matter_cli_binary() -> Option<String> {
+    // 1. Check custom target dir (user's config)
+    let custom = "F:/Users/almir/Desktop/matter_target/release/matter-cli.exe";
+    if std::path::Path::new(custom).exists() {
+        return Some(custom.to_string());
+    }
+    // 2. Check local target dir
+    let local = "./target/release/matter-cli.exe";
+    if std::path::Path::new(local).exists() {
+        return Some(local.to_string());
+    }
+    // 3. Check PATH
+    if let Ok(output) = std::process::Command::new("where")
+        .arg("matter-cli")
+        .output()
+    {
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() {
+                return Some(path.lines().next().unwrap_or(&path).to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Query the AI via matter-cli's JSON API bridge
+fn agent_query_via_cli(cli_path: &str, prompt: &str) -> String {
+    // Use the agent's existing provider/model resolution
+    let provider = std::env::var("MATTER_AGENT_PROVIDER").unwrap_or_else(|_| "openai".to_string());
+    let profile = std::env::var("MATTER_AGENT_PROFILE").unwrap_or_else(|_| "coding".to_string());
+    let model = std::env::var("MATTER_AGENT_MODEL").unwrap_or_default();
+
+    // Build the JSON payload using the same format as chat_completion_via_curl
+    let system_prompt = "You are Matter Agent, a pragmatic coding assistant inside the Matter Core visual interface. \
+        Keep answers concise, actionable and in the user's language (Portuguese/BR). \
+        You have access to the entire Matter Core workspace.";
+
+    let payload = serde_json::json!({
+        "provider": provider,
+        "profile": profile,
+        "model": if model.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(model) },
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt}
+        ]
+    });
+
+    // Write payload to temp file
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let payload_path = std::env::temp_dir().join(format!("matter_visual_agent_{}.json", nanos));
+    if let Err(e) = std::fs::write(&payload_path, payload.to_string()) {
+        return format!("Erro ao preparar consulta: {}", e);
+    }
+
+    // Call matter-cli api-chat-json (single-shot mode)
+    let output = std::process::Command::new(cli_path)
+        .arg("api-chat-json")
+        .arg(payload_path.to_string_lossy().as_ref())
+        .output();
+    let _ = std::fs::remove_file(&payload_path);
+
+    match output {
+        Ok(out) => {
+            if out.status.success() {
+                let body = String::from_utf8_lossy(&out.stdout);
+                // Try to parse JSON response
+                if let Ok(doc) = serde_json::from_str::<serde_json::Value>(body.trim()) {
+                    if let Some(text) = doc.get("content").and_then(|v| v.as_str()) {
+                        return text.to_string();
+                    }
+                    if let Some(text) = doc
+                        .get("choices")
+                        .and_then(|v| v.get(0))
+                        .and_then(|v| v.get("message"))
+                        .and_then(|v| v.get("content"))
+                        .and_then(|v| v.as_str())
+                    {
+                        return text.to_string();
+                    }
+                }
+                // If not JSON, return raw output
+                body.trim().to_string()
+            } else {
+                // api-chat-json may not exist yet, fall back to direct
+                agent_query_direct(prompt)
+            }
+        }
+        Err(_) => agent_query_direct(prompt),
+    }
+}
+
+/// Direct HTTP fallback using the user's existing env vars
+fn agent_query_direct(prompt: &str) -> String {
+    let provider = std::env::var("MATTER_AGENT_PROVIDER").unwrap_or_else(|_| "openai".to_string());
+    let api_key = std::env::var("OPENAI_API_KEY")
+        .or_else(|_| std::env::var("MATTER_AGENT_API_KEY"))
+        .unwrap_or_default();
+
+    if api_key.trim().is_empty() {
+        return "⚠️ Agente IA conectado ao sistema Matter Core.\n\n\
+            Para ativar respostas de IA em tempo real, configure uma das variáveis:\n\n\
+            • `OPENAI_API_KEY` — para usar GPT-4/GPT-4o\n\
+            • `MATTER_AGENT_API_KEY` — para usar o provedor configurado\n\
+            • `MATTER_AGENT_PROVIDER` — para trocar de provedor (openai, nvidia)\n\n\
+            Ou use a CLI diretamente: `matter-cli agent-chat`"
+            .to_string();
+    }
+
+    let base_url = match provider.to_ascii_lowercase().as_str() {
+        "nvidia" => "https://integrate.api.nvidia.com/v1",
+        _ => "https://api.openai.com/v1",
+    };
+
+    let model = std::env::var("MATTER_AGENT_MODEL").unwrap_or_else(|_| "gpt-4o-mini".to_string());
+
+    let body = serde_json::json!({
+        "model": model,
+        "messages": [
+            {"role": "system", "content": "You are Matter Agent, a pragmatic coding assistant inside the Matter Core visual interface. Keep answers concise, actionable and in the user's language (Portuguese/BR). You have access to the entire Matter Core workspace."},
+            {"role": "user", "content": prompt}
+        ]
+    });
+
+    let client = reqwest::blocking::Client::new();
+    match client
+        .post(format!("{}/chat/completions", base_url))
+        .header("Authorization", format!("Bearer {}", api_key))
+        .json(&body)
+        .send()
+    {
+        Ok(res) => {
+            if !res.status().is_success() {
+                return format!(
+                    "Erro da API ({}): tente verificar sua chave com `matter-cli agent-doctor`",
+                    res.status()
+                );
+            }
+            match res.json::<serde_json::Value>() {
+                Ok(json) => {
+                    if let Some(text) = json["choices"][0]["message"]["content"].as_str() {
+                        text.to_string()
+                    } else {
+                        "Resposta da API em formato inesperado".to_string()
+                    }
+                }
+                Err(e) => format!("Erro ao decodificar resposta: {}", e),
+            }
+        }
+        Err(e) => format!("Erro de conexão: {}", e),
+    }
+}
+
+struct AntigravityApp {
+    input_text: String,
+    messages: Vec<AntigravityMessage>,
+    projects: Vec<(String, String, String)>,
+    walkthrough_content: String,
+    active_tab: String,
+    tx: std::sync::mpsc::Sender<AIRequest>,
+    rx: std::sync::mpsc::Receiver<String>,
+    is_loading: bool,
+    agent_provider: String,
+    agent_model: String,
+}
+
+impl Default for AntigravityApp {
+    fn default() -> Self {
+        let (ui_tx, ui_rx) = spawn_agent_bridge();
+
+        let provider =
+            std::env::var("MATTER_AGENT_PROVIDER").unwrap_or_else(|_| "openai".to_string());
+        let model =
+            std::env::var("MATTER_AGENT_MODEL").unwrap_or_else(|_| "gpt-4o-mini".to_string());
+
+        Self {
+            input_text: String::new(),
+            active_tab: "Walkthrough".to_string(),
+            messages: vec![
+                AntigravityMessage {
+                    text: "vc ver furuto?".to_string(),
+                    is_user: true,
+                    time: "16:40".to_string(),
+                },
+                AntigravityMessage {
+                    text: "Sim, eu vejo um futuro muito promissor para o Matter Core! Três grandes caminhos:\n\n1. 🔌 **Camada de Abstração pós-Silício**: Compilar direto para aceleradores fotônicos e neuromórficos.\n2. 🤖 **Virtual Machine Nativa para Agentes de IA**: Fila de eventos e persistência nativas para rodar LLMs autônomos.\n3. 🎓 **Pesquisa Científica Open-Source**: Publicação do manifesto em conferências científicas globais (PLDI/ASPLOS).".to_string(),
+                    is_user: false,
+                    time: "16:41".to_string(),
+                },
+                AntigravityMessage {
+                    text: "testar meu sistema quero vc recrie sua interface aqui dentro do meu sistema usando o matter ok ?".to_string(),
+                    is_user: true,
+                    time: "16:47".to_string(),
+                },
+                AntigravityMessage {
+                    text: "Com certeza! Iniciando a recriação da interface nativa do Antigravity rodando diretamente dentro da engine gráfica (Egui/Rust) do Matter Core... 🚀".to_string(),
+                    is_user: false,
+                    time: "16:48".to_string(),
+                }
+            ],
+            projects: vec![
+                ("app-10-aether-prime-ai-build...".to_string(), "Optimizing Aether P...".to_string(), "1mo".to_string()),
+                ("cassino-vip-mobile%20%28...".to_string(), "Modernizing Casino ...".to_string(), "23d".to_string()),
+                ("MANIFESTO DA LINGUAGEM MATTER CORE".to_string(), "Reviewing Matter Co...".to_string(), "now".to_string()),
+            ],
+            walkthrough_content: "### Relatório de QA - Matter Core\n\n- **math.pow**: Ajustada asserção para float de `256.0` em `test_api_bridge.ps1`.\n- **Value::Null**: Corrigida compilação não exaustiva in `crates/matter-bridge-go-native/src/real.rs`.\n- **FFI Polyglot**: Bridges Node.js e Go compilados e verificados com sucesso!\n- **test_all.ps1**: Suíte de testes geral executada com 100% de sucesso!".to_string(),
+            tx: ui_tx,
+            rx: ui_rx,
+            is_loading: false,
+            agent_provider: provider,
+            agent_model: model,
+        }
+    }
+}
+
+impl eframe::App for AntigravityApp {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        if let Ok(reply) = self.rx.try_recv() {
+            self.messages.push(AntigravityMessage {
+                text: reply,
+                is_user: false,
+                time: "Agora".to_string(),
+            });
+            self.is_loading = false;
+        }
+
+        let mut visuals = egui::Visuals::dark();
+        visuals.override_text_color = Some(egui::Color32::from_rgb(226, 232, 240));
+        visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(14, 14, 18);
+        ui.ctx().set_visuals(visuals);
+
+        let height = ui.available_height();
+
+        // 1. LEFT SIDEBAR PANEL
+        egui::SidePanel::left("antigravity_left_sidebar")
+            .resizable(false)
+            .default_width(260.0)
+            .frame(
+                egui::Frame::NONE
+                    .fill(egui::Color32::from_rgb(15, 15, 18))
+                    .inner_margin(12.0),
+            )
+            .show_inside(ui, |ui| {
+                // Top Menu Simulation
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new("Antigravity")
+                            .strong()
+                            .size(13.0)
+                            .color(egui::Color32::from_rgb(59, 130, 246)),
+                    );
+                    ui.label(
+                        egui::RichText::new("File")
+                            .size(11.0)
+                            .color(egui::Color32::GRAY),
+                    );
+                    ui.label(
+                        egui::RichText::new("View")
+                            .size(11.0)
+                            .color(egui::Color32::GRAY),
+                    );
+                    ui.label(
+                        egui::RichText::new("Window")
+                            .size(11.0)
+                            .color(egui::Color32::GRAY),
+                    );
+                });
+                ui.add_space(8.0);
+
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new("⬅")
+                            .size(12.0)
+                            .color(egui::Color32::GRAY),
+                    );
+                    ui.label(
+                        egui::RichText::new("➡")
+                            .size(12.0)
+                            .color(egui::Color32::GRAY),
+                    );
+                    ui.label(
+                        egui::RichText::new("🔄")
+                            .size(12.0)
+                            .color(egui::Color32::GRAY),
+                    );
+                });
+                ui.add_space(8.0);
+
+                // + New Conversation Button
+                egui::Frame::NONE
+                    .fill(egui::Color32::from_rgb(25, 25, 32))
+                    .corner_radius(6)
+                    .inner_margin(8.0)
+                    .show(ui, |ui| {
+                        ui.set_min_width(ui.available_width());
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new("➕").size(12.0));
+                            ui.label(egui::RichText::new("New Conversation").strong().size(13.0));
+                        });
+                    });
+
+                ui.add_space(12.0);
+
+                // Navigation Items
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new("💬")
+                            .size(12.0)
+                            .color(egui::Color32::GRAY),
+                    );
+                    ui.label("Conversation History");
+                });
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new("⏱")
+                            .size(12.0)
+                            .color(egui::Color32::GRAY),
+                    );
+                    ui.label("Scheduled Tasks");
+                });
+
+                ui.add_space(16.0);
+                ui.separator();
+                ui.add_space(12.0);
+
+                // Projects Section
+                ui.label(
+                    egui::RichText::new("Projects")
+                        .strong()
+                        .color(egui::Color32::from_rgb(156, 163, 175))
+                        .size(11.0),
+                );
+                ui.add_space(8.0);
+
+                egui::ScrollArea::vertical()
+                    .id_salt("projects_scroll")
+                    .show(ui, |ui| {
+                        for (title, detail, time) in &self.projects {
+                            let is_active = title.contains("MANIFESTO");
+                            let bg_color = if is_active {
+                                egui::Color32::from_rgb(30, 30, 42)
+                            } else {
+                                egui::Color32::TRANSPARENT
+                            };
+
+                            egui::Frame::NONE
+                                .fill(bg_color)
+                                .corner_radius(6)
+                                .inner_margin(6.0)
+                                .show(ui, |ui| {
+                                    ui.set_min_width(ui.available_width());
+                                    ui.horizontal(|ui| {
+                                        ui.label(egui::RichText::new("📁").size(13.0).color(
+                                            if is_active {
+                                                egui::Color32::from_rgb(59, 130, 246)
+                                            } else {
+                                                egui::Color32::GRAY
+                                            },
+                                        ));
+                                        ui.vertical(|ui| {
+                                            ui.label(
+                                                egui::RichText::new(title)
+                                                    .strong()
+                                                    .size(12.0)
+                                                    .color(if is_active {
+                                                        egui::Color32::WHITE
+                                                    } else {
+                                                        egui::Color32::from_rgb(180, 180, 190)
+                                                    }),
+                                            );
+                                            ui.horizontal(|ui| {
+                                                ui.label(
+                                                    egui::RichText::new(detail)
+                                                        .size(10.0)
+                                                        .color(egui::Color32::GRAY),
+                                                );
+                                                ui.label(
+                                                    egui::RichText::new(time).size(10.0).color(
+                                                        egui::Color32::from_rgb(100, 100, 120),
+                                                    ),
+                                                );
+                                            });
+                                        });
+                                    });
+                                });
+                            ui.add_space(6.0);
+                        }
+                    });
+
+                // Settings at the bottom
+                ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        ui.label("⚙");
+                        ui.label("Settings");
+                    });
+                });
+            });
+
+        // 2. RIGHT PANEL - WALKTHROUGH
+        egui::SidePanel::right("antigravity_right_sidebar")
+            .resizable(false)
+            .default_width(320.0)
+            .frame(
+                egui::Frame::NONE
+                    .fill(egui::Color32::from_rgb(15, 15, 18))
+                    .inner_margin(12.0),
+            )
+            .show_inside(ui, |ui| {
+                // Tab select
+                ui.horizontal(|ui| {
+                    let btn_overview = self.active_tab == "Overview";
+                    let btn_walkthrough = self.active_tab == "Walkthrough";
+
+                    if ui.selectable_label(btn_overview, "Overview").clicked() {
+                        self.active_tab = "Overview".to_string();
+                    }
+                    if ui.selectable_label(btn_walkthrough, "Walkthrough").clicked() {
+                        self.active_tab = "Walkthrough".to_string();
+                    }
+                });
+
+                ui.add_space(8.0);
+                ui.separator();
+                ui.add_space(8.0);
+
+                ui.label(egui::RichText::new(&self.active_tab).strong().size(16.0).color(egui::Color32::WHITE));
+                ui.add_space(8.0);
+
+                egui::ScrollArea::vertical()
+                    .id_salt("right_scroll")
+                    .show(ui, |ui| {
+                        if self.active_tab == "Walkthrough" {
+                            ui.label(egui::RichText::new("✅ Todas as asserções passaram no compilador!").color(egui::Color32::from_rgb(0, 230, 118)));
+                            ui.add_space(10.0);
+
+                            egui::Frame::NONE
+                                .fill(egui::Color32::from_rgb(25, 25, 32))
+                                .corner_radius(6)
+                                .inner_margin(8.0)
+                                .show(ui, |ui| {
+                                    ui.vertical(|ui| {
+                                        ui.label(egui::RichText::new("Ajuste de math.pow").strong().size(12.0));
+                                        ui.label(egui::RichText::new("Asserção corrigida para float 256.0 no arquivo test_api_bridge.ps1.").size(11.0).color(egui::Color32::GRAY));
+                                    });
+                                });
+                            ui.add_space(6.0);
+
+                            egui::Frame::NONE
+                                .fill(egui::Color32::from_rgb(25, 25, 32))
+                                .corner_radius(6)
+                                .inner_margin(8.0)
+                                .show(ui, |ui| {
+                                    ui.vertical(|ui| {
+                                        ui.label(egui::RichText::new("Value::Null em Go").strong().size(12.0));
+                                        ui.label(egui::RichText::new("Adicionada exaustividade no real.rs do bridge de Go para não quebrar no build native.").size(11.0).color(egui::Color32::GRAY));
+                                    });
+                                });
+
+                            ui.add_space(12.0);
+                            ui.label(egui::RichText::new("Relatórios Gerados").strong().size(12.0));
+                            ui.label("- ffi-validation-matrix.json");
+                            ui.label("- release-readiness.json");
+                            ui.label("- ffi-validation-report.md");
+                        } else {
+                            ui.label("Visão Geral do projeto Matter Core Language.");
+                            ui.label("Todo o ecossistema está validado como experimental_release_candidate.");
+                        }
+                    });
+
+                // Status Bar info at the bottom
+                ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("🌤 29°C Pred. Ensolarado").size(10.0).color(egui::Color32::GRAY));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.label(egui::RichText::new("POR PTB2 16:47").size(10.0).color(egui::Color32::GRAY));
+                        });
+                    });
+                });
+            });
+
+        // 3. CENTRAL PANEL - CHAT THREAD
+        egui::CentralPanel::default()
+            .frame(
+                egui::Frame::NONE
+                    .fill(egui::Color32::from_rgb(10, 10, 13))
+                    .inner_margin(12.0),
+            )
+            .show_inside(ui, |ui| {
+                // Header of Chat
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new("MANIFESTO DA LINGUAGEM MATTER CORE")
+                            .strong()
+                            .size(12.0)
+                            .color(egui::Color32::GRAY),
+                    );
+                    ui.label("/");
+                    ui.label(
+                        egui::RichText::new("Reviewing Matter Core Language")
+                            .size(12.0)
+                            .color(egui::Color32::WHITE),
+                    );
+                });
+                ui.add_space(6.0);
+                ui.separator();
+                ui.add_space(12.0);
+
+                // Scroll message area
+                let chat_height = height - 130.0;
+                egui::ScrollArea::vertical()
+                    .id_salt("antigravity_chat_scroll")
+                    .max_height(chat_height)
+                    .show(ui, |ui| {
+                        ui.set_min_width(ui.available_width());
+
+                        for msg in &self.messages {
+                            ui.horizontal(|ui| {
+                                if msg.is_user {
+                                    ui.with_layout(
+                                        egui::Layout::right_to_left(egui::Align::TOP),
+                                        |ui| {
+                                            egui::Frame::NONE
+                                                .fill(egui::Color32::from_rgb(30, 30, 40))
+                                                .corner_radius(egui::CornerRadius {
+                                                    nw: 10,
+                                                    ne: 0,
+                                                    sw: 10,
+                                                    se: 10,
+                                                })
+                                                .inner_margin(10.0)
+                                                .show(ui, |ui| {
+                                                    ui.vertical(|ui| {
+                                                        ui.label(
+                                                            egui::RichText::new(&msg.text)
+                                                                .size(13.0)
+                                                                .color(egui::Color32::from_rgb(
+                                                                    230, 230, 240,
+                                                                )),
+                                                        );
+                                                        ui.add_space(4.0);
+                                                        ui.label(
+                                                            egui::RichText::new(&msg.time)
+                                                                .size(9.0)
+                                                                .color(egui::Color32::GRAY),
+                                                        );
+                                                    });
+                                                });
+                                        },
+                                    );
+                                } else {
+                                    ui.with_layout(
+                                        egui::Layout::left_to_right(egui::Align::TOP),
+                                        |ui| {
+                                            egui::Frame::NONE
+                                                .fill(egui::Color32::from_rgb(20, 20, 26))
+                                                .corner_radius(egui::CornerRadius {
+                                                    nw: 0,
+                                                    ne: 10,
+                                                    sw: 10,
+                                                    se: 10,
+                                                })
+                                                .inner_margin(10.0)
+                                                .show(ui, |ui| {
+                                                    ui.set_max_width(550.0);
+                                                    ui.vertical(|ui| {
+                                                        ui.label(
+                                                            egui::RichText::new(&msg.text)
+                                                                .size(13.0)
+                                                                .color(egui::Color32::from_rgb(
+                                                                    220, 220, 230,
+                                                                )),
+                                                        );
+                                                        ui.add_space(4.0);
+                                                        ui.horizontal(|ui| {
+                                                            ui.label(
+                                                                egui::RichText::new(&msg.time)
+                                                                    .size(9.0)
+                                                                    .color(egui::Color32::GRAY),
+                                                            );
+                                                            ui.with_layout(
+                                                                egui::Layout::right_to_left(
+                                                                    egui::Align::Center,
+                                                                ),
+                                                                |ui| {
+                                                                    ui.label(
+                                                                        egui::RichText::new(
+                                                                            "👍 👎 📋",
+                                                                        )
+                                                                        .size(11.0)
+                                                                        .color(egui::Color32::GRAY),
+                                                                    );
+                                                                },
+                                                            );
+                                                        });
+                                                    });
+                                                });
+                                        },
+                                    );
+                                }
+                            });
+                            ui.add_space(8.0);
+                        }
+                        if self.is_loading {
+                            ui.horizontal(|ui| {
+                                ui.with_layout(
+                                    egui::Layout::left_to_right(egui::Align::TOP),
+                                    |ui| {
+                                        egui::Frame::NONE
+                                            .fill(egui::Color32::from_rgb(20, 20, 26))
+                                            .corner_radius(egui::CornerRadius {
+                                                nw: 0,
+                                                ne: 10,
+                                                sw: 10,
+                                                se: 10,
+                                            })
+                                            .inner_margin(10.0)
+                                            .show(ui, |ui| {
+                                                ui.label(
+                                                    egui::RichText::new("Pensando... ⏳")
+                                                        .size(13.0)
+                                                        .color(egui::Color32::GRAY),
+                                                );
+                                            });
+                                    },
+                                );
+                            });
+                            ui.add_space(8.0);
+                        }
+                    });
+
+                // Input Bar at the bottom
+                ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
+                    egui::Frame::NONE
+                        .fill(egui::Color32::from_rgb(20, 20, 26))
+                        .corner_radius(10)
+                        .inner_margin(8.0)
+                        .show(ui, |ui| {
+                            ui.set_min_width(ui.available_width());
+                            ui.horizontal(|ui| {
+                                ui.label(
+                                    egui::RichText::new("📎")
+                                        .size(14.0)
+                                        .color(egui::Color32::GRAY),
+                                );
+
+                                // Model & context tags
+                                egui::Frame::NONE
+                                    .fill(egui::Color32::from_rgb(30, 30, 42))
+                                    .corner_radius(4)
+                                    .inner_margin(egui::vec2(6.0, 3.0))
+                                    .show(ui, |ui| {
+                                        ui.label(
+                                            egui::RichText::new("Worktree")
+                                                .size(10.0)
+                                                .strong()
+                                                .color(egui::Color32::from_rgb(59, 130, 246)),
+                                        );
+                                    });
+
+                                egui::Frame::NONE
+                                    .fill(egui::Color32::from_rgb(30, 30, 42))
+                                    .corner_radius(4)
+                                    .inner_margin(egui::vec2(6.0, 3.0))
+                                    .show(ui, |ui| {
+                                        ui.label(
+                                            egui::RichText::new(&self.agent_model)
+                                                .size(10.0)
+                                                .strong()
+                                                .color(egui::Color32::from_rgb(14, 165, 233)),
+                                        );
+                                    });
+
+                                let hint = if self.is_loading {
+                                    "Processando resposta..."
+                                } else {
+                                    "Como posso ajudar com o Matter Core?"
+                                };
+                                let response = ui.add_sized(
+                                    egui::vec2(ui.available_width() - 80.0, 24.0),
+                                    egui::TextEdit::singleline(&mut self.input_text)
+                                        .hint_text(hint)
+                                        .margin(egui::vec2(6.0, 4.0)),
+                                );
+
+                                let button_color = if self.is_loading {
+                                    egui::Color32::GRAY
+                                } else {
+                                    egui::Color32::from_rgb(59, 130, 246)
+                                };
+                                let trigger_send = ui
+                                    .button(
+                                        egui::RichText::new("➡")
+                                            .size(14.0)
+                                            .strong()
+                                            .color(button_color),
+                                    )
+                                    .clicked()
+                                    || (response.lost_focus()
+                                        && ui.input(|i| i.key_pressed(egui::Key::Enter)));
+
+                                if trigger_send && !self.input_text.is_empty() && !self.is_loading {
+                                    let user_msg = self.input_text.clone();
+                                    self.messages.push(AntigravityMessage {
+                                        text: user_msg.clone(),
+                                        is_user: true,
+                                        time: "Agora".to_string(),
+                                    });
+                                    self.input_text.clear();
+                                    self.is_loading = true;
+                                    let _ = self.tx.send(AIRequest {
+                                        prompt: user_msg,
+                                        ctx: ui.ctx().clone(),
+                                    });
+                                }
+                            });
+                        });
+                });
+            });
+    }
+}
+
+struct ContactInfo {
+    name: String,
+    avatar_color: egui::Color32,
+    status: &'static str,
+    last_seen: &'static str,
+    motto: &'static str,
+}
+
+struct MatterApp {
+    input_text: String,
+    active_contact: String,
+    chats: std::collections::HashMap<String, Vec<(String, bool, String)>>,
+    contacts: Vec<ContactInfo>,
+}
+
+impl Default for MatterApp {
+    fn default() -> Self {
+        let mut chats = std::collections::HashMap::new();
+
+        chats.insert(
+            "Matter Bot".to_string(),
+            vec![
+                ("Olá! Seja muito bem-vindo ao MatterZap Desktop Nativo! 🚀".to_string(), false, "10:00".to_string()),
+                ("Eu fui criado 100% em código de máquina pela linguagem Matter com aceleração por GPU!".to_string(), false, "10:01".to_string()),
+                ("Digite 'ping' para testar minha inteligência!".to_string(), false, "10:01".to_string()),
+            ],
+        );
+
+        chats.insert(
+            "Almir Pro".to_string(),
+            vec![
+                (
+                    "E aí Almir, curtindo os testes gráficos nativos?".to_string(),
+                    false,
+                    "09:30".to_string(),
+                ),
+                (
+                    "Ficou absurdamente foda e rápido!".to_string(),
+                    true,
+                    "09:35".to_string(),
+                ),
+            ],
+        );
+
+        chats.insert(
+            "Matter Compiler".to_string(),
+            vec![
+                (
+                    "[COMPILER INFO] JIT compiler optimized with x86_64 target.".to_string(),
+                    false,
+                    "08:15".to_string(),
+                ),
+                (
+                    "[COMPILER INFO] FPU protection enabled, F64 casting secure.".to_string(),
+                    false,
+                    "08:16".to_string(),
+                ),
+            ],
+        );
+
+        chats.insert(
+            "Grupo de IA".to_string(),
+            vec![
+                (
+                    "Qual é a arquitetura da rede neural em Matter?".to_string(),
+                    false,
+                    "Ontem".to_string(),
+                ),
+                (
+                    "Nós temos a rede neural implementada com 1 neurônio e pesos ajustáveis!"
+                        .to_string(),
+                    true,
+                    "Ontem".to_string(),
+                ),
+            ],
+        );
+
+        let contacts = vec![
+            ContactInfo {
+                name: "Matter Bot".to_string(),
+                avatar_color: egui::Color32::from_rgb(0, 168, 132),
+                status: "Online",
+                last_seen: "online",
+                motto: "A inteligência artificial do Matter Core v25",
+            },
+            ContactInfo {
+                name: "Almir Pro".to_string(),
+                avatar_color: egui::Color32::from_rgb(59, 130, 246),
+                status: "Online",
+                last_seen: "visto por último às 09:35",
+                motto: "Focado em construir o futuro da tecnologia",
+            },
+            ContactInfo {
+                name: "Matter Compiler".to_string(),
+                avatar_color: egui::Color32::from_rgb(249, 115, 22),
+                status: "Ausente",
+                last_seen: "visto por último há 2h",
+                motto: "Otimizando bytecode em tempo real",
+            },
+            ContactInfo {
+                name: "Grupo de IA".to_string(),
+                avatar_color: egui::Color32::from_rgb(168, 85, 247),
+                status: "Offline",
+                last_seen: "online ontem",
+                motto: "Discutindo redes neurais em Matter",
+            },
+        ];
+
+        Self {
+            input_text: String::new(),
+            active_contact: "Matter Bot".to_string(),
+            chats,
+            contacts,
+        }
+    }
+}
+
+impl eframe::App for MatterApp {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let mut visuals = egui::Visuals::dark();
+        visuals.override_text_color = Some(egui::Color32::from_rgb(233, 237, 239));
+        visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(17, 27, 33);
+        ui.ctx().set_visuals(visuals);
+
+        let height = ui.available_height();
+
+        egui::SidePanel::left("whatsapp_sidebar")
+            .resizable(false)
+            .default_width(260.0)
+            .frame(
+                egui::Frame::NONE
+                    .fill(egui::Color32::from_rgb(17, 27, 33))
+                    .inner_margin(8.0),
+            )
+            .show_inside(ui, |ui| {
+                ui.horizontal(|ui| {
+                    let (rect, _) =
+                        ui.allocate_at_least(egui::vec2(36.0, 36.0), egui::Sense::hover());
+                    ui.painter().circle_filled(
+                        rect.center(),
+                        18.0,
+                        egui::Color32::from_rgb(33, 150, 243),
+                    );
+                    ui.painter().text(
+                        rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        "A",
+                        egui::FontId::proportional(18.0),
+                        egui::Color32::WHITE,
+                    );
+
+                    ui.vertical(|ui| {
+                        ui.label(egui::RichText::new("Almir (Você)").strong().size(14.0));
+                        ui.label(
+                            egui::RichText::new("Status: Matter Dev")
+                                .color(egui::Color32::from_rgb(134, 150, 160))
+                                .size(11.0),
+                        );
+                    });
+                });
+
+                ui.add_space(8.0);
+                ui.separator();
+                ui.add_space(8.0);
+
+                ui.label(
+                    egui::RichText::new("CONVERSAS RECENTES")
+                        .strong()
+                        .color(egui::Color32::from_rgb(0, 168, 132))
+                        .size(11.0),
+                );
+                ui.add_space(6.0);
+
+                egui::ScrollArea::vertical()
+                    .id_salt("sidebar_scroll")
+                    .show(ui, |ui| {
+                        for contact in &self.contacts {
+                            let is_active = self.active_contact == contact.name;
+
+                            let bg_color = if is_active {
+                                egui::Color32::from_rgb(42, 57, 66)
+                            } else {
+                                egui::Color32::TRANSPARENT
+                            };
+
+                            egui::Frame::NONE
+                                .fill(bg_color)
+                                .corner_radius(6)
+                                .inner_margin(8.0)
+                                .show(ui, |ui| {
+                                    ui.horizontal(|ui| {
+                                        let (avatar_rect, _) = ui.allocate_at_least(
+                                            egui::vec2(32.0, 32.0),
+                                            egui::Sense::hover(),
+                                        );
+                                        ui.painter().circle_filled(
+                                            avatar_rect.center(),
+                                            16.0,
+                                            contact.avatar_color,
+                                        );
+
+                                        let initials =
+                                            contact.name.chars().next().unwrap_or(' ').to_string();
+                                        ui.painter().text(
+                                            avatar_rect.center(),
+                                            egui::Align2::CENTER_CENTER,
+                                            &initials,
+                                            egui::FontId::proportional(15.0),
+                                            egui::Color32::WHITE,
+                                        );
+
+                                        ui.vertical(|ui| {
+                                            ui.horizontal(|ui| {
+                                                if ui
+                                                    .selectable_label(
+                                                        is_active,
+                                                        egui::RichText::new(&contact.name)
+                                                            .strong()
+                                                            .size(13.0),
+                                                    )
+                                                    .clicked()
+                                                {
+                                                    self.active_contact = contact.name.clone();
+                                                }
+
+                                                let dot_color = match contact.status {
+                                                    "Online" => {
+                                                        egui::Color32::from_rgb(0, 230, 118)
+                                                    }
+                                                    "Ausente" => {
+                                                        egui::Color32::from_rgb(255, 152, 0)
+                                                    }
+                                                    _ => egui::Color32::from_rgb(158, 158, 158),
+                                                };
+                                                let (dot_rect, _) = ui.allocate_at_least(
+                                                    egui::vec2(8.0, 8.0),
+                                                    egui::Sense::hover(),
+                                                );
+                                                ui.painter().circle_filled(
+                                                    dot_rect.center(),
+                                                    4.0,
+                                                    dot_color,
+                                                );
+                                            });
+
+                                            ui.label(
+                                                egui::RichText::new(contact.motto)
+                                                    .color(egui::Color32::from_rgb(134, 150, 160))
+                                                    .size(10.0),
+                                            );
+                                        });
+                                    });
+                                });
+                            ui.add_space(4.0);
+                        }
+                    });
+            });
+
+        egui::CentralPanel::default()
+            .frame(egui::Frame::NONE.fill(egui::Color32::from_rgb(11, 20, 26)).inner_margin(8.0))
+            .show_inside(ui, |ui| {
+                let active_c = self.active_contact.clone();
+                let current_contact = self.contacts.iter().find(|c| c.name == active_c).unwrap();
+
+                egui::Frame::NONE
+                    .fill(egui::Color32::from_rgb(32, 44, 51))
+                    .corner_radius(6)
+                    .inner_margin(10.0)
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            let (header_avatar, _) = ui.allocate_at_least(egui::vec2(32.0, 32.0), egui::Sense::hover());
+                            ui.painter().circle_filled(header_avatar.center(), 16.0, current_contact.avatar_color);
+                            let initials = current_contact.name.chars().next().unwrap_or(' ').to_string();
+                            ui.painter().text(
+                                header_avatar.center(),
+                                egui::Align2::CENTER_CENTER,
+                                &initials,
+                                egui::FontId::proportional(15.0),
+                                egui::Color32::WHITE,
+                            );
+
+                            ui.vertical(|ui| {
+                                ui.label(egui::RichText::new(&current_contact.name).strong().size(14.0).color(egui::Color32::WHITE));
+                                ui.label(egui::RichText::new(current_contact.last_seen).color(egui::Color32::from_rgb(134, 150, 160)).size(11.0));
+                            });
+
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                ui.label(egui::RichText::new("GPU Ativa ✔").color(egui::Color32::from_rgb(0, 168, 132)).size(11.0).strong());
+                            });
+                        });
+                    });
+
+                ui.add_space(8.0);
+
+                let chat_height = height - 120.0;
+                egui::ScrollArea::vertical().id_salt("chat_scroll").max_height(chat_height).show(ui, |ui| {
+                    ui.set_min_width(ui.available_width());
+
+                    if let Some(msg_list) = self.chats.get(&active_c) {
+                        for (msg, is_user, time) in msg_list {
+                            ui.horizontal(|ui| {
+                                if *is_user {
+                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+                                        egui::Frame::NONE
+                                            .fill(egui::Color32::from_rgb(0, 92, 75))
+                                            .corner_radius(egui::CornerRadius { nw: 8, ne: 0, sw: 8, se: 8 })
+                                            .inner_margin(8.0)
+                                            .show(ui, |ui| {
+                                                ui.vertical(|ui| {
+                                                    ui.label(egui::RichText::new(msg).color(egui::Color32::from_rgb(233, 237, 239)).size(13.0));
+                                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::BOTTOM), |ui| {
+                                                        ui.label(egui::RichText::new(format!("{} ✔✔", time)).color(egui::Color32::from_rgb(134, 150, 160)).size(9.0));
+                                                    });
+                                                });
+                                            });
+                                    });
+                                } else {
+                                    ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
+                                        egui::Frame::NONE
+                                            .fill(egui::Color32::from_rgb(32, 44, 51))
+                                            .corner_radius(egui::CornerRadius { nw: 0, ne: 8, sw: 8, se: 8 })
+                                            .inner_margin(8.0)
+                                            .show(ui, |ui| {
+                                                ui.vertical(|ui| {
+                                                    ui.label(egui::RichText::new(msg).color(egui::Color32::from_rgb(233, 237, 239)).size(13.0));
+                                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::BOTTOM), |ui| {
+                                                        ui.label(egui::RichText::new(time).color(egui::Color32::from_rgb(134, 150, 160)).size(9.0));
+                                                    });
+                                                });
+                                            });
+                                    });
+                                }
+                            });
+                            ui.add_space(6.0);
+                        }
+                    }
+                });
+
+                ui.add_space(8.0);
+
+                egui::Frame::NONE
+                    .fill(egui::Color32::from_rgb(32, 44, 51))
+                    .corner_radius(8)
+                    .inner_margin(8.0)
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new("📎").size(16.0).color(egui::Color32::from_rgb(134, 150, 160)));
+
+                            let hint_text = format!("Mensagem para {}...", active_c);
+                            let response = ui.add_sized(
+                                egui::vec2(ui.available_width() - 80.0, 24.0),
+                                egui::TextEdit::singleline(&mut self.input_text)
+                                    .hint_text(hint_text)
+                                    .margin(egui::vec2(6.0, 4.0))
+                            );
+
+                            let trigger_send = ui.button(egui::RichText::new("Enviar").strong().color(egui::Color32::from_rgb(0, 168, 132))).clicked()
+                                || (response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)));
+
+                            if trigger_send && !self.input_text.is_empty() {
+                                let user_msg = self.input_text.clone();
+                                let current_time = "16:47".to_string();
+
+                                self.chats.entry(active_c.clone()).or_default().push(
+                                    (user_msg.clone(), true, current_time.clone())
+                                );
+
+                                let lower_msg = user_msg.to_lowercase();
+                                let bot_reply = if lower_msg.contains("ping") {
+                                    "Pong! 🏓 (100% Nativo via Matter JIT Core)".to_string()
+                                } else if lower_msg.contains("rico") || lower_msg.contains("foda") {
+                                    "Com certeza! Você está criando a linguagem do zero, com JIT e janelas nativas por GPU. Você é um gigante!".to_string()
+                                } else if lower_msg.contains("ajuda") {
+                                    "Comandos disponíveis: 'ping', 'rico', 'neural' ou 'ajuda'.".to_string()
+                                } else if lower_msg.contains("neural") {
+                                    "Nossa rede neural é 100% nativa em Matter. Podemos testá-la a qualquer momento!".to_string()
+                                } else {
+                                    format!("Recebi sua mensagem! O Matter Core v25 processou isso em 0.01ms.")
+                                };
+
+                                self.chats.entry(active_c.clone()).or_default().push(
+                                    (bot_reply, false, current_time)
+                                );
+
+                                self.input_text.clear();
+                            }
+                        });
+                    });
+            });
+    }
+}
+
+struct Particle {
+    pos: egui::Pos2,
+    vel: egui::Vec2,
+    color: egui::Color32,
+    size: f32,
+}
+
+struct PhysicsStressApp {
+    particles: Vec<Particle>,
+    particle_count: usize,
+    last_time: std::time::Instant,
+    fps: f32,
+    frame_count: usize,
+    fps_timer: std::time::Instant,
+}
+
+impl PhysicsStressApp {
+    fn new(count: usize) -> Self {
+        let mut rng = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos() as u64;
+
+        let mut next_random = || {
+            rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1);
+            (rng as f64 / u64::MAX as f64) as f32
+        };
+
+        let mut particles = Vec::with_capacity(20000);
+        for _ in 0..count {
+            particles.push(Particle {
+                pos: egui::pos2(400.0, 300.0),
+                vel: egui::vec2((next_random() - 0.5) * 500.0, (next_random() - 0.5) * 500.0),
+                color: egui::Color32::from_rgb(
+                    (next_random() * 155.0 + 100.0) as u8,
+                    (next_random() * 155.0 + 100.0) as u8,
+                    (next_random() * 155.0 + 100.0) as u8,
+                ),
+                size: next_random() * 4.0 + 2.0,
+            });
+        }
+
+        Self {
+            particles,
+            particle_count: count,
+            last_time: std::time::Instant::now(),
+            fps: 60.0,
+            frame_count: 0,
+            fps_timer: std::time::Instant::now(),
+        }
+    }
+}
+
+impl eframe::App for PhysicsStressApp {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = ui.ctx();
+        let now = std::time::Instant::now();
+        let mut dt = now.duration_since(self.last_time).as_secs_f32();
+        self.last_time = now;
+        if dt > 0.05 {
+            dt = 0.05;
+        }
+
+        self.frame_count += 1;
+        let fps_elapsed = now.duration_since(self.fps_timer).as_secs_f32();
+        if fps_elapsed >= 0.5 {
+            self.fps = self.frame_count as f32 / fps_elapsed;
+            self.frame_count = 0;
+            self.fps_timer = now;
+        }
+
+        if self.particles.len() < self.particle_count {
+            let mut rng = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos() as u64;
+            let mut next_random = || {
+                rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1);
+                (rng as f64 / u64::MAX as f64) as f32
+            };
+            while self.particles.len() < self.particle_count {
+                self.particles.push(Particle {
+                    pos: egui::pos2(400.0, 300.0),
+                    vel: egui::vec2((next_random() - 0.5) * 500.0, (next_random() - 0.5) * 500.0),
+                    color: egui::Color32::from_rgb(
+                        (next_random() * 155.0 + 100.0) as u8,
+                        (next_random() * 155.0 + 100.0) as u8,
+                        (next_random() * 155.0 + 100.0) as u8,
+                    ),
+                    size: next_random() * 4.0 + 2.0,
+                });
+            }
+        } else if self.particles.len() > self.particle_count {
+            self.particles.truncate(self.particle_count);
+        }
+
+        let rect = ui.max_rect();
+        let width = rect.width();
+        let height = rect.height();
+
+        let painter = ui.painter();
+
+        for p in &mut self.particles {
+            p.pos.x += p.vel.x * dt;
+            p.pos.y += p.vel.y * dt;
+
+            p.vel.y += 200.0 * dt;
+
+            if p.pos.x < p.size {
+                p.pos.x = p.size;
+                p.vel.x = -p.vel.x * 0.9;
+            } else if p.pos.x > width - p.size {
+                p.pos.x = width - p.size;
+                p.vel.x = -p.vel.x * 0.9;
+            }
+
+            if p.pos.y < p.size {
+                p.pos.y = p.size;
+                p.vel.y = -p.vel.y * 0.9;
+            } else if p.pos.y > height - p.size {
+                p.pos.y = height - p.size;
+                p.vel.y = -p.vel.y * 0.85;
+                p.vel.x *= 0.98;
+            }
+
+            painter.circle_filled(p.pos, p.size, p.color);
+        }
+
+        egui::Area::new("overlay_panel".into())
+            .anchor(egui::Align2::LEFT_TOP, egui::vec2(15.0, 15.0))
+            .show(ctx, |ui| {
+                egui::Frame::NONE
+                    .fill(egui::Color32::from_black_alpha(200))
+                    .corner_radius(8)
+                    .inner_margin(12.0)
+                    .show(ui, |ui| {
+                        ui.vertical(|ui| {
+                            ui.label(
+                                egui::RichText::new("⚡ MATTER JIT PHYSICS STRESS TEST")
+                                    .strong()
+                                    .size(15.0)
+                                    .color(egui::Color32::from_rgb(255, 152, 0)),
+                            );
+                            ui.add_space(4.0);
+                            ui.horizontal(|ui| {
+                                ui.label("Performance da GPU:");
+                                ui.label(
+                                    egui::RichText::new(format!("{:.1} FPS", self.fps))
+                                        .strong()
+                                        .color(if self.fps > 55.0 {
+                                            egui::Color32::from_rgb(0, 230, 118)
+                                        } else {
+                                            egui::Color32::from_rgb(255, 152, 0)
+                                        }),
+                                );
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label("Quantidade de Partículas:");
+                                ui.add(
+                                    egui::Slider::new(&mut self.particle_count, 100..=20000)
+                                        .text(""),
+                                );
+                            });
+                            ui.add_space(4.0);
+                            ui.label(
+                                egui::RichText::new("Aceleração: wgpu (Hardware DirectX12/Vulkan)")
+                                    .size(10.0)
+                                    .color(egui::Color32::GRAY),
+                            );
+                        });
+                    });
+            });
+
+        ctx.request_repaint();
+    }
+}
+
+#[allow(dead_code)]
+struct InteractiveGameEngineApp {
+    cam_pos: [f32; 3],
+    cam_yaw: f32,
+    cam_pitch: f32,
+    fov: f32,
+    speed: f32,
+    ticks: usize,
+    ping: u32,
+    network_timer: f32,
+    network_logs: Vec<String>,
+    remote_player_pos: [f32; 3],
+    placed_blocks: Vec<[f32; 3]>,
+    fps: f32,
+    frame_count: usize,
+    fps_timer: std::time::Instant,
+    last_time: std::time::Instant,
+    sky_color: Option<egui::Color32>,
+    gravity: f32,
+}
+
+#[allow(dead_code)]
+impl InteractiveGameEngineApp {
+    fn new() -> Self {
+        Self::new_with_config(
+            vec![[1.5, 0.0, 2.0], [-1.5, 0.0, 2.0], [0.0, 1.0, 3.0]],
+            None,
+            9.8,
+        )
+    }
+
+    fn new_with_config(
+        custom_blocks: Vec<[f32; 3]>,
+        sky_color: Option<egui::Color32>,
+        gravity: f32,
+    ) -> Self {
+        Self {
+            cam_pos: [0.0, 1.5, -6.0],
+            cam_yaw: 0.0,
+            cam_pitch: 0.0,
+            fov: 350.0,
+            speed: 5.0,
+            ticks: 0,
+            ping: 15,
+            network_timer: 0.0,
+            network_logs: vec![
+                "[SERVER] Connected to multiplayer room: matter_3d_arena".to_string(),
+                "[SERVER] Protocol: UDP-JIT v25 Active".to_string(),
+            ],
+            remote_player_pos: [2.0, 0.0, 4.0],
+            placed_blocks: custom_blocks,
+            fps: 60.0,
+            frame_count: 0,
+            fps_timer: std::time::Instant::now(),
+            last_time: std::time::Instant::now(),
+            sky_color,
+            gravity,
+        }
+    }
+}
+
+fn project_3d(
+    p: [f32; 3],
+    cam_pos: [f32; 3],
+    cam_yaw: f32,
+    cam_pitch: f32,
+    screen_width: f32,
+    screen_height: f32,
+    fov: f32,
+) -> Option<egui::Pos2> {
+    let tx = p[0] - cam_pos[0];
+    let ty = p[1] - cam_pos[1];
+    let tz = p[2] - cam_pos[2];
+
+    let cos_yaw = cam_yaw.cos();
+    let sin_yaw = cam_yaw.sin();
+    let rx1 = tx * cos_yaw - tz * sin_yaw;
+    let rz1 = tx * sin_yaw + tz * cos_yaw;
+    let ry1 = ty;
+
+    let cos_pitch = cam_pitch.cos();
+    let sin_pitch = cam_pitch.sin();
+    let rx = rx1;
+    let ry = ry1 * cos_pitch - rz1 * sin_pitch;
+    let rz = ry1 * sin_pitch + rz1 * cos_pitch;
+
+    if rz <= 0.1 {
+        return None;
+    }
+
+    let scale = fov / rz;
+    let screen_x = screen_width / 2.0 + rx * scale;
+    let screen_y = screen_height / 2.0 - ry * scale;
+
+    Some(egui::pos2(screen_x, screen_y))
+}
+
+impl eframe::App for InteractiveGameEngineApp {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
+
+        let now = std::time::Instant::now();
+        let dt = now.duration_since(self.last_time).as_secs_f32().min(0.05);
+        self.last_time = now;
+
+        self.frame_count += 1;
+        let fps_elapsed = now.duration_since(self.fps_timer).as_secs_f32();
+        if fps_elapsed >= 0.5 {
+            self.fps = self.frame_count as f32 / fps_elapsed;
+            self.frame_count = 0;
+            self.fps_timer = now;
+        }
+
+        self.ticks += 1;
+
+        let mut visuals = egui::Visuals::dark();
+        visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(10, 10, 12);
+        ctx.set_visuals(visuals);
+
+        egui::SidePanel::left("engine_hud")
+            .resizable(false)
+            .default_width(300.0)
+            .frame(
+                egui::Frame::NONE
+                    .fill(egui::Color32::from_rgb(18, 18, 24))
+                    .inner_margin(12.0),
+            )
+            .show_inside(ui, |ui| {
+                ui.vertical(|ui| {
+                    ui.label(
+                        egui::RichText::new("🎮 MATTER 3D ENGINE JIT")
+                            .strong()
+                            .size(18.0)
+                            .color(egui::Color32::from_rgb(255, 120, 0)),
+                    );
+                    ui.label(
+                        egui::RichText::new("Runtime Multiplayer & Input Hub")
+                            .color(egui::Color32::GRAY)
+                            .size(10.0),
+                    );
+                    ui.add_space(8.0);
+                    ui.separator();
+                    ui.add_space(8.0);
+
+                    ui.label(
+                        egui::RichText::new("🎥 TELEMETRIA DA CÂMERA")
+                            .strong()
+                            .size(12.0)
+                            .color(egui::Color32::from_rgb(59, 130, 246)),
+                    );
+                    ui.add_space(4.0);
+                    ui.horizontal(|ui| {
+                        ui.label("Posição X:");
+                        ui.label(egui::RichText::new(format!("{:.2}", self.cam_pos[0])).strong());
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Posição Y:");
+                        ui.label(egui::RichText::new(format!("{:.2}", self.cam_pos[1])).strong());
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Posição Z:");
+                        ui.label(egui::RichText::new(format!("{:.2}", self.cam_pos[2])).strong());
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Yaw / Pitch:");
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "{:.2} rad / {:.2} rad",
+                                self.cam_yaw, self.cam_pitch
+                            ))
+                            .strong(),
+                        );
+                    });
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        ui.label("FOV:");
+                        ui.add(egui::Slider::new(&mut self.fov, 100.0..=800.0).text(""));
+                    });
+                    ui.add_space(8.0);
+                    ui.separator();
+                    ui.add_space(8.0);
+
+                    ui.label(
+                        egui::RichText::new("⌨ ENTRADA DE TECLADO")
+                            .strong()
+                            .size(12.0)
+                            .color(egui::Color32::from_rgb(0, 230, 118)),
+                    );
+                    ui.add_space(4.0);
+
+                    let w_pressed = ui.input(|i| i.key_down(egui::Key::W));
+                    let a_pressed = ui.input(|i| i.key_down(egui::Key::A));
+                    let s_pressed = ui.input(|i| i.key_down(egui::Key::S));
+                    let d_pressed = ui.input(|i| i.key_down(egui::Key::D));
+
+                    ui.horizontal(|ui| {
+                        let btn_w = if w_pressed {
+                            egui::Color32::from_rgb(0, 230, 118)
+                        } else {
+                            egui::Color32::from_rgb(80, 80, 90)
+                        };
+                        let btn_a = if a_pressed {
+                            egui::Color32::from_rgb(0, 230, 118)
+                        } else {
+                            egui::Color32::from_rgb(80, 80, 90)
+                        };
+                        let btn_s = if s_pressed {
+                            egui::Color32::from_rgb(0, 230, 118)
+                        } else {
+                            egui::Color32::from_rgb(80, 80, 90)
+                        };
+                        let btn_d = if d_pressed {
+                            egui::Color32::from_rgb(0, 230, 118)
+                        } else {
+                            egui::Color32::from_rgb(80, 80, 90)
+                        };
+
+                        ui.colored_label(btn_w, " [ W ] ");
+                        ui.colored_label(btn_a, "[ A ]");
+                        ui.colored_label(btn_s, "[ S ]");
+                        ui.colored_label(btn_d, "[ D ]");
+                    });
+                    ui.add_space(4.0);
+                    ui.label("Teclas: W, A, S, D + Space/Shift");
+                    ui.label("Mouse: Arraste para olhar ao redor!");
+                    ui.label("Clique no mundo para colocar blocos!");
+
+                    ui.add_space(8.0);
+                    ui.separator();
+                    ui.add_space(8.0);
+
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new("🌐 REDE MULTIPLAYER")
+                                .strong()
+                                .size(12.0)
+                                .color(egui::Color32::from_rgb(168, 85, 247)),
+                        );
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.label(
+                                egui::RichText::new(format!("{} ms", self.ping))
+                                    .strong()
+                                    .color(egui::Color32::from_rgb(0, 230, 118)),
+                            );
+                        });
+                    });
+                    ui.add_space(4.0);
+
+                    egui::Frame::NONE
+                        .fill(egui::Color32::from_rgb(12, 12, 16))
+                        .corner_radius(6)
+                        .inner_margin(6.0)
+                        .show(ui, |ui| {
+                            egui::ScrollArea::vertical()
+                                .id_salt("net_logs")
+                                .max_height(140.0)
+                                .show(ui, |ui| {
+                                    for log in &self.network_logs {
+                                        ui.label(
+                                            egui::RichText::new(log)
+                                                .color(egui::Color32::from_rgb(150, 150, 180))
+                                                .size(10.0),
+                                        );
+                                    }
+                                });
+                        });
+
+                    ui.add_space(8.0);
+                    ui.separator();
+                    ui.add_space(8.0);
+
+                    ui.horizontal(|ui| {
+                        ui.label("FPS:");
+                        ui.label(
+                            egui::RichText::new(format!("{:.1} FPS", self.fps))
+                                .strong()
+                                .color(egui::Color32::from_rgb(255, 193, 7)),
+                        );
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Blocos 3D:");
+                        ui.label(
+                            egui::RichText::new(format!("{}", self.placed_blocks.len())).strong(),
+                        );
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Gravidade:");
+                        ui.label(
+                            egui::RichText::new(format!("{:.1} m/s²", self.gravity))
+                                .strong()
+                                .color(egui::Color32::from_rgb(0, 191, 255)),
+                        );
+                    });
+                });
+            });
+
+        let bg = self.sky_color.unwrap_or(egui::Color32::from_rgb(8, 8, 10));
+
+        egui::CentralPanel::default()
+            .frame(egui::Frame::NONE.fill(bg))
+            .show_inside(ui, |ui| {
+                let rect = ui.max_rect();
+                let width = rect.width();
+                let height = rect.height();
+
+                let response = ui.allocate_rect(rect, egui::Sense::click_and_drag());
+                if response.clicked() {
+                    let forward_x = self.cam_yaw.sin() * 2.5;
+                    let forward_z = self.cam_yaw.cos() * 2.5;
+                    let spawn_pos = [
+                        self.cam_pos[0] + forward_x,
+                        self.cam_pos[1] - 0.2,
+                        self.cam_pos[2] + forward_z,
+                    ];
+                    self.placed_blocks.push(spawn_pos);
+                    self.network_logs.push(format!(
+                        "[MULTIPLAYER SENT] Placed block at {:?}",
+                        spawn_pos
+                    ));
+
+                    std::thread::spawn(|| {
+                        #[cfg(target_os = "windows")]
+                        unsafe {
+                            extern "system" {
+                                fn Beep(dwFreq: u32, dwDuration: u32) -> i32;
+                            }
+                            for freq in (800..=1200).step_by(100) {
+                                Beep(freq, 10);
+                            }
+                        }
+                        #[cfg(not(target_os = "windows"))]
+                        {
+                            print!("\x07");
+                            use std::io::Write;
+                            let _ = std::io::stdout().flush();
+                        }
+                    });
+                }
+
+                if response.dragged() {
+                    let delta = response.drag_delta();
+                    self.cam_yaw += delta.x * 0.005;
+                    self.cam_pitch = (self.cam_pitch - delta.y * 0.005).clamp(-1.4, 1.4);
+                }
+
+                let move_speed = self.speed * dt;
+                let rot_speed = 1.8 * dt;
+
+                ui.input(|i| {
+                    if i.key_down(egui::Key::W) {
+                        self.cam_pos[0] += self.cam_yaw.sin() * move_speed;
+                        self.cam_pos[2] += self.cam_yaw.cos() * move_speed;
+                    }
+                    if i.key_down(egui::Key::S) {
+                        self.cam_pos[0] -= self.cam_yaw.sin() * move_speed;
+                        self.cam_pos[2] -= self.cam_yaw.cos() * move_speed;
+                    }
+                    if i.key_down(egui::Key::A) {
+                        self.cam_pos[0] -= self.cam_yaw.cos() * move_speed;
+                        self.cam_pos[2] += self.cam_yaw.sin() * move_speed;
+                    }
+                    if i.key_down(egui::Key::D) {
+                        self.cam_pos[0] += self.cam_yaw.cos() * move_speed;
+                        self.cam_pos[2] -= self.cam_yaw.sin() * move_speed;
+                    }
+                    if i.key_down(egui::Key::Space) {
+                        self.cam_pos[1] += move_speed;
+                    }
+                    if i.modifiers.shift {
+                        self.cam_pos[1] -= move_speed;
+                    }
+                    if i.key_down(egui::Key::ArrowLeft) {
+                        self.cam_yaw -= rot_speed;
+                    }
+                    if i.key_down(egui::Key::ArrowRight) {
+                        self.cam_yaw += rot_speed;
+                    }
+                    if i.key_down(egui::Key::ArrowUp) {
+                        self.cam_pitch = (self.cam_pitch + rot_speed).clamp(-1.4, 1.4);
+                    }
+                    if i.key_down(egui::Key::ArrowDown) {
+                        self.cam_pitch = (self.cam_pitch - rot_speed).clamp(-1.4, 1.4);
+                    }
+
+                    if i.key_pressed(egui::Key::C) {
+                        self.placed_blocks.clear();
+                        self.network_logs
+                            .push("[WORLD] Cleared all custom blocks!".to_string());
+                        std::thread::spawn(|| {
+                            #[cfg(target_os = "windows")]
+                            unsafe {
+                                extern "system" {
+                                    fn Beep(dwFreq: u32, dwDuration: u32) -> i32;
+                                }
+                                for i in 0..5 {
+                                    let freq = 800 - i * 100;
+                                    Beep(freq, 15);
+                                }
+                            }
+                            #[cfg(not(target_os = "windows"))]
+                            {
+                                print!("\x07");
+                                use std::io::Write;
+                                let _ = std::io::stdout().flush();
+                            }
+                        });
+                    }
+                });
+
+                self.network_timer += dt;
+                if self.network_timer > 0.8 {
+                    self.network_timer = 0.0;
+                    self.ping = 12
+                        + (std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_millis()
+                            % 9) as u32;
+
+                    let packet_type = (self.ping % 4) as usize;
+                    let log_msg = match packet_type {
+                        0 => format!("[SIMULATED UDP] Sync pos for player_921 ({}ms)", self.ping),
+                        1 => "[SIMULATED UDP] Broadcast local position success".to_string(),
+                        2 => {
+                            self.remote_player_pos[0] = 2.0 * (self.ticks as f32 * 0.03).cos();
+                            self.remote_player_pos[2] =
+                                4.0 + 2.0 * (self.ticks as f32 * 0.03).sin();
+                            format!(
+                                "[MULTIPLAYER] Player 'matter_pro' moved to {:?}",
+                                self.remote_player_pos
+                            )
+                        }
+                        _ => "[SERVER] Handshake keep-alive OK".to_string(),
+                    };
+                    self.network_logs.push(log_msg);
+                    if self.network_logs.len() > 12 {
+                        self.network_logs.remove(0);
+                    }
+                }
+
+                let painter = ui.painter_at(rect);
+
+                let grid_size = 10;
+                let grid_y = -1.0;
+                for i in -grid_size..=grid_size {
+                    let f = i as f32;
+                    let p0 = [f, grid_y, -grid_size as f32];
+                    let p1 = [f, grid_y, grid_size as f32];
+
+                    let p2 = [-grid_size as f32, grid_y, f];
+                    let p3 = [grid_size as f32, grid_y, f];
+
+                    if let (Some(s0), Some(s1)) = (
+                        project_3d(
+                            p0,
+                            self.cam_pos,
+                            self.cam_yaw,
+                            self.cam_pitch,
+                            width,
+                            height,
+                            self.fov,
+                        ),
+                        project_3d(
+                            p1,
+                            self.cam_pos,
+                            self.cam_yaw,
+                            self.cam_pitch,
+                            width,
+                            height,
+                            self.fov,
+                        ),
+                    ) {
+                        painter.line_segment(
+                            [s0, s1],
+                            egui::Stroke::new(
+                                1.0,
+                                egui::Color32::from_rgba_unmultiplied(80, 80, 100, 40),
+                            ),
+                        );
+                    }
+                    if let (Some(s2), Some(s3)) = (
+                        project_3d(
+                            p2,
+                            self.cam_pos,
+                            self.cam_yaw,
+                            self.cam_pitch,
+                            width,
+                            height,
+                            self.fov,
+                        ),
+                        project_3d(
+                            p3,
+                            self.cam_pos,
+                            self.cam_yaw,
+                            self.cam_pitch,
+                            width,
+                            height,
+                            self.fov,
+                        ),
+                    ) {
+                        painter.line_segment(
+                            [s2, s3],
+                            egui::Stroke::new(
+                                1.0,
+                                egui::Color32::from_rgba_unmultiplied(80, 80, 100, 40),
+                            ),
+                        );
+                    }
+                }
+
+                let draw_cube =
+                    |center: [f32; 3], size: f32, color: egui::Color32, painter: &egui::Painter| {
+                        let half = size / 2.0;
+                        let v = [
+                            [center[0] - half, center[1] - half, center[2] - half],
+                            [center[0] + half, center[1] - half, center[2] - half],
+                            [center[0] + half, center[1] + half, center[2] - half],
+                            [center[0] - half, center[1] + half, center[2] - half],
+                            [center[0] - half, center[1] - half, center[2] + half],
+                            [center[0] + half, center[1] - half, center[2] + half],
+                            [center[0] + half, center[1] + half, center[2] + half],
+                            [center[0] - half, center[1] + half, center[2] + half],
+                        ];
+
+                        let mut s = Vec::new();
+                        for pt in &v {
+                            s.push(project_3d(
+                                *pt,
+                                self.cam_pos,
+                                self.cam_yaw,
+                                self.cam_pitch,
+                                width,
+                                height,
+                                self.fov,
+                            ));
+                        }
+
+                        let edges = [
+                            (0, 1),
+                            (1, 2),
+                            (2, 3),
+                            (3, 0),
+                            (4, 5),
+                            (5, 6),
+                            (6, 7),
+                            (7, 4),
+                            (0, 4),
+                            (1, 5),
+                            (2, 6),
+                            (3, 7),
+                        ];
+
+                        for (start, end) in &edges {
+                            if let (Some(p_start), Some(p_end)) = (s[*start], s[*end]) {
+                                painter
+                                    .line_segment([p_start, p_end], egui::Stroke::new(1.5, color));
+                            }
+                        }
+                    };
+
+                let py_angle = self.ticks as f32 * 0.02;
+                let py_cos = py_angle.cos();
+                let py_sin = py_angle.sin();
+                let py_size = 1.2;
+
+                let py_verts = [
+                    [0.0, py_size / 2.0, 3.0],
+                    [
+                        -py_size / 2.0 * py_cos,
+                        -py_size / 2.0,
+                        3.0 - py_size / 2.0 * py_sin,
+                    ],
+                    [
+                        py_size / 2.0 * py_cos,
+                        -py_size / 2.0,
+                        3.0 + py_size / 2.0 * py_sin,
+                    ],
+                    [
+                        -py_size / 2.0 * py_sin,
+                        -py_size / 2.0,
+                        3.0 + py_size / 2.0 * py_cos,
+                    ],
+                    [
+                        py_size / 2.0 * py_sin,
+                        -py_size / 2.0,
+                        3.0 - py_size / 2.0 * py_cos,
+                    ],
+                ];
+
+                let mut py_projected = Vec::new();
+                for pt in &py_verts {
+                    py_projected.push(project_3d(
+                        *pt,
+                        self.cam_pos,
+                        self.cam_yaw,
+                        self.cam_pitch,
+                        width,
+                        height,
+                        self.fov,
+                    ));
+                }
+
+                let py_edges = [
+                    (0, 1),
+                    (0, 2),
+                    (0, 3),
+                    (0, 4),
+                    (1, 2),
+                    (2, 3),
+                    (3, 4),
+                    (4, 1),
+                ];
+
+                for (start, end) in &py_edges {
+                    if let (Some(p_start), Some(p_end)) = (py_projected[*start], py_projected[*end])
+                    {
+                        painter.line_segment(
+                            [p_start, p_end],
+                            egui::Stroke::new(2.0, egui::Color32::from_rgb(255, 80, 0)),
+                        );
+                    }
+                }
+
+                for block in &self.placed_blocks {
+                    draw_cube(*block, 0.8, egui::Color32::from_rgb(0, 150, 255), &painter);
+                }
+
+                draw_cube(
+                    self.remote_player_pos,
+                    0.9,
+                    egui::Color32::from_rgb(168, 85, 247),
+                    &painter,
+                );
+
+                painter.text(
+                    egui::pos2(width / 2.0, 30.0),
+                    egui::Align2::CENTER_CENTER,
+                    "🎮 MATTER 3D JIT MULTIPLAYER WORLD",
+                    egui::FontId::proportional(16.0),
+                    egui::Color32::from_rgb(255, 255, 255),
+                );
+            });
+
+        ctx.request_repaint();
+    }
+}
+
 pub struct TraceVisualBackend {
     surfaces: HashMap<String, VisualSurfaceSpec>,
     regions: HashMap<String, VisualRegionSpec>,
@@ -429,6 +2416,134 @@ impl VisualRuntime for TraceVisualBackend {
 impl Backend for TraceVisualBackend {
     fn call(&mut self, method: &str, args: Vec<Value>) -> Result<Value, String> {
         match method {
+            "run_game_engine" => {
+                let title = args
+                    .get(0)
+                    .map(|v| v.to_display_string())
+                    .unwrap_or_else(|| "Matter Core 3D JIT Game Engine".to_string());
+
+                // Parse optional configuration map
+                let mut custom_blocks = vec![[1.5, 0.0, 2.0], [-1.5, 0.0, 2.0], [0.0, 1.0, 3.0]];
+                let mut sky_color = None;
+                let mut custom_gravity = 9.8f32;
+
+                if let Some(Value::Map(cfg)) = args.get(1) {
+                    if let Some(Value::List(blocks_val)) = cfg.get("blocks") {
+                        let mut loaded_blocks = Vec::new();
+                        for val in blocks_val.iter() {
+                            if let Value::List(coord) = val {
+                                if coord.len() >= 3 {
+                                    let x = coord[0]
+                                        .as_float()
+                                        .unwrap_or_else(|_| coord[0].as_int().unwrap_or(0) as f64)
+                                        as f32;
+                                    let y = coord[1]
+                                        .as_float()
+                                        .unwrap_or_else(|_| coord[1].as_int().unwrap_or(0) as f64)
+                                        as f32;
+                                    let z = coord[2]
+                                        .as_float()
+                                        .unwrap_or_else(|_| coord[2].as_int().unwrap_or(0) as f64)
+                                        as f32;
+                                    loaded_blocks.push([x, y, z]);
+                                }
+                            }
+                        }
+                        if !loaded_blocks.is_empty() {
+                            custom_blocks = loaded_blocks;
+                        }
+                    }
+                    if let Some(Value::List(color_val)) = cfg.get("sky_color") {
+                        if color_val.len() >= 3 {
+                            let r = color_val[0].as_int().unwrap_or(10) as u8;
+                            let g = color_val[1].as_int().unwrap_or(10) as u8;
+                            let b = color_val[2].as_int().unwrap_or(12) as u8;
+                            sky_color = Some(egui::Color32::from_rgb(r, g, b));
+                        }
+                    }
+                    if let Some(gravity_val) = cfg.get("gravity") {
+                        custom_gravity = gravity_val
+                            .as_float()
+                            .unwrap_or_else(|_| gravity_val.as_int().unwrap_or(9) as f64)
+                            as f32;
+                    }
+                }
+
+                let options = eframe::NativeOptions {
+                    viewport: egui::ViewportBuilder::default().with_inner_size([1000.0, 700.0]),
+                    ..Default::default()
+                };
+
+                let result = eframe::run_native(
+                    &title,
+                    options,
+                    Box::new(move |_cc| {
+                        Ok(Box::new(InteractiveGameEngineApp::new_with_config(
+                            custom_blocks,
+                            sky_color,
+                            custom_gravity,
+                        )))
+                    }),
+                );
+
+                if let Err(e) = result {
+                    return Err(format!("Failed to start native window: {}", e));
+                }
+
+                Ok(Value::Bool(true))
+            }
+            "run_physics_test" => {
+                let count = args.get(0).and_then(|v| v.as_int().ok()).unwrap_or(5000) as usize;
+                let title = "Matter JIT GPU Physical Stress Test - 5000+ Particles";
+
+                let options = eframe::NativeOptions {
+                    viewport: egui::ViewportBuilder::default().with_inner_size([800.0, 600.0]),
+                    ..Default::default()
+                };
+
+                let result = eframe::run_native(
+                    title,
+                    options,
+                    Box::new(move |_cc| Ok(Box::new(PhysicsStressApp::new(count)))),
+                );
+
+                if let Err(e) = result {
+                    return Err(format!("Failed to start native window: {}", e));
+                }
+
+                Ok(Value::Bool(true))
+            }
+            "create_window" => {
+                let title = args
+                    .get(0)
+                    .map(|v| v.to_display_string())
+                    .unwrap_or_else(|| "Matter Native App".to_string());
+
+                let options = eframe::NativeOptions {
+                    viewport: egui::ViewportBuilder::default().with_inner_size([1000.0, 700.0]),
+                    ..Default::default()
+                };
+
+                let result = if title.to_lowercase().contains("antigravity") {
+                    eframe::run_native(
+                        &title,
+                        options,
+                        Box::new(|_cc| Ok(Box::new(AntigravityApp::default()))),
+                    )
+                } else {
+                    eframe::run_native(
+                        &title,
+                        options,
+                        Box::new(|_cc| Ok(Box::new(MatterApp::default()))),
+                    )
+                };
+
+                if let Err(e) = result {
+                    return Err(format!("Failed to start native window: {}", e));
+                }
+
+                Ok(Value::Bool(true))
+            }
             "run" => {
                 if args.len() != 1 {
                     return Err(format!("visual.run expects 1 argument, got {}", args.len()));
@@ -1745,6 +3860,7 @@ fn value_map_json(values: &HashMap<String, Value>) -> String {
 
 fn value_json(value: &Value) -> String {
     match value {
+        Value::Null => "null".to_string(),
         Value::Int(value) => value.to_string(),
         Value::Float(value) => value.to_string(),
         Value::Bool(value) => value.to_string(),

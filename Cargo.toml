@@ -8,6 +8,7 @@ members = [
     "crates/matter-runtime",
     "crates/matter-backend",
     "crates/matter-energy",
+    "crates/matter-device",
     "crates/matter-visual",
     "crates/matter-error",
     "crates/matter-stdlib",
@@ -69,6 +70,10 @@ members = [
     "crates/matter-display",
     "crates/matter-sentinel-abi",
     "crates/matter-kernel-vm",
+    "crates/matter-wetware",
+    "crates/matter-relativity",
+    "crates/matter-chemistry",
+    "crates/matter-genesis",
 ]
 resolver = "2"
 
@@ -95,6 +100,7 @@ matter-kernel-vm = { path = "crates/matter-kernel-vm" }
 matter-runtime = { path = "crates/matter-runtime" }
 matter-backend = { path = "crates/matter-backend" }
 matter-energy = { path = "crates/matter-energy" }
+matter-device = { path = "crates/matter-device" }
 matter-visual = { path = "crates/matter-visual" }
 matter-error = { path = "crates/matter-error" }
 matter-stdlib = { path = "crates/matter-stdlib" }
@@ -112,6 +118,18 @@ matter-types = { path = "crates/matter-types" }
 matter-effects = { path = "crates/matter-effects" }
 matter-effect-handlers = { path = "crates/matter-effect-handlers" }
 matter-effect-inference = { path = "crates/matter-effect-inference" }
+matter-wetware = { path = "crates/matter-wetware" }
+matter-quantum = { path = "crates/matter-quantum" }
+matter-memristive = { path = "crates/matter-memristive" }
+matter-photonic = { path = "crates/matter-photonic" }
+matter-spintronics = { path = "crates/matter-spintronics" }
+matter-molecular = { path = "crates/matter-molecular" }
+matter-relativity = { path = "crates/matter-relativity" }
+matter-chemistry = { path = "crates/matter-chemistry" }
+matter-genesis = { path = "crates/matter-genesis" }
+matter-biological = { path = "crates/matter-biological" }
+matter-neuromorphic = { path = "crates/matter-neuromorphic" }
+
 
 # Root package for integration tests
 [package]

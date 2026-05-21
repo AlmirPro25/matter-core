@@ -112,9 +112,6 @@ impl LanguageBridge for NodeJSBridge {
             return Err("Node.js not found. Please install Node.js.".to_string());
         }
 
-        let version = String::from_utf8_lossy(&output.stdout);
-        println!("Node.js version: {}", version.trim());
-
         self.initialized = true;
         Ok(())
     }

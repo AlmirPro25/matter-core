@@ -1,0 +1,10 @@
+﻿const { performance } = require("perf_hooks");
+const s = performance.now();
+const nums = [];
+for (let i = 10000; i >= 1; i--) nums.push(i);
+nums.sort((a, b) => a - b);
+let total = 0;
+for (const n of nums) total += n;
+const e = performance.now();
+console.log(total);
+console.log(e - s);

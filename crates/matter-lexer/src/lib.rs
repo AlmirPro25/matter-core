@@ -20,6 +20,8 @@ pub enum Token {
     Continue,
     Struct,
     Import,
+    Match,
+    Null,
     Spawn,
 
     // Literals
@@ -38,6 +40,10 @@ pub enum Token {
     Slash,
     Percent, // %
     Eq,
+    PlusEq,
+    MinusEq,
+    StarEq,
+    SlashEq,
     EqEq,
     NotEq,
     Lt,
@@ -259,24 +265,42 @@ impl Lexer {
             }
             Some('+') => {
                 self.advance();
-                Token::Plus
+                if self.current == Some('=') {
+                    self.advance();
+                    Token::PlusEq
+                } else {
+                    Token::Plus
+                }
             }
             Some('-') => {
                 self.advance();
                 if self.current == Some('>') {
                     self.advance();
                     Token::Arrow
+                } else if self.current == Some('=') {
+                    self.advance();
+                    Token::MinusEq
                 } else {
                     Token::Minus
                 }
             }
             Some('*') => {
                 self.advance();
-                Token::Star
+                if self.current == Some('=') {
+                    self.advance();
+                    Token::StarEq
+                } else {
+                    Token::Star
+                }
             }
             Some('/') => {
                 self.advance();
-                Token::Slash
+                if self.current == Some('=') {
+                    self.advance();
+                    Token::SlashEq
+                } else {
+                    Token::Slash
+                }
             }
             Some('%') => {
                 self.advance();
@@ -403,6 +427,8 @@ impl Lexer {
                     "struct" => Token::Struct,
                     "import" => Token::Import,
                     "spawn" => Token::Spawn,
+                    "match" => Token::Match,
+                    "null" => Token::Null,
                     "and" => Token::And,
                     "or" => Token::Or,
                     "not" => Token::Not,

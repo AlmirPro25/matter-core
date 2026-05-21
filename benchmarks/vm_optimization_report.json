@@ -1,0 +1,24 @@
+﻿{
+  "generated_at": "2026-05-18T20:00:00-03:00",
+  "baseline": {
+    "loop_sum_benchmark_json_median_ns_before": 5429976400,
+    "source": "manual run earlier in session (benchmark-json iterations=3)"
+  },
+  "after_optimization": {
+    "loop_sum_benchmark_json_median_ns_after": 5017093500,
+    "loop_sum_benchmark_json_median_ns_after_runs7": 4979988400,
+    "cli_binary_source_median_ms": 5219.2344,
+    "cli_binary_bytecode_median_ms": 5011.3764,
+    "note": "cargo run layer unavailable due locked debug executable on this Windows session"
+  },
+  "delta": {
+    "improvement_ns": 412883900,
+    "improvement_percent": 7.6038
+  },
+  "changes": [
+    "Removed main instruction clone in Vm::run by executing via stable slice pointer",
+    "Removed event handler instruction clone in emit_event_now by executing via stable slice pointer",
+    "Added fast path for global-only variable load/update when scope stack is empty",
+    "Added fast path for LoadGlobal and LoadLocal in main execute loop"
+  ]
+}

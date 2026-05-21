@@ -221,6 +221,9 @@ fn encode_value(value: &Value) -> JsonValue {
         Value::Unit => {
             object.insert("type".to_string(), JsonValue::String("unit".to_string()));
         }
+        Value::Null => {
+            object.insert("type".to_string(), JsonValue::String("null".to_string()));
+        }
         Value::List(values) => {
             object.insert("type".to_string(), JsonValue::String("list".to_string()));
             object.insert(
@@ -306,6 +309,7 @@ fn decode_value(value: &JsonValue) -> std::result::Result<Value, String> {
                 .to_string(),
         )),
         "unit" => Ok(Value::Unit),
+        "null" => Ok(Value::Null),
         "list" => object
             .get("value")
             .and_then(JsonValue::as_array)

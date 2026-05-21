@@ -106,6 +106,7 @@ pub fn go_json_to_value(json: &str) -> Result<Value> {
 fn value_to_json(value: &Value) -> JsonValue {
     match value {
         Value::Unit => JsonValue::Null,
+        Value::Null => JsonValue::Null,
         Value::Bool(value) => JsonValue::Bool(*value),
         Value::Int(value) => JsonValue::Number((*value).into()),
         Value::Float(value) => serde_json::Number::from_f64(*value)

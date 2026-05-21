@@ -1,0 +1,146 @@
+// ============================================================================
+// MATTER CORE MATHEMATICAL CHEMISTRY ENGINE DEMO
+// ============================================================================
+// Prova de conceito e orquestração de Química Matemática e Tabela Periódica:
+// 1. Consulta de Propriedades de Elementos (Carbono, Ouro, Urânio)
+// 2. Configuração Eletrônica (Aufbau) e Carga Nuclear Efetiva (Slater)
+// 3. Predição de Ligações Químicas e Caráter Iônico de Pauling
+// 4. Parser Molecular e Cálculo de Massa/Composição (Glicose, Sulfato de Alumínio)
+// 5. Balanceador de Reações Químicas via Álgebra Linear (Combustão de Propano)
+// ============================================================================
+
+print("=============================================================================");
+print("        Matter Core OS v3.5.0 - Mathematical Chemistry Engine                ");
+print("=============================================================================");
+print("");
+
+// ----------------------------------------------------------------------------
+// 1. CONSULTA DE ELEMENTOS
+// ----------------------------------------------------------------------------
+print("[1/5] CONSULTANDO PROPRIEDADES DE ELEMENTOS DA TABELA PERIÓDICA...");
+let carbon = chemistry.element_info("C");
+print("-> Elemento: Carbono (C)");
+print("   Número Atômico (Z):");
+print(carbon.atomic_number);
+print("   Massa Atômica:");
+print(carbon.atomic_mass);
+print("   Eletronegatividade (Pauling):");
+print(carbon.electronegativity);
+print("   Raio Atômico (pm):");
+print(carbon.atomic_radius);
+print("");
+
+let gold = chemistry.element_info("Au");
+print("-> Elemento: Ouro (Au)");
+print("   Grupo:");
+print(gold.group);
+print("   Período:");
+print(gold.period);
+print("   É Metal?");
+print(gold.is_metal);
+print("");
+
+let uranium = chemistry.element_info("U");
+print("-> Elemento: Urânio (U)");
+print("   Energia de Ionização (eV):");
+print(uranium.ionization_energy);
+print("");
+
+// ----------------------------------------------------------------------------
+// 2. CONFIGURAÇÃO ELETRÔNICA & REGRAS DE SLATER
+// ----------------------------------------------------------------------------
+print("[2/5] CONFIGURAÇÃO ELETRÔNICA E REGRA DE SLATER...");
+print("-> Gerando configuração eletrônica fundamental para o Cobre (Z = 29)...");
+let copper_config = chemistry.electron_configuration(29);
+print("   Configuração:");
+print(copper_config.configuration);
+print("   Carga Nuclear Efetiva de Slater (Zeff) do elétron de valência:");
+print(copper_config.slater_z_eff);
+
+let copper_qn = copper_config.quantum_numbers;
+print("   Números Quânticos do último elétron:");
+print("   n (Principal):");
+print(copper_qn.n);
+print("   l (Azimutal):");
+print(copper_qn.l);
+print("   ml (Magnético):");
+print(copper_qn.ml);
+print("   ms (Spin):");
+print(copper_qn.ms);
+print("");
+
+// ----------------------------------------------------------------------------
+// 3. LIGAÇÕES QUÍMICAS (PAULING)
+// ----------------------------------------------------------------------------
+print("[3/5] PREDIÇÃO DE LIGAÇÃO E CARÁTER IÔNICO...");
+print("-> Ligação Na-Cl (Cloreto de Sódio):");
+let bond_nacl = chemistry.bond_info("Na", "Cl");
+print("   Diferença de Eletronegatividade:");
+print(bond_nacl.delta_electronegativity);
+print("   Porcentagem de Caráter Iônico (%):");
+print(bond_nacl.ionic_character_percent);
+print("   Tipo de Ligação:");
+print(bond_nacl.bond_type);
+print("");
+
+print("-> Ligação H-O (Água):");
+let bond_h2o = chemistry.bond_info("H", "O");
+print("   Diferença de Eletronegatividade:");
+print(bond_h2o.delta_electronegativity);
+print("   Porcentagem de Caráter Iônico (%):");
+print(bond_h2o.ionic_character_percent);
+print("   Tipo de Ligação:");
+print(bond_h2o.bond_type);
+print("");
+
+// ----------------------------------------------------------------------------
+// 4. PESO MOLECULAR E COMPOSIÇÃO
+// ----------------------------------------------------------------------------
+print("[4/5] PESO MOLECULAR E COMPOSIÇÃO DE FÓRMULAS COMPLEXAS...");
+print("-> Analisando Glicose (C6H12O6):");
+let glicose = chemistry.molecular_mass("C6H12O6");
+print("   Massa Molecular Total (g/mol):");
+print(glicose.molecular_mass);
+
+let glicose_comp = glicose.composition;
+print("   Porcentagem de Massa - Carbono (C):");
+print(glicose_comp.C);
+print("   Porcentagem de Massa - Oxigênio (O):");
+print(glicose_comp.O);
+print("");
+
+print("-> Analisando Sulfato de Alumínio (Al2(SO4)3):");
+let alum = chemistry.molecular_mass("Al2(SO4)3");
+print("   Massa Molecular Total (g/mol):");
+print(alum.molecular_mass);
+let alum_comp = alum.composition;
+print("   Porcentagem de Massa - Oxigênio (O):");
+print(alum_comp.O);
+print("");
+
+// ----------------------------------------------------------------------------
+// 5. BALANCEADOR ESTEQUIOMÉTRICO (ÁLGEBRA LINEAR)
+// ----------------------------------------------------------------------------
+print("[5/5] BALANCEADOR ESTEQUIOMÉTRICO DE REAÇÕES (ESPACÕ NULO / RREF)...");
+print("-> Balanceando combustão de Propano (C3H8 + O2 -> CO2 + H2O):");
+let r1 = chemistry.balance_reaction("C3H8 + O2 -> CO2 + H2O");
+print("   Equação Balanceada:");
+print(r1);
+print("");
+
+print("-> Balanceando síntese da Água (H2 + O2 -> H2O):");
+let r2 = chemistry.balance_reaction("H2 + O2 -> H2O");
+print("   Equação Balanceada:");
+print(r2);
+print("");
+
+print("-> Balanceando decomposição de Clorato de Potássio (KClO3 -> KCl + O2):");
+// Nota: no nosso banco de dados temos K, Cl, O definidos.
+let r3 = chemistry.balance_reaction("KClO3 -> KCl + O2");
+print("   Equação Balanceada:");
+print(r3);
+print("");
+
+print("=============================================================================");
+print("              SIMULAÇÃO DE QUÍMICA MATEMÁTICA CONCLUÍDA COM SUCESSO!         ");
+print("=============================================================================");

@@ -1,0 +1,59 @@
+name: Publish Beta Download Site
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "site/**"
+      - "dist/**"
+      - "scripts/build-download-site.ps1"
+      - "scripts/test-download-site-contract.ps1"
+      - "scripts/test-beta-readiness-contract.ps1"
+      - ".github/workflows/beta-site.yml"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: beta-site
+  cancel-in-progress: true
+
+jobs:
+  publish-beta-site:
+    name: Validate and publish beta site
+    runs-on: windows-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build download site
+        shell: pwsh
+        run: .\scripts\build-download-site.ps1 -Version "0.1.0-beta" -Channel "beta"
+
+      - name: Test download site contract
+        shell: pwsh
+        run: .\scripts\test-download-site-contract.ps1
+
+      - name: Test beta readiness contract
+        shell: pwsh
+        run: .\scripts\test-beta-readiness-contract.ps1
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

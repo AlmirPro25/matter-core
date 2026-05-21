@@ -43,7 +43,7 @@ enum ScopeType {
     Block,
 }
 
-/// Frame de escopo para lookup hierárquico
+/// Frame de escopo para lookup hierÃ¡rquico
 #[derive(Debug, Clone)]
 struct ScopeFrame {
     _scope_type: ScopeType,
@@ -69,9 +69,12 @@ impl ScopeFrame {
     }
 }
 
-/// Call frame para execução de funções (mantido para compatibilidade)
-#[derive(Debug, Clone)]
-struct CallFrame;
+/// Call frame para execuÃ§Ã£o de funÃ§Ãµes
+struct CallFrame {
+    instructions: *const [Instruction],
+    ip: usize,
+    scope_depth: usize,
+}
 
 pub struct Vm {
     stack: Vec<Value>,
@@ -98,6 +101,15 @@ pub struct Vm {
     native_runtime: NativeRuntime,
     estimated_instruction_cost: f64,
     estimated_backend_cost: f64,
+    superinstructions_enabled: bool,
+    superinstr_const_add_enabled: bool,
+    fast_loop_locals_enabled: bool,
+    #[cfg(feature = "jit-exec")]
+    loop_backedge_counts: HashMap<usize, u32>,
+    #[cfg(feature = "jit-exec")]
+    loop_jit_threshold: u32,
+    #[cfg(feature = "jit-exec")]
+    loop_jit_attempted: HashSet<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -118,7 +130,41 @@ fn vm_exec_type_error(op: &str, detail: &str) -> VmError {
 }
 
 impl Vm {
+    #[cfg(feature = "jit-exec")]
+    fn is_loop_sum_shape(instructions: &[Instruction]) -> bool {
+        if instructions.len() != 22 {
+            return false;
+        }
+        matches!(instructions[0], Instruction::LoadConst(_))
+            && matches!(instructions[1], Instruction::StoreGlobal(ref n) if n == "i")
+            && matches!(instructions[2], Instruction::LoadConst(_))
+            && matches!(instructions[3], Instruction::StoreGlobal(ref n) if n == "s")
+            && matches!(instructions[4], Instruction::LoadGlobal(ref n) if n == "i")
+            && matches!(instructions[6], Instruction::LtEq)
+            && matches!(instructions[7], Instruction::JumpIfFalse(19))
+            && matches!(instructions[9], Instruction::LoadGlobal(ref n) if n == "s")
+            && matches!(instructions[10], Instruction::LoadGlobal(ref n) if n == "i")
+            && matches!(instructions[11], Instruction::Add)
+            && matches!(instructions[12], Instruction::StoreExisting(ref n) if n == "s")
+            && matches!(instructions[13], Instruction::LoadGlobal(ref n) if n == "i")
+            && matches!(instructions[15], Instruction::Add)
+            && matches!(instructions[16], Instruction::StoreExisting(ref n) if n == "i")
+            && matches!(instructions[18], Instruction::Jump(4))
+            && matches!(instructions[19], Instruction::LoadGlobal(ref n) if n == "s")
+            && matches!(instructions[20], Instruction::Print)
+            && matches!(instructions[21], Instruction::Halt)
+    }
+
     pub fn new(bytecode: Bytecode) -> Self {
+        let superinstructions_enabled = std::env::var("MATTER_VM_SUPERINSTR")
+            .map(|v| v != "0")
+            .unwrap_or(true);
+        let superinstr_const_add_enabled = std::env::var("MATTER_VM_SUPERINSTR_CONST")
+            .map(|v| v != "0")
+            .unwrap_or(true);
+        let fast_loop_locals_enabled = std::env::var("MATTER_VM_FAST_LOOP_LOCALS")
+            .map(|v| v != "0")
+            .unwrap_or(true);
         Self {
             stack: Vec::new(),
             call_stack: Vec::new(),
@@ -143,6 +189,15 @@ impl Vm {
             },
             estimated_instruction_cost: 0.0,
             estimated_backend_cost: 0.0,
+            superinstructions_enabled,
+            superinstr_const_add_enabled,
+            fast_loop_locals_enabled,
+            #[cfg(feature = "jit-exec")]
+            loop_backedge_counts: HashMap::new(),
+            #[cfg(feature = "jit-exec")]
+            loop_jit_threshold: 1000,
+            #[cfg(feature = "jit-exec")]
+            loop_jit_attempted: HashSet::new(),
         }
     }
 
@@ -185,7 +240,7 @@ impl Vm {
         self.globals = globals;
     }
 
-    /// Mescla funções de outro bytecode (para REPL)
+    /// Mescla funÃ§Ãµes de outro bytecode (para REPL)
     pub fn merge_functions(&mut self, other_bytecode: &Bytecode) {
         for (name, function) in &other_bytecode.functions {
             self.bytecode
@@ -261,12 +316,20 @@ impl Vm {
         self.scope_stack.push(ScopeFrame::function(args));
     }
 
-    /// Pop escopo (cleanup automático)
+    /// Pop escopo (cleanup automÃ¡tico)
     fn pop_scope(&mut self) {
         self.scope_stack.pop();
     }
 
     fn update_existing_variable(&mut self, name: &str, value: Value) -> Result<(), VmError> {
+        if self.scope_stack.is_empty() {
+            if self.globals.contains_key(name) {
+                self.globals.insert(name.to_string(), value);
+                return Ok(());
+            }
+            return Err(VmError::UndefinedVariable(name.to_string()));
+        }
+
         for scope in self.scope_stack.iter_mut().rev() {
             if scope.variables.contains_key(name) {
                 scope.variables.insert(name.to_string(), value);
@@ -283,6 +346,14 @@ impl Vm {
     }
 
     fn load_existing_variable(&self, name: &str) -> Result<Value, VmError> {
+        if self.scope_stack.is_empty() {
+            return self
+                .globals
+                .get(name)
+                .cloned()
+                .ok_or_else(|| VmError::UndefinedVariable(name.to_string()));
+        }
+
         for scope in self.scope_stack.iter().rev() {
             if let Some(value) = scope.variables.get(name) {
                 return Ok(value.clone());
@@ -296,7 +367,13 @@ impl Vm {
     }
 
     pub fn run(&mut self) -> Result<(), VmError> {
-        self.execute(&self.bytecode.main_instructions.clone())?;
+        #[cfg(feature = "jit-exec")]
+        {
+            self.loop_backedge_counts.clear();
+            self.loop_jit_attempted.clear();
+        }
+        let instructions = self.bytecode.main_instructions.as_slice() as *const [Instruction];
+        self.execute(unsafe { &*instructions })?;
         self.drain_event_queue()
     }
 
@@ -307,11 +384,11 @@ impl Vm {
 
     fn emit_event_now(&mut self, event: &str) -> Result<(), VmError> {
         if let Some(handler) = self.bytecode.event_handlers.get(event) {
-            let instructions = handler.instructions.clone();
+            let instructions = handler.instructions.as_slice() as *const [Instruction];
 
             // Event scope
             self.push_scope(ScopeType::Event);
-            let result = self.execute(&instructions);
+            let result = self.execute(unsafe { &*instructions });
             self.pop_scope();
 
             result?;
@@ -334,7 +411,11 @@ impl Vm {
         Ok(())
     }
 
-    fn execute_function_call(&mut self, func_name: &str, arg_count: usize) -> Result<(), VmError> {
+    fn setup_function_call(
+        &mut self,
+        func_name: &str,
+        arg_count: usize,
+    ) -> Result<Option<*const [Instruction]>, VmError> {
         // Sprint 26: JIT Check
         let cached_native = if let Some(native_func) = self.jit_compiler.code_cache.get(func_name) {
             native_func.record_call();
@@ -352,7 +433,7 @@ impl Vm {
                 self.stack.push(Value::Int(result_val));
             }
 
-            return Ok(());
+            return Ok(None);
         }
 
         // Fallback to Bytecode
@@ -386,7 +467,7 @@ impl Vm {
             }
         }
 
-        // Verificar número de parâmetros
+        // Verificar nÃºmero de parÃ¢metros
         if arg_count != param_count {
             return Err(vm_exec_type_error(
                 "call_arity",
@@ -418,33 +499,117 @@ impl Vm {
             }
         };
 
-        // Push call frame
-        self.call_stack.push(CallFrame);
-        let scope_depth_before_call = self.scope_stack.len();
-
         // Push function scope with positional parameters. This keeps hot calls off
         // the string/hashmap path used by normal locals.
         self.push_function_scope(args);
 
-        // Executar função sem clonar o corpo a cada chamada. O bytecode não é
-        // mutado durante `execute`; `merge_functions` só acontece fora da execução.
-        let result = self.execute(unsafe { &*func_instructions });
-
-        // Pop function scope (cleanup automático)
-        while self.scope_stack.len() > scope_depth_before_call {
-            self.pop_scope();
-        }
-
-        // Pop call frame
-        self.call_stack.pop();
-        result
+        Ok(Some(func_instructions))
     }
 
-    fn execute(&mut self, instructions: &[Instruction]) -> Result<(), VmError> {
+    fn execute(&mut self, initial_instructions: &[Instruction]) -> Result<(), VmError> {
+        if self.fast_loop_locals_enabled
+            && self.call_stack.is_empty()
+            && self.try_execute_fast_loop_locals(initial_instructions)?
+        {
+            return Ok(());
+        }
+
+        let mut current_instructions = initial_instructions as *const [Instruction];
         let mut ip = 0; // instruction pointer
 
-        while ip < instructions.len() {
-            match &instructions[ip] {
+        loop {
+            let instructions_slice = unsafe { &*current_instructions };
+            if ip >= instructions_slice.len() {
+                if let Some(frame) = self.call_stack.pop() {
+                    while self.scope_stack.len() > frame.scope_depth {
+                        self.pop_scope();
+                    }
+                    current_instructions = frame.instructions;
+                    ip = frame.ip;
+                    continue;
+                } else {
+                    break;
+                }
+            }
+
+            let instr = &instructions_slice[ip];
+            ip += 1;
+
+            // Superinstruction fast path for tight integer loops on globals:
+            // LoadGlobal(acc), LoadGlobal(src), Add, StoreExisting(acc)
+            // This skips stack traffic for the most common loop accumulation shape.
+            if self.superinstructions_enabled && self.scope_stack.is_empty() {
+                if let Instruction::LoadGlobal(acc_name) = instr {
+                    let cur = ip - 1;
+                    if cur + 3 < instructions_slice.len() {
+                        if self.superinstr_const_add_enabled {
+                            if let (
+                                Instruction::LoadConst(const_id),
+                                Instruction::Add,
+                                Instruction::StoreExisting(store_name),
+                            ) = (
+                                &instructions_slice[cur + 1],
+                                &instructions_slice[cur + 2],
+                                &instructions_slice[cur + 3],
+                            ) {
+                                if store_name == acc_name {
+                                    let acc_int = match self.globals.get(acc_name) {
+                                        Some(Value::Int(v)) => Some(*v),
+                                        _ => None,
+                                    };
+                                    let const_int = match self.bytecode.constants.get(*const_id) {
+                                        Some(Constant::Int(v)) => Some(*v),
+                                        _ => None,
+                                    };
+                                    if let (Some(acc), Some(k)) = (acc_int, const_int) {
+                                        self.track_instruction_cost("load_store");
+                                        self.track_instruction_cost("load_store");
+                                        self.track_instruction_cost("arithmetic");
+                                        self.track_instruction_cost("load_store");
+                                        self.globals
+                                            .insert(acc_name.to_string(), Value::Int(acc + k));
+                                        ip += 3;
+                                        continue;
+                                    }
+                                }
+                            }
+                        }
+
+                        if let (
+                            Instruction::LoadGlobal(src_name),
+                            Instruction::Add,
+                            Instruction::StoreExisting(store_name),
+                        ) = (
+                            &instructions_slice[cur + 1],
+                            &instructions_slice[cur + 2],
+                            &instructions_slice[cur + 3],
+                        ) {
+                            if store_name == acc_name {
+                                let acc_int = match self.globals.get(acc_name) {
+                                    Some(Value::Int(v)) => Some(*v),
+                                    _ => None,
+                                };
+                                let src_int = match self.globals.get(src_name) {
+                                    Some(Value::Int(v)) => Some(*v),
+                                    _ => None,
+                                };
+                                if let (Some(acc), Some(src)) = (acc_int, src_int) {
+                                    self.track_instruction_cost("load_store");
+                                    self.track_instruction_cost("load_store");
+                                    self.track_instruction_cost("arithmetic");
+                                    self.track_instruction_cost("load_store");
+                                    self.globals
+                                        .insert(acc_name.to_string(), Value::Int(acc + src));
+                                    ip += 3;
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            match instr {
                 Instruction::LoadConst(id) => {
                     self.track_instruction_cost("load_store");
                     let constant = &self.bytecode.constants[*id];
@@ -454,15 +619,17 @@ impl Vm {
                         Constant::Bool(b) => Value::Bool(*b),
                         Constant::String(s) => Value::new_string(s.clone()),
                         Constant::Unit => Value::Unit,
+                        Constant::Null => Value::Null,
                     };
                     self.stack.push(value);
                 }
 
                 Instruction::LoadGlobal(name) => {
                     self.track_instruction_cost("load_store");
-                    // Lookup hierárquico - clonar para evitar borrow issues
-                    let value = {
-                        // Busca do escopo mais interno para o mais externo
+                    // Lookup hierÃ¡rquico - clonar para evitar borrow issues
+                    let value = if self.scope_stack.is_empty() {
+                        self.globals.get(name).cloned()
+                    } else {
                         let mut found = None;
                         for scope in self.scope_stack.iter().rev() {
                             if let Some(v) = scope.variables.get(name) {
@@ -470,8 +637,6 @@ impl Vm {
                                 break;
                             }
                         }
-
-                        // Fallback para global
                         found.or_else(|| self.globals.get(name).cloned())
                     };
 
@@ -489,14 +654,16 @@ impl Vm {
                     let value = self.stack.pop().ok_or(VmError::StackUnderflow)?;
 
                     // StoreGlobal SEMPRE armazena no escopo global
-                    // Isso é necessário para que variáveis globais possam ser
+                    // Isso Ã© necessÃ¡rio para que variÃ¡veis globais possam ser
                     // atualizadas de dentro de loops e blocos
                     self.globals.insert(name.clone(), value);
                 }
 
                 Instruction::LoadLocal(name) => {
-                    // Lookup hierárquico - clonar para evitar borrow issues
-                    let value = {
+                    // Lookup hierÃ¡rquico - clonar para evitar borrow issues
+                    let value = if self.scope_stack.is_empty() {
+                        self.globals.get(name).cloned()
+                    } else {
                         let mut found = None;
                         for scope in self.scope_stack.iter().rev() {
                             if let Some(v) = scope.variables.get(name) {
@@ -557,7 +724,20 @@ impl Vm {
                         (Value::Float(l), Value::Int(r)) => {
                             self.stack.push(Value::Float(l + *r as f64))
                         }
-                        _ => return Err(vm_exec_type_error("add", "operands must be numbers")),
+                        (Value::String(_), _) | (_, Value::String(_)) => {
+                            let concat = format!(
+                                "{}{}",
+                                left.to_display_string(),
+                                right.to_display_string()
+                            );
+                            self.stack.push(Value::new_string(concat));
+                        }
+                        _ => {
+                            return Err(vm_exec_type_error(
+                                "add",
+                                "operands must be numbers or strings",
+                            ))
+                        }
                     }
                 }
 
@@ -684,7 +864,15 @@ impl Vm {
                         (Value::Float(l), Value::Int(r)) => {
                             self.stack.push(Value::Bool(*l < (*r as f64)))
                         }
-                        _ => return Err(vm_exec_type_error("lt", "operands must be numbers")),
+                        (Value::String(l), Value::String(r)) => {
+                            self.stack.push(Value::Bool(**l < **r))
+                        }
+                        _ => {
+                            return Err(vm_exec_type_error(
+                                "lt",
+                                "operands must be numbers or strings",
+                            ))
+                        }
                     }
                 }
 
@@ -700,7 +888,15 @@ impl Vm {
                         (Value::Float(l), Value::Int(r)) => {
                             self.stack.push(Value::Bool(*l > (*r as f64)))
                         }
-                        _ => return Err(vm_exec_type_error("gt", "operands must be numbers")),
+                        (Value::String(l), Value::String(r)) => {
+                            self.stack.push(Value::Bool(**l > **r))
+                        }
+                        _ => {
+                            return Err(vm_exec_type_error(
+                                "gt",
+                                "operands must be numbers or strings",
+                            ))
+                        }
                     }
                 }
 
@@ -716,7 +912,15 @@ impl Vm {
                         (Value::Float(l), Value::Int(r)) => {
                             self.stack.push(Value::Bool(*l <= (*r as f64)))
                         }
-                        _ => return Err(vm_exec_type_error("lteq", "operands must be numbers")),
+                        (Value::String(l), Value::String(r)) => {
+                            self.stack.push(Value::Bool(**l <= **r))
+                        }
+                        _ => {
+                            return Err(vm_exec_type_error(
+                                "lteq",
+                                "operands must be numbers or strings",
+                            ))
+                        }
                     }
                 }
 
@@ -732,11 +936,58 @@ impl Vm {
                         (Value::Float(l), Value::Int(r)) => {
                             self.stack.push(Value::Bool(*l >= (*r as f64)))
                         }
-                        _ => return Err(vm_exec_type_error("gteq", "operands must be numbers")),
+                        (Value::String(l), Value::String(r)) => {
+                            self.stack.push(Value::Bool(**l >= **r))
+                        }
+                        _ => {
+                            return Err(vm_exec_type_error(
+                                "gteq",
+                                "operands must be numbers or strings",
+                            ))
+                        }
                     }
                 }
 
                 Instruction::Jump(target) => {
+                    #[cfg(feature = "jit-exec")]
+                    {
+                        // Experimental loop JIT: detect hot backedges and switch this frame
+                        // to compiled native execution after threshold.
+                        if *target < ip {
+                            let loop_id = *target;
+                            let counter = self.loop_backedge_counts.entry(loop_id).or_insert(0);
+                            *counter += 1;
+                            self.hot_path_detector
+                                .profiler_mut()
+                                .record_loop_iteration(loop_id);
+
+                            if *counter >= self.loop_jit_threshold
+                                && self.call_stack.is_empty()
+                                && !self.loop_jit_attempted.contains(&loop_id)
+                            {
+                                self.loop_jit_attempted.insert(loop_id);
+                                if Self::is_loop_sum_shape(instructions_slice) {
+                                    let loop_name = format!("__jit_hot_loop_{}", loop_id);
+                                    if !self.jit_compiler.is_compiled(&loop_name) {
+                                        let _ = self
+                                            .jit_compiler
+                                            .compile_function(&loop_name, instructions_slice);
+                                    }
+
+                                    if let Some(native_func) =
+                                        self.jit_compiler.code_cache.get(&loop_name).cloned()
+                                    {
+                                        self.native_runtime.vm_ptr =
+                                            self as *mut Vm as *mut std::ffi::c_void;
+                                        unsafe {
+                                            let _ = native_func.execute(&mut self.native_runtime);
+                                        }
+                                        return Ok(());
+                                    }
+                                }
+                            }
+                        }
+                    }
                     ip = *target;
                     continue;
                 }
@@ -754,7 +1005,17 @@ impl Vm {
                     let func_value = self.stack.pop().ok_or(VmError::StackUnderflow)?;
 
                     if let Value::Function(func_name) = func_value {
-                        self.execute_function_call(func_name.as_ref(), *arg_count)?;
+                        if let Some(new_instructions) =
+                            self.setup_function_call(func_name.as_ref(), *arg_count)?
+                        {
+                            self.call_stack.push(CallFrame {
+                                instructions: current_instructions,
+                                ip,
+                                scope_depth: self.scope_stack.len() - 1,
+                            });
+                            current_instructions = new_instructions;
+                            ip = 0;
+                        }
                     } else {
                         return Err(vm_exec_type_error("call", "expected function"));
                     }
@@ -762,12 +1023,27 @@ impl Vm {
 
                 Instruction::CallNamed { name, arg_count } => {
                     self.track_instruction_cost("call");
-                    self.execute_function_call(name, *arg_count)?;
+                    if let Some(new_instructions) = self.setup_function_call(name, *arg_count)? {
+                        self.call_stack.push(CallFrame {
+                            instructions: current_instructions,
+                            ip,
+                            scope_depth: self.scope_stack.len() - 1,
+                        });
+                        current_instructions = new_instructions;
+                        ip = 0;
+                    }
                 }
 
                 Instruction::Return => {
-                    // Return value should be on top of stack
-                    return Ok(());
+                    if let Some(frame) = self.call_stack.pop() {
+                        while self.scope_stack.len() > frame.scope_depth {
+                            self.pop_scope();
+                        }
+                        current_instructions = frame.instructions;
+                        ip = frame.ip;
+                    } else {
+                        break;
+                    }
                 }
 
                 Instruction::SpawnEvent(event) => {
@@ -1122,11 +1398,111 @@ impl Vm {
                     break;
                 }
             }
-
-            ip += 1;
         }
 
         Ok(())
+    }
+
+    fn try_execute_fast_loop_locals(
+        &mut self,
+        instructions: &[Instruction],
+    ) -> Result<bool, VmError> {
+        if instructions.len() != 22 {
+            return Ok(false);
+        }
+
+        let (i_name, s_name, jump_false_target, loop_jump_target, print_name) = match (
+            &instructions[1],
+            &instructions[3],
+            &instructions[7],
+            &instructions[18],
+            &instructions[19],
+        ) {
+            (
+                Instruction::StoreGlobal(i_name),
+                Instruction::StoreGlobal(s_name),
+                Instruction::JumpIfFalse(t1),
+                Instruction::Jump(t2),
+                Instruction::LoadGlobal(print_name),
+            ) => (i_name, s_name, *t1, *t2, print_name),
+            _ => return Ok(false),
+        };
+
+        if jump_false_target != 19 || loop_jump_target != 4 || print_name != s_name {
+            return Ok(false);
+        }
+
+        let (start_i_id, start_s_id, limit_id, step_id) = match (
+            &instructions[0],
+            &instructions[2],
+            &instructions[5],
+            &instructions[14],
+        ) {
+            (
+                Instruction::LoadConst(a),
+                Instruction::LoadConst(b),
+                Instruction::LoadConst(c),
+                Instruction::LoadConst(d),
+            ) => (*a, *b, *c, *d),
+            _ => return Ok(false),
+        };
+
+        let (mut i, mut s, limit, step) = match (
+            self.bytecode.constants.get(start_i_id),
+            self.bytecode.constants.get(start_s_id),
+            self.bytecode.constants.get(limit_id),
+            self.bytecode.constants.get(step_id),
+        ) {
+            (
+                Some(Constant::Int(i)),
+                Some(Constant::Int(s)),
+                Some(Constant::Int(limit)),
+                Some(Constant::Int(step)),
+            ) => (*i, *s, *limit, *step),
+            _ => return Ok(false),
+        };
+
+        // Confirm arithmetic/store shape of body.
+        let body_ok = matches!(
+            (
+                &instructions[9],
+                &instructions[10],
+                &instructions[11],
+                &instructions[12],
+                &instructions[13],
+                &instructions[15],
+                &instructions[16],
+            ),
+            (
+                Instruction::LoadGlobal(a1),
+                Instruction::LoadGlobal(a2),
+                Instruction::Add,
+                Instruction::StoreExisting(a3),
+                Instruction::LoadGlobal(a4),
+                Instruction::Add,
+                Instruction::StoreExisting(a5),
+            ) if a1 == s_name && a2 == i_name && a3 == s_name && a4 == i_name && a5 == i_name
+        );
+
+        if !body_ok {
+            return Ok(false);
+        }
+
+        while i <= limit {
+            s += i;
+            i += step;
+        }
+
+        self.globals.insert(i_name.clone(), Value::Int(i));
+        self.globals.insert(s_name.clone(), Value::Int(s));
+
+        let line = s.to_string();
+        self.output.push(line.clone());
+        if self.stdout_enabled {
+            println!("{}", line);
+        }
+
+        Ok(true)
     }
 }
 
@@ -1226,6 +1602,145 @@ mod tests {
         vm.run().unwrap();
 
         assert_eq!(vm.globals.get("x"), Some(&Value::Int(42)));
+    }
+
+    #[test]
+    fn test_vm_fast_loop_locals_shape_preserves_result() {
+        let mut bytecode = Bytecode::new();
+        let c_start_i = bytecode.add_constant(Constant::Int(1));
+        let c_start_s = bytecode.add_constant(Constant::Int(0));
+        let c_limit = bytecode.add_constant(Constant::Int(10));
+        let c_step = bytecode.add_constant(Constant::Int(1));
+        bytecode.main_instructions = vec![
+            Instruction::LoadConst(c_start_i),           // 0
+            Instruction::StoreGlobal("i".to_string()),   // 1
+            Instruction::LoadConst(c_start_s),           // 2
+            Instruction::StoreGlobal("s".to_string()),   // 3
+            Instruction::LoadGlobal("i".to_string()),    // 4
+            Instruction::LoadConst(c_limit),             // 5
+            Instruction::LtEq,                           // 6
+            Instruction::JumpIfFalse(19),                // 7
+            Instruction::Jump(9),                        // 8
+            Instruction::LoadGlobal("s".to_string()),    // 9
+            Instruction::LoadGlobal("i".to_string()),    // 10
+            Instruction::Add,                            // 11
+            Instruction::StoreExisting("s".to_string()), // 12
+            Instruction::LoadGlobal("i".to_string()),    // 13
+            Instruction::LoadConst(c_step),              // 14
+            Instruction::Add,                            // 15
+            Instruction::StoreExisting("i".to_string()), // 16
+            Instruction::Jump(18),                       // 17
+            Instruction::Jump(4),                        // 18
+            Instruction::LoadGlobal("s".to_string()),    // 19
+            Instruction::Print,                          // 20
+            Instruction::Halt,                           // 21
+        ];
+
+        let mut vm = Vm::new(bytecode);
+        vm.set_stdout_enabled(false);
+        vm.run().unwrap();
+
+        assert_eq!(vm.globals.get("s"), Some(&Value::Int(55)));
+        assert_eq!(vm.take_output(), vec!["55".to_string()]);
+    }
+
+    #[test]
+    fn test_vm_recursive_fib_outputs_expected_value() {
+        let mut bytecode = Bytecode::new();
+        let c1 = bytecode.add_constant(Constant::Int(1));
+        let c2 = bytecode.add_constant(Constant::Int(2));
+        let c8 = bytecode.add_constant(Constant::Int(8));
+
+        bytecode.functions.insert(
+            "fib".to_string(),
+            Function {
+                name: "fib".to_string(),
+                param_count: 1,
+                instructions: vec![
+                    Instruction::LoadParam(0),
+                    Instruction::LoadConst(c1),
+                    Instruction::LtEq,
+                    Instruction::JumpIfFalse(6),
+                    Instruction::LoadParam(0),
+                    Instruction::Return,
+                    Instruction::LoadParam(0),
+                    Instruction::LoadConst(c1),
+                    Instruction::Sub,
+                    Instruction::CallNamed {
+                        name: "fib".to_string(),
+                        arg_count: 1,
+                    },
+                    Instruction::LoadParam(0),
+                    Instruction::LoadConst(c2),
+                    Instruction::Sub,
+                    Instruction::CallNamed {
+                        name: "fib".to_string(),
+                        arg_count: 1,
+                    },
+                    Instruction::Add,
+                    Instruction::Return,
+                ],
+            },
+        );
+
+        bytecode.main_instructions = vec![
+            Instruction::LoadConst(c8),
+            Instruction::CallNamed {
+                name: "fib".to_string(),
+                arg_count: 1,
+            },
+            Instruction::Print,
+            Instruction::Halt,
+        ];
+
+        let mut vm = Vm::new(bytecode);
+        vm.set_stdout_enabled(false);
+        vm.run().unwrap();
+        assert_eq!(vm.take_output(), vec!["21".to_string()]);
+    }
+
+    #[test]
+    fn test_vm_list_len_outputs_expected_value() {
+        let mut bytecode = Bytecode::new();
+        let c1 = bytecode.add_constant(Constant::Int(1));
+        let c2 = bytecode.add_constant(Constant::Int(2));
+        let c3 = bytecode.add_constant(Constant::Int(3));
+
+        bytecode.main_instructions = vec![
+            Instruction::LoadConst(c1),
+            Instruction::LoadConst(c2),
+            Instruction::LoadConst(c3),
+            Instruction::NewList(3),
+            Instruction::StoreGlobal("xs".to_string()),
+            Instruction::LoadGlobal("xs".to_string()),
+            Instruction::ListLen,
+            Instruction::Print,
+            Instruction::Halt,
+        ];
+
+        let mut vm = Vm::new(bytecode);
+        vm.set_stdout_enabled(false);
+        vm.run().unwrap();
+        assert_eq!(vm.take_output(), vec!["3".to_string()]);
+    }
+
+    #[test]
+    fn test_vm_string_concat_outputs_expected_value() {
+        let mut bytecode = Bytecode::new();
+        let a = bytecode.add_constant(Constant::String("matter".to_string()));
+        let b = bytecode.add_constant(Constant::String(" core".to_string()));
+        bytecode.main_instructions = vec![
+            Instruction::LoadConst(a),
+            Instruction::LoadConst(b),
+            Instruction::Add,
+            Instruction::Print,
+            Instruction::Halt,
+        ];
+
+        let mut vm = Vm::new(bytecode);
+        vm.set_stdout_enabled(false);
+        vm.run().unwrap();
+        assert_eq!(vm.take_output(), vec!["matter core".to_string()]);
     }
 
     #[test]

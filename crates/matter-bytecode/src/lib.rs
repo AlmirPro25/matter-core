@@ -109,6 +109,7 @@ pub enum Constant {
     Bool(bool),
     String(String),
     Unit,
+    Null,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -446,6 +447,15 @@ fn validate_statement(
             context.pop_scope();
             context.loop_depth -= 1;
         }
+        Statement::Match { subject, arms } => {
+            validate_expression(subject, structs, functions, context)?;
+            for arm in arms {
+                validate_expression(&arm.pattern, structs, functions, context)?;
+                context.push_scope();
+                validate_block(&arm.body, context, structs, functions)?;
+                context.pop_scope();
+            }
+        }
         Statement::Break => {
             if context.loop_depth == 0 {
                 return Err(SemanticError::new("'break' used outside of a loop"));
@@ -488,6 +498,7 @@ fn validate_expression(
         | Expression::Float(_)
         | Expression::Bool(_)
         | Expression::String(_)
+        | Expression::Null
         | Expression::Unit => {}
         Expression::Identifier(name) => {
             if !context.contains_variable(name, functions) {
@@ -639,7 +650,29 @@ fn is_backend_call(target: &Expression, method: &str) -> bool {
 fn is_builtin_backend(name: &str) -> bool {
     matches!(
         name,
-        "agent" | "visual" | "store" | "net" | "math" | "string" | "list" | "energy" | "tool"
+        "agent"
+            | "visual"
+            | "store"
+            | "net"
+            | "math"
+            | "string"
+            | "list"
+            | "energy"
+            | "tool"
+            | "python"
+            | "node"
+            | "java"
+            | "go"
+            | "rust"
+            | "polyglot"
+            | "map"
+            | "type"
+            | "console"
+            | "file"
+            | "time"
+            | "random"
+            | "json"
+            | "graph"
     )
 }
 
@@ -761,6 +794,12 @@ impl BytecodeBuilder {
                 let mut func_instructions = Vec::new();
                 let param_names: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
 
+                // Copy parameters to local variables at function start
+                for (idx, param) in params.iter().enumerate() {
+                    func_instructions.push(Instruction::LoadParam(idx));
+                    func_instructions.push(Instruction::StoreLocal(param.name.clone()));
+                }
+
                 // Compilar corpo da função
                 for stmt in body {
                     self.compile_function_statement(stmt, &mut func_instructions, &param_names);
@@ -808,6 +847,48 @@ impl BytecodeBuilder {
 
             Statement::Spawn { event } => {
                 instructions.push(Instruction::SpawnEvent(event.clone()));
+            }
+
+            Statement::Match { subject, arms } => {
+                let match_temp = self.next_temp_name("match_subj");
+                self.compile_expression(subject, instructions);
+                if local_declarations {
+                    instructions.push(Instruction::StoreLocal(match_temp.clone()));
+                } else {
+                    instructions.push(Instruction::StoreGlobal(match_temp.clone()));
+                }
+
+                let mut jump_end_positions = Vec::new();
+
+                for arm in arms {
+                    if local_declarations {
+                        instructions.push(Instruction::LoadLocal(match_temp.clone()));
+                    } else {
+                        instructions.push(Instruction::LoadGlobal(match_temp.clone()));
+                    }
+                    self.compile_expression(&arm.pattern, instructions);
+                    instructions.push(Instruction::Eq);
+
+                    let jump_if_false_pos = instructions.len();
+                    instructions.push(Instruction::JumpIfFalse(0));
+
+                    instructions.push(Instruction::PushScope);
+                    for stmt in &arm.body {
+                        self.compile_statement_with_scope(stmt, instructions, true);
+                    }
+                    instructions.push(Instruction::PopScope);
+
+                    jump_end_positions.push(instructions.len());
+                    instructions.push(Instruction::Jump(0));
+
+                    let next_arm_pos = instructions.len();
+                    instructions[jump_if_false_pos] = Instruction::JumpIfFalse(next_arm_pos);
+                }
+
+                let end_pos = instructions.len();
+                for pos in jump_end_positions {
+                    instructions[pos] = Instruction::Jump(end_pos);
+                }
             }
 
             Statement::If {
@@ -976,10 +1057,16 @@ impl BytecodeBuilder {
                 index,
                 value,
             } => {
-                self.compile_function_expression(target, instructions, params);
-                self.compile_function_expression(index, instructions, params);
-                self.compile_function_expression(value, instructions, params);
-                instructions.push(Instruction::StoreIndex);
+                if let Expression::Identifier(name) = target {
+                    self.compile_function_expression(index, instructions, params);
+                    self.compile_function_expression(value, instructions, params);
+                    instructions.push(Instruction::StoreIndexVar(name.clone()));
+                } else {
+                    self.compile_function_expression(target, instructions, params);
+                    self.compile_function_expression(index, instructions, params);
+                    self.compile_function_expression(value, instructions, params);
+                    instructions.push(Instruction::StoreIndex);
+                }
             }
 
             Statement::SetField {
@@ -1001,6 +1088,40 @@ impl BytecodeBuilder {
 
             Statement::Spawn { event } => {
                 instructions.push(Instruction::SpawnEvent(event.clone()));
+            }
+
+            Statement::Match { subject, arms } => {
+                let match_temp = self.next_temp_name("match_subj");
+                self.compile_function_expression(subject, instructions, params);
+                instructions.push(Instruction::StoreLocal(match_temp.clone()));
+
+                let mut jump_end_positions = Vec::new();
+
+                for arm in arms {
+                    instructions.push(Instruction::LoadLocal(match_temp.clone()));
+                    self.compile_function_expression(&arm.pattern, instructions, params);
+                    instructions.push(Instruction::Eq);
+
+                    let jump_if_false_pos = instructions.len();
+                    instructions.push(Instruction::JumpIfFalse(0));
+
+                    instructions.push(Instruction::PushScope);
+                    for stmt in &arm.body {
+                        self.compile_function_statement(stmt, instructions, params);
+                    }
+                    instructions.push(Instruction::PopScope);
+
+                    jump_end_positions.push(instructions.len());
+                    instructions.push(Instruction::Jump(0));
+
+                    let next_arm_pos = instructions.len();
+                    instructions[jump_if_false_pos] = Instruction::JumpIfFalse(next_arm_pos);
+                }
+
+                let end_pos = instructions.len();
+                for pos in jump_end_positions {
+                    instructions[pos] = Instruction::Jump(end_pos);
+                }
             }
 
             Statement::If {
@@ -1159,13 +1280,9 @@ impl BytecodeBuilder {
     ) {
         match expr {
             Expression::Identifier(name) => {
-                // Verificar se é parâmetro
-                if let Some(idx) = params.iter().position(|p| p == name) {
-                    instructions.push(Instruction::LoadParam(idx));
-                } else {
-                    // Tentar local, depois global
-                    instructions.push(Instruction::LoadGlobal(name.clone()));
-                }
+                // Tentar local, depois global. Parâmetros copiados para variáveis locais
+                // no início da função são resolvidos como variáveis locais.
+                instructions.push(Instruction::LoadGlobal(name.clone()));
             }
 
             Expression::Binary { left, op, right } => {
@@ -1216,8 +1333,96 @@ impl BytecodeBuilder {
                 }
             }
 
+            Expression::List(elements) => {
+                for element in elements {
+                    self.compile_function_expression(element, instructions, params);
+                }
+                instructions.push(Instruction::NewList(elements.len()));
+            }
+            Expression::Map(entries) => {
+                for (key, value) in entries {
+                    let id = self.bytecode.add_constant(Constant::String(key.clone()));
+                    instructions.push(Instruction::LoadConst(id));
+                    self.compile_function_expression(value, instructions, params);
+                }
+                instructions.push(Instruction::NewMap(entries.len()));
+            }
+            Expression::Index { target, index } => {
+                self.compile_function_expression(target, instructions, params);
+                self.compile_function_expression(index, instructions, params);
+                instructions.push(Instruction::LoadIndex);
+            }
+            Expression::BackendCall {
+                backend,
+                method,
+                args,
+            } => {
+                for arg in args {
+                    self.compile_function_expression(arg, instructions, params);
+                }
+                instructions.push(Instruction::BackendCall {
+                    backend: backend.clone(),
+                    method: method.clone(),
+                    arg_count: args.len(),
+                });
+            }
+            Expression::MethodCall {
+                target,
+                method,
+                args,
+            } => {
+                if is_backend_call(target, method) {
+                    for arg in args {
+                        self.compile_function_expression(arg, instructions, params);
+                    }
+                    if let Expression::Identifier(name) = target.as_ref() {
+                        instructions.push(Instruction::BackendCall {
+                            backend: name.clone(),
+                            method: method.clone(),
+                            arg_count: args.len(),
+                        });
+                    }
+                } else {
+                    if let Expression::Identifier(name) = target.as_ref() {
+                        if method == "push" && args.len() == 1 {
+                            self.compile_function_expression(&args[0], instructions, params);
+                            instructions.push(Instruction::ListPushVar(name.clone()));
+                            return;
+                        } else if method == "pop" && args.is_empty() {
+                            instructions.push(Instruction::ListPopVar(name.clone()));
+                            return;
+                        }
+                    }
+                    self.compile_function_expression(target, instructions, params);
+                    for arg in args {
+                        self.compile_function_expression(arg, instructions, params);
+                    }
+                    let instr = match method.as_str() {
+                        "push" => Instruction::ListPush,
+                        "pop" => Instruction::ListPop,
+                        "len" => Instruction::ListLen,
+                        "has" => Instruction::MapHas,
+                        "keys" => Instruction::MapKeys,
+                        "values" => Instruction::MapValues,
+                        _ => unreachable!(),
+                    };
+                    instructions.push(instr);
+                }
+            }
+            Expression::Field { target, field } => {
+                self.compile_function_expression(target, instructions, params);
+                instructions.push(Instruction::LoadField(field.clone()));
+            }
+            Expression::StructLiteral { type_name, fields } => {
+                for (name, value) in fields {
+                    let id = self.bytecode.add_constant(Constant::String(name.clone()));
+                    instructions.push(Instruction::LoadConst(id));
+                    self.compile_function_expression(value, instructions, params);
+                }
+                instructions.push(Instruction::NewStruct(type_name.clone(), fields.len()));
+            }
             _ => {
-                // Outros casos usam compilação normal
+                // Primitives fall back to standard compile
                 self.compile_expression(expr, instructions);
             }
         }
@@ -1344,6 +1549,11 @@ impl BytecodeBuilder {
 
             Expression::Unit => {
                 let id = self.bytecode.add_constant(Constant::Unit);
+                instructions.push(Instruction::LoadConst(id));
+            }
+
+            Expression::Null => {
+                let id = self.bytecode.add_constant(Constant::Null);
                 instructions.push(Instruction::LoadConst(id));
             }
 

@@ -14,7 +14,7 @@ let responses = {
 let conversation_history = []
 
 # Processar mensagem
-fn process_message(message) {
+fn process_message(message) with io {
     # Adicionar ao histórico
     conversation_history.push(message)
     
@@ -34,13 +34,13 @@ fn process_message(message) {
 }
 
 # Adicionar nova resposta
-fn teach_bot(keyword, response) {
+fn teach_bot(keyword, response) with io {
     set responses[keyword] = response
     print "Bot learned: " + keyword + " -> " + response
 }
 
 # Estatísticas
-fn show_stats() {
+fn show_stats() with io {
     print "=== Bot Statistics ==="
     print "Messages received: " + conversation_history.len()
     print "Known responses: " + responses.keys().len()

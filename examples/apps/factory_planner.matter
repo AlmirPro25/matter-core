@@ -1,0 +1,84 @@
+﻿# Factory Planner App
+# Simula um pipeline de criacao de software orientado por IA
+
+struct Task {
+    id: int,
+    name: string,
+    complexity: int,
+    done: bool
+}
+
+let tasks = []
+let next_id = 1
+
+fn add_task(name, complexity) with io {
+    let task = Task {
+        id: next_id,
+        name: name,
+        complexity: complexity,
+        done: false
+    }
+    tasks.push(task)
+    set next_id = next_id + 1
+    print "Task criada: " + name
+}
+
+fn complete_task(id) with io {
+    let i = 0
+    while i < tasks.len() {
+        let item = tasks[i]
+        if item.id == id {
+            set item.done = true
+            set tasks[i] = item
+            print "Task concluida: " + item.name
+            return 0
+        }
+        set i = i + 1
+    }
+    print "Task nao encontrada"
+}
+
+fn show_board() with io {
+    print "=== FACTORY BOARD ==="
+    for item in tasks {
+        let status = "[ ]"
+        if item.done {
+            set status = "[X]"
+        }
+        print status + " #" + item.id + " " + item.name + " (c=" + item.complexity + ")"
+    }
+    print "====================="
+}
+
+fn score() with io {
+    let total = tasks.len()
+    let done = 0
+    let complexity_done = 0
+
+    for item in tasks {
+        if item.done {
+            set done = done + 1
+            set complexity_done = complexity_done + item.complexity
+        }
+    }
+
+    print "Total tasks: " + total
+    print "Concluidas: " + done
+    print "Complexidade entregue: " + complexity_done
+}
+
+# Pipeline de construcao de app
+add_task("Definir escopo", 2)
+add_task("Gerar codigo inicial", 5)
+add_task("Validar arquitetura", 4)
+add_task("Rodar testes", 3)
+add_task("Publicar release", 4)
+
+show_board()
+
+complete_task(1)
+complete_task(2)
+complete_task(4)
+
+show_board()
+score()

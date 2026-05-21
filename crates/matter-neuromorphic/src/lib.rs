@@ -22,6 +22,8 @@ use rand::Rng;
 use std::collections::VecDeque;
 use thiserror::Error;
 
+pub mod backend;
+
 #[derive(Error, Debug)]
 pub enum NeuromorphicError {
     #[error("Invalid neuron index: {0}")]

@@ -4,12 +4,32 @@
 use matter_backend::{
     AgentBackend, Backend, GraphBackend, NetBackend, StoreBackend, ToolBackend, Value,
 };
+use matter_biological::backend::BiologicalBackend;
+use matter_bridge_go::{Bridge as GoBridgeTrait, GoBridge};
+use matter_bridge_java::{Bridge as JavaBridgeTrait, JavaBridge};
+use matter_bridge_nodejs::NodeJSBridge;
+use matter_bridge_python::PythonBridge;
+use matter_bridge_rust::RustBridge;
 use matter_bytecode::Bytecode;
+use matter_chemistry::backend::ChemistryBackend;
+use matter_device::DeviceBackend;
 use matter_energy::{EnergyBackend, EnergyRuntime};
+use matter_genesis::backend::GenesisBackend;
+use matter_memristive::backend::MemristiveBackend;
+use matter_molecular::backend::MolecularBackend;
+use matter_neuromorphic::backend::NeuromorphicBackend;
+use matter_photonic::backend::PhotonicBackend;
+use matter_polyglot::{bridge::LanguageBridge, LanguageTarget};
+use matter_quantum::backend::QuantumBackend;
+use matter_relativity::backend::RelativityBackend;
+use matter_spintronics::backend::SpintronicsBackend;
 use matter_stdlib::{
-    JsonBackend, ListBackend, MathBackend, RandomBackend, StringBackend, TimeBackend,
+    AudioBackend, ConsoleBackend, FileBackend, JsonBackend, ListBackend, MapBackend, MathBackend,
+    RandomBackend, StringBackend, TimeBackend, TypeBackend,
 };
 use matter_visual::TraceVisualBackend;
+use matter_wetware::backend::WetwareBackend;
+
 use matter_vm::Vm;
 use std::collections::HashMap;
 
@@ -22,22 +42,9 @@ impl Runtime {
     pub fn new(bytecode: Bytecode) -> Self {
         let mut vm = Vm::new(bytecode);
 
-        // Register default backends
-        vm.register_backend("agent".to_string(), Box::new(AgentBackend::new()));
-        vm.register_backend("visual".to_string(), Box::new(TraceVisualBackend::new()));
-        vm.register_backend("graph".to_string(), Box::new(GraphBackend::new()));
-        vm.register_backend("store".to_string(), Box::new(StoreBackend::new()));
-        vm.register_backend("net".to_string(), Box::new(NetBackend::new()));
-        vm.register_backend("energy".to_string(), Box::new(EnergyBackend::new()));
-        vm.register_backend("tool".to_string(), Box::new(ToolBackend::new()));
-
-        // Register standard library backends
-        vm.register_backend("math".to_string(), Box::new(MathBackend::new()));
-        vm.register_backend("string".to_string(), Box::new(StringBackend::new()));
-        vm.register_backend("list".to_string(), Box::new(ListBackend::new()));
-        vm.register_backend("time".to_string(), Box::new(TimeBackend::new()));
-        vm.register_backend("random".to_string(), Box::new(RandomBackend::new()));
-        vm.register_backend("json".to_string(), Box::new(JsonBackend::new()));
+        register_default_backends(&mut vm, false);
+        register_stdlib_backends(&mut vm, true);
+        register_polyglot_backends(&mut vm);
 
         Self {
             vm,
@@ -48,24 +55,9 @@ impl Runtime {
     pub fn new_silent(bytecode: Bytecode) -> Self {
         let mut vm = Vm::new(bytecode);
 
-        vm.register_backend("agent".to_string(), Box::new(SilentAgentBackend));
-        vm.register_backend(
-            "visual".to_string(),
-            Box::new(TraceVisualBackend::new_silent()),
-        );
-        vm.register_backend("graph".to_string(), Box::new(GraphBackend::new()));
-        vm.register_backend("store".to_string(), Box::new(StoreBackend::new()));
-        vm.register_backend("net".to_string(), Box::new(NetBackend::new()));
-        vm.register_backend("energy".to_string(), Box::new(EnergyBackend::new()));
-        vm.register_backend("tool".to_string(), Box::new(ToolBackend::new()));
-
-        // Register standard library backends
-        vm.register_backend("math".to_string(), Box::new(MathBackend::new()));
-        vm.register_backend("string".to_string(), Box::new(StringBackend::new()));
-        vm.register_backend("list".to_string(), Box::new(ListBackend::new()));
-        vm.register_backend("time".to_string(), Box::new(TimeBackend::new()));
-        vm.register_backend("random".to_string(), Box::new(RandomBackend::new()));
-        vm.register_backend("json".to_string(), Box::new(JsonBackend::new()));
+        register_default_backends(&mut vm, true);
+        register_stdlib_backends(&mut vm, false);
+        register_polyglot_backends(&mut vm);
 
         Self {
             vm,
@@ -75,6 +67,17 @@ impl Runtime {
 
     pub fn register_backend(&mut self, name: String, backend: Box<dyn Backend>) {
         self.vm.register_backend(name, backend);
+    }
+
+    pub fn call_backend(
+        &mut self,
+        backend: &str,
+        method: &str,
+        args: Vec<Value>,
+    ) -> Result<Value, String> {
+        self.vm
+            .call_backend(backend, method, args)
+            .map_err(|e| e.to_string())
     }
 
     pub fn set_stdout_enabled(&mut self, enabled: bool) {
@@ -332,6 +335,87 @@ impl Runtime {
     }
 }
 
+fn register_default_backends(vm: &mut Vm, silent: bool) {
+    if silent {
+        vm.register_backend("agent".to_string(), Box::new(SilentAgentBackend));
+        vm.register_backend(
+            "visual".to_string(),
+            Box::new(TraceVisualBackend::new_silent()),
+        );
+    } else {
+        vm.register_backend("agent".to_string(), Box::new(AgentBackend::new()));
+        vm.register_backend("visual".to_string(), Box::new(TraceVisualBackend::new()));
+    }
+
+    vm.register_backend("graph".to_string(), Box::new(GraphBackend::new()));
+    vm.register_backend("store".to_string(), Box::new(StoreBackend::new()));
+    vm.register_backend("net".to_string(), Box::new(NetBackend::new()));
+    vm.register_backend("energy".to_string(), Box::new(EnergyBackend::new()));
+    vm.register_backend("device".to_string(), Box::new(DeviceBackend::new()));
+    vm.register_backend("tool".to_string(), Box::new(ToolBackend::new()));
+}
+
+fn register_stdlib_backends(vm: &mut Vm, include_extended: bool) {
+    vm.register_backend("math".to_string(), Box::new(MathBackend::new()));
+    vm.register_backend("string".to_string(), Box::new(StringBackend::new()));
+    vm.register_backend("list".to_string(), Box::new(ListBackend::new()));
+    vm.register_backend("time".to_string(), Box::new(TimeBackend::new()));
+    vm.register_backend("random".to_string(), Box::new(RandomBackend::new()));
+    vm.register_backend("json".to_string(), Box::new(JsonBackend::new()));
+    vm.register_backend("wetware".to_string(), Box::new(WetwareBackend::new()));
+    vm.register_backend("quantum".to_string(), Box::new(QuantumBackend::new()));
+    vm.register_backend("memristive".to_string(), Box::new(MemristiveBackend::new()));
+    vm.register_backend("photonic".to_string(), Box::new(PhotonicBackend::new()));
+    vm.register_backend(
+        "spintronics".to_string(),
+        Box::new(SpintronicsBackend::new()),
+    );
+    vm.register_backend("molecular".to_string(), Box::new(MolecularBackend::new()));
+    vm.register_backend("relativity".to_string(), Box::new(RelativityBackend::new()));
+    vm.register_backend("chemistry".to_string(), Box::new(ChemistryBackend::new()));
+    vm.register_backend("genesis".to_string(), Box::new(GenesisBackend::new()));
+    vm.register_backend("biology".to_string(), Box::new(BiologicalBackend::new()));
+    vm.register_backend(
+        "neuromorphic".to_string(),
+        Box::new(NeuromorphicBackend::new()),
+    );
+
+    vm.register_backend("audio".to_string(), Box::new(AudioBackend::new()));
+
+    if include_extended {
+        vm.register_backend("map".to_string(), Box::new(MapBackend::new()));
+        vm.register_backend("type".to_string(), Box::new(TypeBackend::new()));
+        vm.register_backend("console".to_string(), Box::new(ConsoleBackend::new()));
+        vm.register_backend("file".to_string(), Box::new(FileBackend::new()));
+    }
+}
+
+fn register_polyglot_backends(vm: &mut Vm) {
+    vm.register_backend(
+        "python".to_string(),
+        Box::new(PolyglotBackend::new("Python", Box::new(PythonBridge::new()))),
+    );
+    vm.register_backend(
+        "node".to_string(),
+        Box::new(PolyglotBackend::new("Node.js", Box::new(NodeJSBridge::new()))),
+    );
+    vm.register_backend(
+        "java".to_string(),
+        Box::new(PolyglotBackend::new(
+            "Java",
+            Box::new(JavaLanguageBridge::new()),
+        )),
+    );
+    vm.register_backend(
+        "go".to_string(),
+        Box::new(PolyglotBackend::new("Go", Box::new(GoLanguageBridge::new()))),
+    );
+    vm.register_backend(
+        "rust".to_string(),
+        Box::new(PolyglotBackend::new("Rust", Box::new(RustBridge::new()))),
+    );
+}
+
 struct SilentAgentBackend;
 
 impl Backend for SilentAgentBackend {
@@ -343,6 +427,229 @@ impl Backend for SilentAgentBackend {
                 method
             )),
         }
+    }
+}
+
+pub struct PolyglotBackend {
+    display_name: String,
+    bridge: Box<dyn LanguageBridge>,
+    initialized: bool,
+    init_error: Option<String>,
+}
+
+impl PolyglotBackend {
+    pub fn new(display_name: impl Into<String>, bridge: Box<dyn LanguageBridge>) -> Self {
+        Self {
+            display_name: display_name.into(),
+            bridge,
+            initialized: false,
+            init_error: None,
+        }
+    }
+
+    fn ensure_initialized(&mut self) -> Result<(), String> {
+        if self.initialized {
+            return Ok(());
+        }
+
+        match self.bridge.initialize() {
+            Ok(()) => {
+                self.initialized = true;
+                self.init_error = None;
+                Ok(())
+            }
+            Err(error) => {
+                self.init_error = Some(error.clone());
+                Err(error)
+            }
+        }
+    }
+
+    fn status(&mut self) -> Value {
+        let ready = self.ensure_initialized().is_ok();
+        let mut map = HashMap::new();
+        map.insert("backend".to_string(), Value::new_string(self.display_name.clone()));
+        map.insert("ready".to_string(), Value::Bool(ready));
+        map.insert("stub".to_string(), Value::Bool(false));
+        map.insert(
+            "language".to_string(),
+            Value::new_string(self.bridge.language().as_str().to_string()),
+        );
+        map.insert("mode".to_string(), Value::new_string("real".to_string()));
+        if let Some(error) = &self.init_error {
+            map.insert("error".to_string(), Value::new_string(error.clone()));
+        }
+        Value::new_map(map)
+    }
+
+    fn import_module(&mut self, args: Vec<Value>) -> Result<Value, String> {
+        self.ensure_initialized()?;
+        let module = arg_string(&args, 0, "import module")?;
+        self.bridge.import_module(&module)?;
+        Ok(Value::Unit)
+    }
+
+    fn call_function(&mut self, args: Vec<Value>) -> Result<Value, String> {
+        self.ensure_initialized()?;
+        let module = arg_string(&args, 0, "call module")?;
+        let function = arg_string(&args, 1, "call function")?;
+        let call_args = if args.len() == 3 {
+            match &args[2] {
+                Value::List(values) => values.iter().cloned().collect(),
+                value => vec![value.clone()],
+            }
+        } else if args.len() > 3 {
+            args.into_iter().skip(2).collect()
+        } else {
+            Vec::new()
+        };
+        self.bridge.call_function(&module, &function, call_args)
+    }
+
+    fn get_attribute(&mut self, args: Vec<Value>) -> Result<Value, String> {
+        self.ensure_initialized()?;
+        let module = arg_string(&args, 0, "attribute module")?;
+        let attribute = arg_string(&args, 1, "attribute name")?;
+        self.bridge.get_attribute(&module, &attribute)
+    }
+}
+
+impl Backend for PolyglotBackend {
+    fn call(&mut self, method: &str, args: Vec<Value>) -> Result<Value, String> {
+        if method == "status" || method == "info" || method == "capabilities" {
+            return Ok(self.status());
+        }
+
+        match method {
+            "import" | "import_module" | "load" => self.import_module(args),
+            "call" | "call_function" | "invoke" => self.call_function(args),
+            "get" | "get_attribute" | "attr" => self.get_attribute(args),
+            other => Err(format!(
+                "{} bridge method '{}' is not supported; use status, import(module), call(module, function, args...), or get(module, attribute)",
+                self.display_name, other
+            )),
+        }
+    }
+}
+
+fn arg_string(args: &[Value], index: usize, name: &str) -> Result<String, String> {
+    args.get(index)
+        .ok_or_else(|| format!("missing {}", name))?
+        .as_string()
+        .map_err(|e| format!("{} must be a string: {}", name, e))
+}
+
+struct GoLanguageBridge {
+    inner: GoBridge,
+}
+
+impl GoLanguageBridge {
+    fn new() -> Self {
+        Self {
+            inner: GoBridge::new(),
+        }
+    }
+}
+
+impl LanguageBridge for GoLanguageBridge {
+    fn language(&self) -> LanguageTarget {
+        LanguageTarget::Go
+    }
+
+    fn initialize(&mut self) -> Result<(), String> {
+        std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .map_err(|e| format!("Go not found: {}", e))
+            .and_then(|output| {
+                if output.status.success() {
+                    Ok(())
+                } else {
+                    Err("Go runtime check failed".to_string())
+                }
+            })
+    }
+
+    fn import_module(&mut self, module: &str) -> Result<(), String> {
+        self.inner.load_module(module).map_err(|e| format!("{:?}", e))
+    }
+
+    fn call_function(
+        &mut self,
+        module: &str,
+        function: &str,
+        args: Vec<Value>,
+    ) -> Result<Value, String> {
+        self.inner
+            .call(module, function, args)
+            .map_err(|e| format!("{:?}", e))
+    }
+
+    fn get_attribute(&mut self, module: &str, attribute: &str) -> Result<Value, String> {
+        self.inner
+            .get_attribute(module, attribute)
+            .map_err(|e| format!("{:?}", e))
+    }
+
+    fn shutdown(&mut self) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+struct JavaLanguageBridge {
+    inner: JavaBridge,
+}
+
+impl JavaLanguageBridge {
+    fn new() -> Self {
+        Self {
+            inner: JavaBridge::new(),
+        }
+    }
+}
+
+impl LanguageBridge for JavaLanguageBridge {
+    fn language(&self) -> LanguageTarget {
+        LanguageTarget::Java
+    }
+
+    fn initialize(&mut self) -> Result<(), String> {
+        std::process::Command::new("java")
+            .arg("-version")
+            .output()
+            .map_err(|e| format!("Java not found: {}", e))
+            .and_then(|output| {
+                if output.status.success() {
+                    Ok(())
+                } else {
+                    Err("Java runtime check failed".to_string())
+                }
+            })
+    }
+
+    fn import_module(&mut self, module: &str) -> Result<(), String> {
+        self.inner.load_module(module).map_err(|e| format!("{:?}", e))
+    }
+
+    fn call_function(
+        &mut self,
+        module: &str,
+        function: &str,
+        args: Vec<Value>,
+    ) -> Result<Value, String> {
+        self.inner
+            .call(module, function, args)
+            .map_err(|e| format!("{:?}", e))
+    }
+
+    fn get_attribute(&mut self, module: &str, attribute: &str) -> Result<Value, String> {
+        self.inner
+            .get_attribute(module, attribute)
+            .map_err(|e| format!("{:?}", e))
+    }
+
+    fn shutdown(&mut self) -> Result<(), String> {
+        Ok(())
     }
 }
 
@@ -660,5 +967,96 @@ mod tests {
             globals.get("tool_accepted_seen"),
             Some(&Value::new_string("ok".to_string()))
         );
+    }
+
+    struct TestLanguageBridge {
+        initialized: bool,
+        imported: Vec<String>,
+    }
+
+    impl TestLanguageBridge {
+        fn new() -> Self {
+            Self {
+                initialized: false,
+                imported: Vec::new(),
+            }
+        }
+    }
+
+    impl LanguageBridge for TestLanguageBridge {
+        fn language(&self) -> LanguageTarget {
+            LanguageTarget::Python
+        }
+
+        fn initialize(&mut self) -> Result<(), String> {
+            self.initialized = true;
+            Ok(())
+        }
+
+        fn import_module(&mut self, module: &str) -> Result<(), String> {
+            self.imported.push(module.to_string());
+            Ok(())
+        }
+
+        fn call_function(
+            &mut self,
+            module: &str,
+            function: &str,
+            args: Vec<Value>,
+        ) -> Result<Value, String> {
+            Ok(Value::new_string(format!(
+                "{}.{}({})",
+                module,
+                function,
+                args.len()
+            )))
+        }
+
+        fn get_attribute(&mut self, module: &str, attribute: &str) -> Result<Value, String> {
+            Ok(Value::new_string(format!("{}.{}", module, attribute)))
+        }
+
+        fn shutdown(&mut self) -> Result<(), String> {
+            self.initialized = false;
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn polyglot_backend_status_reports_real_mode() {
+        let mut backend = PolyglotBackend::new("Python", Box::new(TestLanguageBridge::new()));
+        let status = backend.call("status", vec![]).unwrap();
+
+        let map = match status {
+            Value::Map(map) => map,
+            _ => panic!("status must return a map"),
+        };
+
+        assert_eq!(map.get("ready"), Some(&Value::Bool(true)));
+        assert_eq!(map.get("stub"), Some(&Value::Bool(false)));
+        assert_eq!(map.get("mode"), Some(&Value::new_string("real".to_string())));
+        assert!(matches!(map.get("backend"), Some(Value::String(_))));
+    }
+
+    #[test]
+    fn polyglot_backend_import_and_call_dispatch_to_bridge() {
+        let mut backend = PolyglotBackend::new("Python", Box::new(TestLanguageBridge::new()));
+        backend
+            .call("import", vec![Value::new_string("math".to_string())])
+            .unwrap();
+        let output = backend
+            .call(
+                "call",
+                vec![
+                    Value::new_string("math".to_string()),
+                    Value::new_string("sqrt".to_string()),
+                    Value::new_list(vec![Value::Int(16)]),
+                ],
+            )
+            .unwrap()
+            .as_string()
+            .expect("call should return string");
+
+        assert_eq!(output, "math.sqrt(1)");
     }
 }

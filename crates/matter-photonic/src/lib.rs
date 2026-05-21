@@ -23,6 +23,8 @@
 use num_complex::Complex64;
 use std::collections::HashMap;
 
+pub mod backend;
+
 /// Wavelength in nanometers (nm)
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Wavelength(pub f64);

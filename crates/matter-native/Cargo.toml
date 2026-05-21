@@ -11,6 +11,7 @@ matter-bytecode = { path = "../matter-bytecode" }
 matter-optimizer = { path = "../matter-optimizer" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+windows-sys = { version = "0.59", optional = true, features = ["Win32_System_Memory"] }
 
 [dev-dependencies]
 
@@ -19,3 +20,4 @@ default = []
 x86_64 = []
 arm64 = []
 riscv = []
+jit-exec = ["dep:windows-sys"]

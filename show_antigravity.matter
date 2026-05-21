@@ -1,0 +1,9 @@
+print "================================================================"
+print " 🛰️ INICIANDO CLIENTE NATIVO ANTIGRAVITY AI AGENT "
+print "================================================================"
+print "  🖥️ Inicializando a interface gráfica (Egui/Eframe)..."
+print "  Aguarde até a janela nativa abrir na sua tela."
+print "  Feche a janela para retornar ao terminal."
+print "================================================================"
+
+visual.create_window("Antigravity AI Agent System - v25")

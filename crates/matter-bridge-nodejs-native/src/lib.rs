@@ -152,6 +152,10 @@ impl NodeJSNativeBridge {
                 let js_null = env.get_null()?;
                 Ok(js_null.into_unknown())
             }
+            Value::Null => {
+                let js_null = env.get_null()?;
+                Ok(js_null.into_unknown())
+            }
             Value::Function(_) => Err(BridgeError::ConversionError(
                 "Cannot convert Matter function to JavaScript".to_string(),
             )),

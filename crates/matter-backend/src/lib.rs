@@ -28,6 +28,7 @@ pub enum Value {
     Float(f64),
     Bool(bool),
     Unit,
+    Null,
 
     // Heap values - use Rc for shared ownership
     String(Rc<String>),
@@ -113,6 +114,7 @@ impl Value {
             Value::Bool(b) => b.to_string(),
             Value::String(s) => (**s).clone(),
             Value::Unit => "()".to_string(),
+            Value::Null => "null".to_string(),
             Value::Function(name) => format!("<fn {}>", **name),
             Value::List(elements) => {
                 let items: Vec<String> = elements.iter().map(|v| v.to_display_string()).collect();
@@ -144,6 +146,7 @@ pub fn value_type_name(value: &Value) -> &'static str {
         Value::Float(_) => "float",
         Value::Bool(_) => "bool",
         Value::Unit => "unit",
+        Value::Null => "null",
         Value::String(_) => "string",
         Value::Function(_) => "function",
         Value::List(_) => "list",
@@ -768,6 +771,139 @@ impl Backend for NetBackend {
                     .map_err(|e| format!("net.post: {}", e))?;
                 let response = http_request("POST", &url, &body, self.timeout)?;
                 Ok(Value::new_string(response.body))
+            }
+            "serve" => {
+                if args.len() != 2 {
+                    return Err(backend_arity_error("net.serve", 2, args.len()));
+                }
+                let port = args[0].as_int().map_err(|e| format!("net.serve: {}", e))?;
+                let response_body = args[1]
+                    .as_string()
+                    .map_err(|e| format!("net.serve: {}", e))?;
+
+                let listener = std::net::TcpListener::bind(format!("0.0.0.0:{}", port))
+                    .map_err(|e| format!("net.serve falhou ao abrir porta: {}", e))?;
+
+                // Set a timeout so we can check for shutdown conditions
+                listener.set_nonblocking(false).ok();
+
+                println!("🌐 [MATTER NET] Servidor Web nativo online!");
+                println!("🚀 Acesse no navegador: http://localhost:{}", port);
+                println!("⏳ Aguardando conexoes... (Ctrl+C para parar)");
+
+                let mut connections_served: i64 = 0;
+
+                for stream in listener.incoming() {
+                    match stream {
+                        Ok(mut stream) => {
+                            let mut buffer = [0; 4096];
+                            let _ = stream.read(&mut buffer);
+
+                            let http_response = format!(
+                                "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{}",
+                                response_body.len(),
+                                response_body
+                            );
+                            let _ = stream.write_all(http_response.as_bytes());
+                            let _ = stream.flush();
+                            connections_served += 1;
+                            println!(
+                                "✅ [MATTER NET] Conexao #{} servida com sucesso!",
+                                connections_served
+                            );
+                        }
+                        Err(e) => {
+                            eprintln!("⚠️ [MATTER NET] Erro de conexao: {}", e);
+                            break;
+                        }
+                    }
+                }
+
+                Ok(Value::Int(connections_served))
+            }
+            "serve_routes" => {
+                if args.len() != 2 {
+                    return Err(backend_arity_error("net.serve_routes", 2, args.len()));
+                }
+                let port = args[0]
+                    .as_int()
+                    .map_err(|e| format!("net.serve_routes: {}", e))?;
+                let routes = if let Value::Map(m) = &args[1] {
+                    (**m).clone()
+                } else {
+                    return Err(
+                        "net.serve_routes: second argument must be a map of path->body".to_string(),
+                    );
+                };
+
+                let listener = std::net::TcpListener::bind(format!("0.0.0.0:{}", port))
+                    .map_err(|e| format!("net.serve_routes falhou ao abrir porta: {}", e))?;
+
+                println!("🌐 [MATTER NET] Servidor Web com Roteamento online!");
+                println!("🚀 Acesse no navegador: http://localhost:{}", port);
+                let route_count = routes.len();
+                println!("📍 {} rotas registradas", route_count);
+                for key in routes.keys() {
+                    println!("   -> http://localhost:{}{}", port, key);
+                }
+                println!("⏳ Aguardando conexoes... (Ctrl+C para parar)");
+
+                let connections_served: i64 = 0;
+                let not_found_body = routes
+                    .get("404")
+                    .map(|v| v.to_display_string())
+                    .unwrap_or_else(|| {
+                        "<html><body><h1>404 - Not Found</h1></body></html>".to_string()
+                    });
+
+                for stream in listener.incoming() {
+                    match stream {
+                        Ok(mut stream) => {
+                            let routes_clone = routes.clone();
+                            let not_found_clone = not_found_body.clone();
+
+                            std::thread::spawn(move || {
+                                let mut buffer = [0u8; 4096];
+                                let bytes_read = stream.read(&mut buffer).unwrap_or(0);
+                                let request = String::from_utf8_lossy(&buffer[..bytes_read]);
+
+                                // Parse HTTP request line: "GET /path HTTP/1.1"
+                                let path = request
+                                    .lines()
+                                    .next()
+                                    .and_then(|line| line.split_whitespace().nth(1))
+                                    .unwrap_or("/")
+                                    .to_string();
+
+                                let (status, body) =
+                                    if let Some(response_val) = routes_clone.get(&path) {
+                                        (200, response_val.to_display_string())
+                                    } else {
+                                        (404, not_found_clone)
+                                    };
+
+                                let http_response = format!(
+                                    "HTTP/1.1 {} {}\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{}",
+                                    status, if status == 200 { "OK" } else { "Not Found" },
+                                    body.len(), body
+                                );
+                                let _ = stream.write_all(http_response.as_bytes());
+                                let _ = stream.flush();
+                                println!(
+                                    "✅ [MATTER NET ASYNC] {} -> {} ({} bytes)",
+                                    path,
+                                    status,
+                                    body.len()
+                                );
+                            });
+                        }
+                        Err(e) => {
+                            eprintln!("⚠️ [MATTER NET] Erro: {}", e);
+                            break;
+                        }
+                    }
+                }
+                Ok(Value::Int(connections_served))
             }
             _ => Err(backend_unknown_method_error("net", method)),
         }
@@ -1585,6 +1721,12 @@ fn encode_value(value: &Value) -> serde_json::Value {
                 serde_json::Value::String((**name).clone()),
             );
         }
+        Value::Null => {
+            object.insert(
+                "type".to_string(),
+                serde_json::Value::String("null".to_string()),
+            );
+        }
     }
     serde_json::Value::Object(object)
 }
@@ -1625,6 +1767,7 @@ fn decode_value(json: &serde_json::Value) -> Result<Value, String> {
                 .to_string(),
         )),
         "unit" => Ok(Value::Unit),
+        "null" => Ok(Value::Null),
         "list" => {
             let values = object
                 .get("value")

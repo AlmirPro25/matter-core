@@ -68,15 +68,23 @@ fn main() {
     let args: Vec<String> = env::args().collect();
 
     if args.len() < 2 {
-        print_usage();
-        process::exit(1);
+        run_agent_ui(&[]);
+        return;
     }
 
     let command = &args[1];
 
+    if matches!(command.as_str(), "help" | "--help" | "-h") {
+        print_usage();
+        return;
+    }
+
     match command.as_str() {
         "capabilities-json" => {
             print_capabilities_json();
+        }
+        "polyglot-status-json" => {
+            print_polyglot_status_json();
         }
         "tool-ci-catalog-json" => {
             print_tool_ci_catalog_json();
@@ -216,6 +224,10 @@ fn main() {
             for arg in args.iter().skip(2) {
                 if arg == "--with-energy" {
                     with_energy = true;
+                } else if arg.starts_with('-') {
+                    eprintln!("Unknown option for project-run-json: {}", arg);
+                    eprintln!("Usage: matter-cli project-run-json [matter.toml] [--with-energy]");
+                    process::exit(1);
                 } else {
                     manifest = arg;
                 }
@@ -1845,6 +1857,44 @@ fn main() {
         "agent-chat" => {
             run_agent_chat(&args[2..]);
         }
+        "agent-ui" => {
+            run_agent_ui(&args[2..]);
+        }
+        "agent-new-app" => {
+            run_agent_new_app(&args[2..]);
+        }
+        "agent-work" => {
+            run_agent_work(&args[2..]);
+        }
+        "agent-doctor" => {
+            run_agent_doctor_command(&args[2..]);
+        }
+        "agent-review" => {
+            run_agent_review(&args[2..]);
+        }
+        "agent-reports-json" => {
+            print_agent_reports_json();
+        }
+        "agent-report-json" => {
+            if args.len() < 3 {
+                eprintln!("Usage: matter-cli agent-report-json latest|<path>");
+                process::exit(1);
+            }
+            print_agent_report_json(&args[2]);
+        }
+        "agent-apply-report" => {
+            if args.len() < 3 {
+                eprintln!("Usage: matter-cli agent-apply-report latest|<path> [--plan] [--run-validation]");
+                process::exit(1);
+            }
+            apply_agent_work_report(&args[2..]);
+        }
+        "agent-status-json" => {
+            print_agent_status_json();
+        }
+        "agent-capabilities-json" => {
+            print_agent_capabilities_json();
+        }
 
         "lsp" => {
             run_lsp();
@@ -1916,6 +1966,7 @@ fn print_usage() {
     println!();
     println!("Usage:");
     println!("  matter-cli capabilities-json                Print machine-readable capabilities");
+    println!("  matter-cli polyglot-status-json             Print polyglot bridge runtime status");
     println!("  matter-cli tool-ci-catalog-json             Print CI decision reason/code catalog");
     println!("  matter-cli tool-ci-verify-json <reason> <code> Verify CI reason/code mapping");
     println!("  matter-cli tool-ci-contract-json            Print CI contract bundle");
@@ -1952,6 +2003,7 @@ fn print_usage() {
     println!(
         "  matter-cli project-run-build-json [matter.toml] [-o out] [--with-energy] Build bytecode and run it as JSON"
     );
+    println!("  matter-cli agent-work <goal>                 Run tool-using AI agent in current workspace");
     println!(
         "  matter-cli project-emit-build-json [matter.toml] <event> [-o out] [--with-energy] Build bytecode and emit event as JSON"
     );
@@ -2155,6 +2207,7 @@ fn print_capabilities_json() {
             "\"stdin\":true,",
             "\"json_commands\":[",
             "\"capabilities-json\",",
+            "\"polyglot-status-json\",",
             "\"tool-ci-catalog-json\",",
             "\"tool-ci-verify-json\",",
             "\"tool-ci-contract-json\",",
@@ -2310,6 +2363,28 @@ fn print_capabilities_json() {
 
 fn print_tool_ci_catalog_json() {
     println!("{}", tool_ci_catalog_json_string());
+}
+
+fn print_polyglot_status_json() {
+    let bridges = ["python", "node", "java", "go", "rust"];
+    let mut runtime = Runtime::new_silent(Bytecode::new());
+    let mut entries: Vec<String> = Vec::new();
+
+    for key in bridges {
+        let payload = runtime
+            .call_backend(key, "status", vec![])
+            .unwrap_or_else(|error| Value::new_string(format!("status call failed: {}", error)));
+        entries.push(format!(
+            "\"{}\":{}",
+            json_escape(key),
+            value_to_json(&payload)
+        ));
+    }
+
+    println!(
+        "{{\"ok\":true,\"kind\":\"polyglot_status\",\"bridges\":{{{}}}}}",
+        entries.join(",")
+    );
 }
 
 fn fnv1a64_text_hex(input: &str) -> String {
@@ -2811,6 +2886,158 @@ fn init_project(options: &InitOptions, json_output: bool) {
             process::exit(1);
         }
     }
+}
+
+fn run_agent_new_app(args: &[String]) {
+    let mut dir: Option<PathBuf> = None;
+    let mut name: Option<String> = None;
+    let mut template = InitTemplate::Basic;
+    let mut json_output = false;
+    let mut run_after = false;
+    let mut i = 0usize;
+
+    while i < args.len() {
+        match args[i].as_str() {
+            "--name" if i + 1 < args.len() => {
+                name = Some(args[i + 1].clone());
+                i += 2;
+            }
+            "--template" if i + 1 < args.len() => {
+                template = InitTemplate::parse(&args[i + 1]).unwrap_or(InitTemplate::Basic);
+                i += 2;
+            }
+            "--json" => {
+                json_output = true;
+                i += 1;
+            }
+            "--run" => {
+                run_after = true;
+                i += 1;
+            }
+            "--help" | "-h" => {
+                print_command_help("agent-new-app");
+                return;
+            }
+            flag if flag.starts_with("--") => {
+                eprintln!("Unknown option: {}", flag);
+                process::exit(1);
+            }
+            value => {
+                if dir.is_some() {
+                    eprintln!("agent-new-app accepts at most one directory");
+                    process::exit(1);
+                }
+                dir = Some(PathBuf::from(value));
+                i += 1;
+            }
+        }
+    }
+
+    let options = InitOptions {
+        dir: dir.unwrap_or_else(|| PathBuf::from(".")),
+        name,
+        template,
+    };
+    let result = match scaffold_project(&options) {
+        Ok(v) => v,
+        Err(error) => {
+            if json_output {
+                println!(
+                    "{}",
+                    json!({
+                        "ok": false,
+                        "stage": "scaffold",
+                        "dir": options.dir.display().to_string(),
+                        "error": error
+                    })
+                );
+            } else {
+                eprintln!("agent-new-app failed: {}", error);
+            }
+            process::exit(1);
+        }
+    };
+
+    let manifest_arg = powershell_single_quote(&result.manifest_path.display().to_string());
+    let check_command = format!("matter project-check-json {}", manifest_arg);
+    let check = run_local_command_capture(&check_command);
+    let run_command = format!("matter project-run-json {}", manifest_arg);
+    let run_result = if run_after {
+        Some(run_local_command_capture(&run_command))
+    } else {
+        None
+    };
+    let ok = check.is_ok() && run_result.as_ref().map(|r| r.is_ok()).unwrap_or(true);
+
+    if json_output {
+        println!(
+            "{}",
+            json!({
+                "ok": ok,
+                "name": result.name,
+                "template": result.template.name(),
+                "dir": result.dir.display().to_string(),
+                "manifest": result.manifest_path.display().to_string(),
+                "entry": result.entry_path.display().to_string(),
+                "validation": command_result_json(&check_command, check),
+                "run": run_result.map(|r| command_result_json(&run_command, r))
+            })
+        );
+    } else {
+        println!("Matter app created");
+        println!("  name: {}", result.name);
+        println!("  manifest: {}", result.manifest_path.display());
+        println!("  entry: {}", result.entry_path.display());
+        match check {
+            Ok(output) => {
+                println!("validation: ok");
+                if !output.trim().is_empty() {
+                    println!("{}", output.trim());
+                }
+            }
+            Err(error) => {
+                println!("validation: failed");
+                println!("{}", error.trim());
+            }
+        }
+        if let Some(run_result) = run_result {
+            match run_result {
+                Ok(output) => {
+                    println!("run: ok");
+                    if !output.trim().is_empty() {
+                        println!("{}", output.trim());
+                    }
+                }
+                Err(error) => {
+                    println!("run: failed");
+                    println!("{}", error.trim());
+                }
+            }
+        }
+    }
+
+    if !ok {
+        process::exit(1);
+    }
+}
+
+fn command_result_json(command: &str, result: Result<String, String>) -> JsonValue {
+    match result {
+        Ok(output) => json!({
+            "ok": true,
+            "command": command,
+            "output": truncate_preview(&output, 20000)
+        }),
+        Err(error) => json!({
+            "ok": false,
+            "command": command,
+            "error": error
+        }),
+    }
+}
+
+fn powershell_single_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
 }
 
 fn scaffold_project(options: &InitOptions) -> Result<InitResult, String> {
@@ -6954,10 +7181,26 @@ fn content_type_for(ext: &str) -> &'static str {
 }
 
 fn load_project_or_json_exit(manifest_path: &str) -> ProjectContext {
+    let manifest_hint = Path::new(manifest_path)
+        .canonicalize()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|_| {
+            env::current_dir()
+                .ok()
+                .map(|cwd| cwd.join(manifest_path).display().to_string())
+                .unwrap_or_else(|| manifest_path.to_string())
+        });
+    let cwd_hint = env::current_dir()
+        .ok()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|| ".".to_string());
+
     let source = fs::read_to_string(manifest_path).unwrap_or_else(|error| {
         println!(
-            "{{\"ok\":false,\"stage\":\"read\",\"manifest\":\"{}\",\"error\":{{\"message\":\"{}\"}}}}",
+            "{{\"ok\":false,\"stage\":\"read\",\"manifest\":\"{}\",\"cwd\":\"{}\",\"manifest_hint\":\"{}\",\"error\":{{\"message\":\"{}\",\"hint\":\"verify the manifest path; absolute paths are supported\"}}}}",
             json_escape(manifest_path),
+            json_escape(&cwd_hint),
+            json_escape(&manifest_hint),
             json_escape(&error.to_string())
         );
         process::exit(1);
@@ -6979,8 +7222,14 @@ fn load_project_or_json_exit(manifest_path: &str) -> ProjectContext {
         .unwrap_or(Path::new("."))
         .to_path_buf();
 
+    let manifest_path_display = manifest_file
+        .canonicalize()
+        .unwrap_or_else(|_| manifest_file.to_path_buf())
+        .display()
+        .to_string();
+
     ProjectContext {
-        manifest_path: manifest_path.to_string(),
+        manifest_path: manifest_path_display,
         base_dir,
         manifest,
     }
@@ -7436,26 +7685,90 @@ fn manifest_dependencies_json(dependencies: &[ManifestDependency]) -> String {
 
 fn run_file(path: &str) {
     let source = read_source_or_exit(path);
-    run_source(&source);
+
+    let mut parser = Parser::from_source(&source);
+    let mut program = parser.parse().unwrap_or_else(|e| {
+        print_parse_error(&source, &e);
+        process::exit(1);
+    });
+
+    let base_path = std::path::Path::new(path)
+        .parent()
+        .unwrap_or(std::path::Path::new("."));
+    let mut visited = HashSet::new();
+
+    // Marcar o próprio arquivo raiz como visitado
+    if let Ok(canon) = std::path::Path::new(path).canonicalize() {
+        visited.insert(canon.to_string_lossy().to_string());
+    }
+
+    if let Err(e) = resolve_ast_imports(&mut program, base_path, &mut visited) {
+        eprintln!("Import error: {}", e);
+        process::exit(1);
+    }
+
+    run_program(&program);
 }
 
 fn eval_source(source: &str) {
-    run_source(source);
+    let mut parser = Parser::from_source(source);
+    let program = parser.parse().unwrap_or_else(|e| {
+        print_parse_error(source, &e);
+        process::exit(1);
+    });
+    run_program(&program);
 }
 
 fn eval_json(source: &str) {
     run_source_json(source, "<eval>", false);
 }
 
-fn run_source(source: &str) {
-    let mut parser = Parser::from_source(source);
-    let program = parser.parse().unwrap_or_else(|e| {
-        print_parse_error(source, &e);
-        process::exit(1);
-    });
+fn resolve_ast_imports(
+    program: &mut Program,
+    base_dir: &Path,
+    visited: &mut HashSet<String>,
+) -> Result<(), String> {
+    let mut i = 0;
+    while i < program.statements.len() {
+        if let Statement::Import { path } = &program.statements[i] {
+            let import_path = base_dir.join(path);
+            let canonical_path = import_path
+                .canonicalize()
+                .or_else(|_| Ok::<_, std::io::Error>(import_path.clone()));
+            let canonical = canonical_path.unwrap_or(import_path);
+            let canonical_str = canonical.to_string_lossy().to_string();
 
+            if visited.contains(&canonical_str) {
+                program.statements.remove(i);
+                continue;
+            }
+            visited.insert(canonical_str.clone());
+
+            let source = fs::read_to_string(&canonical)
+                .map_err(|e| format!("Could not read import '{}': {}", canonical.display(), e))?;
+
+            let mut parser = Parser::from_source(&source);
+            let mut imported_program = parser
+                .parse()
+                .map_err(|e| format!("Syntax error in import '{}':\n{}", canonical.display(), e))?;
+
+            let parent_dir = canonical.parent().unwrap_or(base_dir);
+            resolve_ast_imports(&mut imported_program, parent_dir, visited)?;
+
+            program.statements.remove(i);
+            for stmt in imported_program.statements.into_iter().rev() {
+                program.statements.insert(i, stmt);
+            }
+        } else {
+            i += 1;
+        }
+    }
+    Ok(())
+}
+
+fn run_program(program: &Program) {
     let builder = BytecodeBuilder::new();
-    let bytecode = build_checked_or_exit(builder, &program);
+    let bytecode = build_checked_or_exit(builder, program);
 
     let mut runtime = Runtime::new(bytecode);
 
@@ -15793,6 +16106,7 @@ fn value_to_json(value: &Value) -> String {
         Value::Int(n) => n.to_string(),
         Value::Float(n) => n.to_string(),
         Value::Bool(b) => b.to_string(),
+        Value::Null => "null".to_string(),
         Value::Unit => "null".to_string(),
         Value::String(text) | Value::Function(text) => {
             format!("\"{}\"", json_escape(text.as_ref()))
@@ -15893,6 +16207,8 @@ fn token_json(index: usize, token: &Token, line: usize, column: usize) -> String
         Token::Continue => ("continue", None),
         Token::Struct => ("struct", None),
         Token::Import => ("import", None),
+        Token::Match => ("match", None),
+        Token::Null => ("null", None),
         Token::Spawn => ("spawn", None),
         Token::Int(value) => ("int", Some(value.to_string())),
         Token::Float(value) => ("float", Some(value.to_string())),
@@ -15905,6 +16221,10 @@ fn token_json(index: usize, token: &Token, line: usize, column: usize) -> String
         Token::Slash => ("slash", None),
         Token::Percent => ("percent", None),
         Token::Eq => ("eq", None),
+        Token::PlusEq => ("plus_eq", None),
+        Token::MinusEq => ("minus_eq", None),
+        Token::StarEq => ("star_eq", None),
+        Token::SlashEq => ("slash_eq", None),
         Token::EqEq => ("eq_eq", None),
         Token::NotEq => ("not_eq", None),
         Token::Lt => ("lt", None),
@@ -16194,6 +16514,13 @@ fn collect_calls_in_statements(statements: &[Statement], calls: &mut BTreeMap<St
                 collect_calls_in_expression(iterable, calls);
                 collect_calls_in_statements(body, calls);
             }
+            Statement::Match { subject, arms } => {
+                collect_calls_in_expression(subject, calls);
+                for arm in arms {
+                    collect_calls_in_expression(&arm.pattern, calls);
+                    collect_calls_in_statements(&arm.body, calls);
+                }
+            }
             Statement::StructDef { .. }
             | Statement::Import { .. }
             | Statement::Spawn { .. }
@@ -16249,6 +16576,7 @@ fn collect_calls_in_expression(expression: &Expression, calls: &mut BTreeMap<Str
         | Expression::Float(_)
         | Expression::Bool(_)
         | Expression::String(_)
+        | Expression::Null
         | Expression::Unit
         | Expression::Identifier(_) => {}
     }
@@ -16315,6 +16643,18 @@ fn collect_statement_reflection(
             Statement::Loop { body } => {
                 total += collect_statement_reflection(body, statement_kinds, calls, backend_calls);
             }
+            Statement::Match { subject, arms } => {
+                collect_expression_reflection(subject, calls, backend_calls);
+                for arm in arms {
+                    collect_expression_reflection(&arm.pattern, calls, backend_calls);
+                    total += collect_statement_reflection(
+                        &arm.body,
+                        statement_kinds,
+                        calls,
+                        backend_calls,
+                    );
+                }
+            }
             Statement::StructDef { .. }
             | Statement::Import { .. }
             | Statement::Spawn { .. }
@@ -16374,7 +16714,12 @@ fn collect_expression_reflection(
             collect_expression_reflection(target, calls, backend_calls);
             collect_expression_reflection(index, calls, backend_calls);
         }
-        Expression::MethodCall { target, args, .. } => {
+        Expression::MethodCall { target, method, args } => {
+            if let Expression::Identifier(name) = target.as_ref() {
+                if !matches!(method.as_str(), "push" | "pop" | "len" | "has" | "keys" | "values") {
+                    bump_count(backend_calls, &format!("{}.{}", name, method));
+                }
+            }
             collect_expression_reflection(target, calls, backend_calls);
             for arg in args {
                 collect_expression_reflection(arg, calls, backend_calls);
@@ -16384,6 +16729,7 @@ fn collect_expression_reflection(
         | Expression::Float(_)
         | Expression::Bool(_)
         | Expression::String(_)
+        | Expression::Null
         | Expression::Unit
         | Expression::Identifier(_) => {}
     }
@@ -16416,6 +16762,7 @@ fn statement_kind(statement: &Statement) -> &'static str {
         Statement::Set { .. } => "Set",
         Statement::SetIndex { .. } => "SetIndex",
         Statement::SetField { .. } => "SetField",
+        Statement::Match { .. } => "Match",
         Statement::Print(_) => "Print",
         Statement::FunctionDef { .. } => "FunctionDef",
         Statement::StructDef { .. } => "StructDef",
@@ -16706,6 +17053,7 @@ fn inspect_json(path: &str) {
                 json_escape(value)
             ),
             Constant::Unit => format!("{{\"index\":{},\"type\":\"unit\",\"value\":null}}", index),
+            Constant::Null => format!("{{\"index\":{},\"type\":\"null\",\"value\":null}}", index),
         })
         .collect();
 
@@ -16776,6 +17124,7 @@ fn inspect_bytecode(path: &str) {
                     println!("{:<54} │", display)
                 }
                 Constant::Unit => println!("{:<54} │", "Unit"),
+                Constant::Null => println!("{:<54} │", "Null"),
             }
         }
         println!("└────────────────────────────────────────────────────────────────┘");
@@ -16852,6 +17201,7 @@ fn print_instruction(
                     }
                 }
                 Constant::Unit => "()".to_string(),
+                Constant::Null => "null".to_string(),
             };
             println!(
                 "{:<20} ; const[{}] = {}",
@@ -17129,6 +17479,7 @@ fn print_help() {
     println!();
     println!("  JSON API (machine-readable output):");
     println!("    capabilities-json       Print CLI capabilities");
+    println!("    polyglot-status-json    Print polyglot bridge runtime status");
     println!("    tool-ci-catalog-json    Print CI reason/code catalog");
     println!("    tool-ci-contract-json   Print CI contract bundle");
     println!(
@@ -17181,6 +17532,16 @@ fn print_help() {
     println!("    examples [name]         List or run example programs");
     println!("    repl                    Start interactive REPL shell");
     println!("    agent-chat              Start interactive AI chat in CLI");
+    println!("    agent-ui                Start terminal UI for the AI agent");
+    println!("    agent-new-app [dir]     Create, validate, and optionally run a Matter app");
+    println!("    agent-work <goal>       Run tool-using AI agent in current workspace");
+    println!("    agent-doctor            Test AI provider, model, key, and response parsing");
+    println!("    agent-review            Review current git diff with the AI agent");
+    println!("    agent-reports-json      List saved agent-work reports");
+    println!("    agent-report-json       Print one saved agent-work report");
+    println!("    agent-apply-report      Apply write actions from a dry-run agent-work report");
+    println!("    agent-status-json       Print current agent environment status");
+    println!("    agent-capabilities-json Print agent tools and model profile JSON");
     println!();
     println!("NOTES:");
     println!("  • Use '-' as filename to read from stdin");
@@ -17473,6 +17834,99 @@ fn print_command_help(command: &str) {
             println!("    /session-export-md X Export session to Markdown");
             println!("    /session-diff [--json] A B Compare two sessions (use latest/latest-N/latest@tag)");
             println!("    /run CMD         Run safe whitelisted dev commands");
+        }
+        "agent-ui" => {
+            println!("matter-cli agent-ui - Terminal UI for the AI agent");
+            println!();
+            println!("USAGE:");
+            println!("    matter-cli agent-ui [--provider PROVIDER] [--profile PROFILE] [--model MODEL] [--api-key KEY]");
+            println!();
+            println!("COMMANDS:");
+            println!("    /help          Redraw help");
+            println!("    /status        Show agent status");
+            println!("    /model NAME    Change model in this UI session");
+            println!("    /models        Show suggested models");
+            println!("    /doctor        Test provider/model/key");
+            println!("    /new-app NAME  Create and validate a Matter app");
+            println!("    /work GOAL     Run agent-work from the UI");
+            println!("    /review        Run agent-review from the UI");
+            println!("    /reports       List agent-work reports");
+            println!("    /clear         Clear screen");
+            println!("    /exit, /quit   Exit UI");
+        }
+        "agent-new-app" => {
+            println!(
+                "matter-cli agent-new-app - Create, validate, and optionally run a Matter app"
+            );
+            println!();
+            println!("USAGE:");
+            println!("    matter-cli agent-new-app [dir] [--name NAME] [--template basic|event] [--run] [--json]");
+            println!();
+            println!("DESCRIPTION:");
+            println!("    Creates matter.toml and src/main.matter, validates with project-check-json, and optionally runs project-run-json.");
+        }
+        "agent-work" => {
+            println!("matter-cli agent-work - Tool-using AI agent for the current workspace");
+            println!();
+            println!("USAGE:");
+            println!("    matter-cli agent-work <goal> [--max-steps N] [--dry-run] [--provider PROVIDER] [--profile PROFILE] [--model MODEL] [--api-key KEY]");
+            println!();
+            println!("TOOLS:");
+            println!("    list_files, search, read_file, write_file, append_file, replace_in_file, create_dir, run");
+            println!();
+            println!("NOTES:");
+            println!("    write_file is restricted to the current workspace.");
+            println!("    append_file appends text inside a workspace file.");
+            println!("    replace_in_file replaces one exact text block inside a workspace file.");
+            println!("    create_dir creates a directory inside the current workspace.");
+            println!("    run uses the same safe command whitelist as agent-chat /run.");
+            println!("    reports are saved to env/sessions/agent_work_<timestamp>.json.");
+        }
+        "agent-doctor" => {
+            println!(
+                "matter-cli agent-doctor - Test AI provider, model, key, and response parsing"
+            );
+            println!();
+            println!("USAGE:");
+            println!("    matter-cli agent-doctor [--provider PROVIDER] [--profile PROFILE] [--model MODEL] [--api-key KEY] [--json]");
+        }
+        "agent-review" => {
+            println!("matter-cli agent-review - Review current git diff with the AI agent");
+            println!();
+            println!("USAGE:");
+            println!("    matter-cli agent-review [--provider PROVIDER] [--profile PROFILE] [--model MODEL] [--api-key KEY] [--max-bytes N]");
+            println!();
+            println!("DESCRIPTION:");
+            println!("    Captures git status, diff stat, and current diff, then asks the model for bug-focused findings.");
+        }
+        "agent-reports-json" => {
+            println!("matter-cli agent-reports-json - List saved agent-work reports");
+            println!();
+            println!("USAGE:");
+            println!("    matter-cli agent-reports-json");
+        }
+        "agent-report-json" => {
+            println!("matter-cli agent-report-json - Print one saved agent-work report");
+            println!();
+            println!("USAGE:");
+            println!("    matter-cli agent-report-json latest|<path>");
+        }
+        "agent-apply-report" => {
+            println!("matter-cli agent-apply-report - Apply write actions from a dry-run report");
+            println!();
+            println!("USAGE:");
+            println!("    matter-cli agent-apply-report latest|<path> [--plan] [--run-validation]");
+            println!();
+            println!("DESCRIPTION:");
+            println!("    Replays create_dir, write_file, append_file, and replace_in_file actions from a dry-run agent-work report.");
+            println!("    --plan prints the write-action plan without changing files.");
+            println!("    --run-validation runs matter project-check-json after applying when matter.toml exists.");
+        }
+        "agent-status-json" => {
+            println!("matter-cli agent-status-json - Print current agent environment status");
+            println!();
+            println!("USAGE:");
+            println!("    matter-cli agent-status-json");
         }
         "lsp" => {
             println!("matter-cli lsp - Start Language Server Protocol server");
@@ -17779,6 +18233,7 @@ fn suggest_command(input: &str) {
         "run-bytecode-json",
         "emit-bytecode-json",
         "capabilities-json",
+        "polyglot-status-json",
         "tool-ci-catalog-json",
         "tool-pipeline-validate-contract-json",
         "tool-pipeline-normalize-contract-json",
@@ -17815,6 +18270,17 @@ fn suggest_command(input: &str) {
         "version",
         "backends",
         "examples",
+        "agent-chat",
+        "agent-ui",
+        "agent-new-app",
+        "agent-work",
+        "agent-doctor",
+        "agent-review",
+        "agent-reports-json",
+        "agent-report-json",
+        "agent-apply-report",
+        "agent-status-json",
+        "agent-capabilities-json",
     ];
 
     // Simple Levenshtein distance for suggestions
@@ -18153,17 +18619,320 @@ fn print_repl_help() {
     println!("  • Events can be defined and emitted");
 }
 
+fn run_agent_ui(args: &[String]) {
+    let mut provider =
+        agent_env_var("MATTER_AGENT_PROVIDER").unwrap_or_else(|| "openai".to_string());
+    let mut profile = agent_env_var("MATTER_AGENT_PROFILE").unwrap_or_else(|| "coding".to_string());
+    let mut model = agent_env_var("MATTER_AGENT_MODEL").unwrap_or_default();
+    let mut api_key = agent_env_var("OPENAI_API_KEY")
+        .or_else(|| agent_env_var("MATTER_AGENT_API_KEY"))
+        .unwrap_or_default();
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--provider" if i + 1 < args.len() => {
+                provider = args[i + 1].clone();
+                i += 2;
+            }
+            "--profile" if i + 1 < args.len() => {
+                profile = args[i + 1].clone();
+                i += 2;
+            }
+            "--model" if i + 1 < args.len() => {
+                model = args[i + 1].clone();
+                i += 2;
+            }
+            "--api-key" if i + 1 < args.len() => {
+                api_key = args[i + 1].clone();
+                i += 2;
+            }
+            "--help" | "-h" => {
+                print_command_help("agent-ui");
+                return;
+            }
+            other => {
+                eprintln!("Unknown option: {}", other);
+                process::exit(1);
+            }
+        }
+    }
+
+    if model.trim().is_empty() {
+        model = resolve_agent_model(&provider, &profile).to_string();
+    }
+    api_key = resolve_agent_api_key(&api_key).unwrap_or_default();
+    if api_key.trim().is_empty() {
+        eprintln!("agent-ui requires OPENAI_API_KEY or MATTER_AGENT_API_KEY.");
+        process::exit(1);
+    }
+
+    let mut messages = vec![json!({
+        "role": "system",
+        "content": matter_cli_system_prompt()
+    })];
+    if let Some(shared) = load_shared_agent_bridge_messages() {
+        messages = shared;
+        if messages.is_empty() {
+            messages.push(json!({
+                "role": "system",
+                "content": matter_cli_system_prompt()
+            }));
+        }
+        println!("\x1b[90m(shared context loaded)\x1b[0m");
+    }
+    render_agent_ui_header(&provider, &profile, &model);
+
+    let stdin = io::stdin();
+    loop {
+        render_agent_ui_input_footer();
+
+        let mut line = String::new();
+        if stdin.read_line(&mut line).is_err() {
+            eprintln!("Failed to read input.");
+            break;
+        }
+        let input = line.trim();
+        render_agent_ui_input_trailer();
+        if input.is_empty() {
+            continue;
+        }
+
+        match input {
+            "q" | "/exit" | "/quit" => break,
+            "/help" | "/clear" => {
+                render_agent_ui_header(&provider, &profile, &model);
+                messages.clear();
+                messages.push(json!({
+                    "role": "system",
+                    "content": matter_cli_system_prompt()
+                }));
+                let _ = save_shared_agent_bridge_messages(&provider, &profile, &model, &messages);
+                continue;
+            }
+            "/bridge-status" => {
+                println!("{}", shared_agent_bridge_status_json());
+                continue;
+            }
+            "/bridge-sync" => {
+                match save_shared_agent_bridge_messages(&provider, &profile, &model, &messages) {
+                    Ok(_) => println!("bridge synced"),
+                    Err(err) => eprintln!("bridge sync failed: {}", err),
+                }
+                continue;
+            }
+            "/bridge-reset" => {
+                messages.clear();
+                messages.push(json!({
+                    "role": "system",
+                    "content": matter_cli_system_prompt()
+                }));
+                match save_shared_agent_bridge_messages(&provider, &profile, &model, &messages) {
+                    Ok(_) => println!("bridge reset"),
+                    Err(err) => eprintln!("bridge reset failed: {}", err),
+                }
+                continue;
+            }
+            "/status" => {
+                print_agent_status_json();
+                continue;
+            }
+            "/models" => {
+                print_agent_model_catalog();
+                continue;
+            }
+            "/doctor" => {
+                run_agent_doctor_command(&[
+                    "--provider".to_string(),
+                    provider.clone(),
+                    "--model".to_string(),
+                    model.clone(),
+                ]);
+                continue;
+            }
+            "/reports" => {
+                print_agent_reports_json();
+                continue;
+            }
+            "/capabilities" => {
+                print_agent_capabilities_json();
+                continue;
+            }
+            "/review" => {
+                run_agent_review(&[
+                    "--provider".to_string(),
+                    provider.clone(),
+                    "--model".to_string(),
+                    model.clone(),
+                ]);
+                continue;
+            }
+            _ => {}
+        }
+
+        if input == "/new-app"
+            || input.starts_with("/new-app ")
+            || input == "/app"
+            || input.starts_with("/app ")
+        {
+            let name = input
+                .strip_prefix("/new-app")
+                .or_else(|| input.strip_prefix("/app"))
+                .unwrap_or("")
+                .trim();
+            let mut command_args = vec![".".to_string(), "--run".to_string()];
+            if !name.is_empty() {
+                command_args.push("--name".to_string());
+                command_args.push(name.to_string());
+            }
+            run_agent_new_app(&command_args);
+            render_agent_ui_header(&provider, &profile, &model);
+            continue;
+        }
+
+        if let Some(next_model) = input.strip_prefix("/model ") {
+            let next_model = next_model.trim();
+            if next_model.is_empty() {
+                println!("usage: /model <model-id>");
+                continue;
+            }
+            model = next_model.to_string();
+            messages.clear();
+            messages.push(json!({
+                "role": "system",
+                "content": matter_cli_system_prompt()
+            }));
+            render_agent_ui_header(&provider, &profile, &model);
+            continue;
+        }
+
+        if input == "/work"
+            || input == "/w"
+            || input.starts_with("/work ")
+            || input.starts_with("/w ")
+        {
+            let goal = input
+                .strip_prefix("/work")
+                .or_else(|| input.strip_prefix("/w"))
+                .unwrap_or("")
+                .trim();
+            if goal.is_empty() {
+                println!("usage: /work <goal>  (alias: /w <goal>)");
+                continue;
+            }
+            let goal = normalize_agent_ui_work_goal(goal);
+            run_agent_work(&[
+                goal,
+                "--max-steps".to_string(),
+                "10".to_string(),
+                "--provider".to_string(),
+                provider.clone(),
+                "--model".to_string(),
+                model.clone(),
+            ]);
+            render_agent_ui_header(&provider, &profile, &model);
+            continue;
+        }
+
+        messages.push(json!({
+            "role": "user",
+            "content": input
+        }));
+        match chat_completion_via_curl(&provider, &api_key, &model, &messages) {
+            Ok(answer) => {
+                println!("\x1b[95mmatter\x1b[0m {}", answer);
+                messages.push(json!({
+                    "role": "assistant",
+                    "content": answer
+                }));
+                let _ = save_shared_agent_bridge_messages(&provider, &profile, &model, &messages);
+            }
+            Err(error) => {
+                eprintln!("agent-ui error: {}", error);
+                let _ = messages.pop();
+            }
+        }
+    }
+}
+
+fn render_agent_ui_header(provider: &str, profile: &str, model: &str) {
+    print!("\x1b[2J\x1b[H");
+    let workspace = env::current_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .display()
+        .to_string();
+    println!("\x1b[95mmatter\x1b[0m");
+    println!(
+        "\x1b[90mprovider={} profile={} model={}\x1b[0m",
+        provider, profile, model
+    );
+    println!("\x1b[90mworkspace={}\x1b[0m", workspace);
+    println!();
+    println!(
+        "\x1b[90mcommands: /work|/w <goal> | /new-app|/app NAME | /review | /status | /reports | /model <id> | /models | /doctor | /bridge-status | /bridge-sync | /bridge-reset | /clear | q|/quit\x1b[0m"
+    );
+    println!();
+}
+
+fn render_agent_ui_input_footer() {
+    println!("\x1b[90m+----------------------------------------------------------------------------+\x1b[0m");
+    print!("\x1b[90m| \x1b[0msend a message");
+    print!(" \x1b[90m>\x1b[0m ");
+    let _ = io::stdout().flush();
+}
+
+fn render_agent_ui_input_trailer() {
+    println!();
+    println!("\x1b[90m+----------------------------------------------------------------------------+\x1b[0m");
+    println!(
+        "\x1b[90msend q or ctrl+c to exit | send /clear to reset | send /help for commands\x1b[0m"
+    );
+}
+
+fn normalize_agent_ui_work_goal(goal: &str) -> String {
+    let lower = goal.to_ascii_lowercase();
+    let mentions_matter = lower.contains("matter") || lower.contains("matter.toml");
+    let mentions_other_stack = [
+        "python",
+        "node",
+        "react",
+        "flask",
+        "django",
+        "javascript",
+        "typescript",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle));
+    if lower.contains("app") && !mentions_matter && !mentions_other_stack {
+        format!(
+            "{}. Use the Matter language stack by default: create matter.toml and src/main.matter, then validate with matter project-check-json.",
+            goal
+        )
+    } else {
+        goal.to_string()
+    }
+}
+
+fn matter_cli_system_prompt() -> &'static str {
+    "You are Matter Agent, a pragmatic coding assistant inside the Matter CLI.
+In this CLI, 'Matter' means the Matter language/toolchain used in this workspace (matter.toml, src/main.matter, project-check-json, project-run-json).
+Never switch to Matter.js or unrelated frameworks unless the user explicitly asks for JavaScript Matter.js.
+Default behavior: generate and discuss Matter language code and Matter CLI commands for the current workspace.
+Keep answers concise and actionable."
+}
+
 fn run_agent_chat(args: &[String]) {
-    let mut provider = env::var("MATTER_AGENT_PROVIDER").unwrap_or_else(|_| "openai".to_string());
-    let mut profile = env::var("MATTER_AGENT_PROFILE").unwrap_or_else(|_| "coding".to_string());
-    let mut model = env::var("MATTER_AGENT_MODEL").unwrap_or_else(|_| "gpt-5.2-codex".to_string());
-    let mut system_prompt = "You are Matter Agent, a pragmatic coding assistant inside Matter CLI. Keep answers concise and actionable.".to_string();
-    let mut specialist = env::var("MATTER_AGENT_SPECIALIST")
+    let mut provider =
+        agent_env_var("MATTER_AGENT_PROVIDER").unwrap_or_else(|| "openai".to_string());
+    let mut profile = agent_env_var("MATTER_AGENT_PROFILE").unwrap_or_else(|| "coding".to_string());
+    let mut model =
+        agent_env_var("MATTER_AGENT_MODEL").unwrap_or_else(|| "gpt-5.2-codex".to_string());
+    let mut system_prompt = matter_cli_system_prompt().to_string();
+    let mut specialist = agent_env_var("MATTER_AGENT_SPECIALIST")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
-    let mut api_key = env::var("OPENAI_API_KEY")
-        .ok()
-        .or_else(|| env::var("MATTER_AGENT_API_KEY").ok())
+    let mut api_key = agent_env_var("OPENAI_API_KEY")
+        .or_else(|| agent_env_var("MATTER_AGENT_API_KEY"))
         .unwrap_or_default();
 
     let mut i = 0;
@@ -18219,7 +18988,7 @@ fn run_agent_chat(args: &[String]) {
                 println!("Profiles: coding, balanced, cheap, max");
                 println!("Flags: --specialist");
                 println!("Env fallback: OPENAI_API_KEY, MATTER_AGENT_API_KEY, MATTER_AGENT_MODEL, MATTER_AGENT_PROFILE, MATTER_AGENT_PROVIDER");
-                println!("Commands: /exit, /quit, /clear, /context, /memory, /remember <text>, /forget, /status, /check-cli, /clippy-cli, /check-workspace, /test-workspace, /fix-plan, /autofix-plan, /autofix-plan-json, /autofix-apply [--file path], /doctor, /doctor-json, /snapshot, /save-session [tag], /sessions [--json] [--tag T] [--provider P] [--model M] [--contains TXT] [--from TS] [--to TS] [--last 30m|12h|7d] [--sort saved_at|messages] [--limit N], /load-session latest|<path>, /session-info, /delete-session latest|<path>, /prune-sessions <N>, /session-search <term>, /session-tail latest|<path> [N], /session-stats, /session-report [--json|--md|--csv|--html] [--from TS] [--to TS] [--last 30m|12h|7d] [--top N], /reports [--json] [--latest] [--limit N] [--ext md|csv|html] [--sort modified|name|size], /report-open latest [--ext md|csv|html], /report-delete latest [--ext md|csv|html], /report-prune N [--ext md|csv|html], /session-export-md latest|<path>, /session-diff [--json] A B (A/B: latest|latest-N|latest@tag|path), /run <cmd>");
+                println!("Commands: /exit, /quit, /clear, /context, /memory, /remember <text>, /forget, /status, /check-cli, /clippy-cli, /check-workspace, /test-workspace, /fix-plan, /autofix-plan, /autofix-plan-json, /autofix-apply [--file path], /doctor, /doctor-json, /snapshot, /save-session [tag], /sessions [--json] [--tag T] [--provider P] [--model M] [--contains TXT] [--from TS] [--to TS] [--last 30m|12h|7d] [--sort saved_at|messages] [--limit N], /load-session latest|<path>, /session-info, /delete-session latest|<path>, /prune-sessions <N>, /session-search <term>, /session-tail latest|<path> [N], /session-stats, /session-report [--json|--md|--csv|--html] [--from TS] [--to TS] [--last 30m|12h|7d] [--top N], /reports [--json] [--latest] [--limit N] [--ext md|csv|html] [--sort modified|name|size], /report-open latest [--ext md|csv|html], /report-delete latest [--ext md|csv|html], /report-prune N [--ext md|csv|html], /session-export-md latest|<path>, /session-diff [--json] A B (A/B: latest|latest-N|latest@tag|path), /run <cmd>, /run-full <cmd>, /run-ai <cmd>, /terminal-snapshot");
                 return;
             }
             other => {
@@ -18235,7 +19004,7 @@ fn run_agent_chat(args: &[String]) {
         }
     }
 
-    if env::var("MATTER_AGENT_MODEL").is_err() && !args.iter().any(|a| a == "--model") {
+    if agent_env_var("MATTER_AGENT_MODEL").is_none() && !args.iter().any(|a| a == "--model") {
         model = resolve_agent_model(&provider, &profile).to_string();
     }
 
@@ -18264,6 +19033,16 @@ fn run_agent_chat(args: &[String]) {
         "role": "system",
         "content": system_prompt
     })];
+    if let Some(shared) = load_shared_agent_bridge_messages() {
+        messages = shared;
+        if messages.is_empty() {
+            messages.push(json!({
+                "role": "system",
+                "content": system_prompt
+            }));
+        }
+        println!("(shared context loaded)");
+    }
     let mut loaded_session_source = String::new();
     if specialist {
         if let Some(memory_prompt) = build_memory_prompt() {
@@ -18288,7 +19067,7 @@ fn run_agent_chat(args: &[String]) {
         if input.is_empty() {
             continue;
         }
-        if input == "/exit" || input == "/quit" {
+        if input == "q" || input == "/exit" || input == "/quit" {
             break;
         }
         if input == "/clear" {
@@ -18299,6 +19078,7 @@ fn run_agent_chat(args: &[String]) {
             messages.clear();
             messages.push(system);
             println!("context cleared");
+            let _ = save_shared_agent_bridge_messages(&provider, &profile, &model, &messages);
             continue;
         }
         if input == "/context" {
@@ -18310,6 +19090,29 @@ fn run_agent_chat(args: &[String]) {
                 println!("workspace context injected");
             } else {
                 println!("workspace context file not found (env/agent_workspace_context.md)");
+            }
+            continue;
+        }
+        if input == "/bridge-status" {
+            println!("{}", shared_agent_bridge_status_json());
+            continue;
+        }
+        if input == "/bridge-sync" {
+            match save_shared_agent_bridge_messages(&provider, &profile, &model, &messages) {
+                Ok(_) => println!("bridge synced"),
+                Err(err) => eprintln!("bridge sync failed: {}", err),
+            }
+            continue;
+        }
+        if input == "/bridge-reset" {
+            messages.clear();
+            messages.push(json!({
+                "role": "system",
+                "content": system_prompt
+            }));
+            match save_shared_agent_bridge_messages(&provider, &profile, &model, &messages) {
+                Ok(_) => println!("bridge reset"),
+                Err(err) => eprintln!("bridge reset failed: {}", err),
             }
             continue;
         }
@@ -18909,6 +19712,93 @@ fn run_agent_chat(args: &[String]) {
             }
             continue;
         }
+        if let Some(cmd) = input.strip_prefix("/run-full ") {
+            match run_whitelisted_command(cmd.trim()) {
+                Ok(out) => print_full_command_output(cmd.trim(), &out),
+                Err(err) => eprintln!("run-full failed: {}", err),
+            }
+            continue;
+        }
+        if let Some(cmd) = input.strip_prefix("/run-ai ") {
+            let cmd = cmd.trim();
+            match run_whitelisted_command(cmd) {
+                Ok(out) => {
+                    print_summarized_command_output(cmd, &out);
+                    messages.push(json!({
+                        "role": "user",
+                        "content": format!(
+                            "Analyze this terminal output and tell me exactly what is missing and what to do next.\n\nCommand: {}\n\nOutput:\n{}",
+                            cmd, out
+                        )
+                    }));
+                    match chat_completion_via_curl(&provider, &api_key, &model, &messages) {
+                        Ok(answer) => {
+                            println!("agent> {}", answer);
+                            messages.push(json!({
+                                "role": "assistant",
+                                "content": answer
+                            }));
+                        }
+                        Err(err) => {
+                            eprintln!("agent error: {}", err);
+                            let _ = messages.pop();
+                        }
+                    }
+                }
+                Err(err) => {
+                    eprintln!("run-ai failed: {}", err);
+                }
+            }
+            continue;
+        }
+        if input == "/terminal-snapshot" {
+            let mut snapshot = String::new();
+            let commands = [
+                "git status --short",
+                "cargo check -p matter-cli",
+                "cargo test -p matter-cli -q",
+            ];
+            for command in commands {
+                snapshot.push_str(&format!("$ {}\n", command));
+                match run_local_command_capture(command) {
+                    Ok(out) => {
+                        snapshot.push_str(&out);
+                        if !out.ends_with('\n') {
+                            snapshot.push('\n');
+                        }
+                    }
+                    Err(err) => {
+                        snapshot.push_str("ERROR:\n");
+                        snapshot.push_str(&err);
+                        if !err.ends_with('\n') {
+                            snapshot.push('\n');
+                        }
+                    }
+                }
+                snapshot.push('\n');
+            }
+            messages.push(json!({
+                "role": "user",
+                "content": format!(
+                    "Terminal snapshot from this workspace. Identify what is missing and provide an action plan.\n\n{}",
+                    snapshot
+                )
+            }));
+            match chat_completion_via_curl(&provider, &api_key, &model, &messages) {
+                Ok(answer) => {
+                    println!("agent> {}", answer);
+                    messages.push(json!({
+                        "role": "assistant",
+                        "content": answer
+                    }));
+                }
+                Err(err) => {
+                    eprintln!("agent error: {}", err);
+                    let _ = messages.pop();
+                }
+            }
+            continue;
+        }
 
         messages.push(json!({
             "role": "user",
@@ -18922,6 +19812,7 @@ fn run_agent_chat(args: &[String]) {
                     "role": "assistant",
                     "content": answer
                 }));
+                let _ = save_shared_agent_bridge_messages(&provider, &profile, &model, &messages);
             }
             Err(err) => {
                 eprintln!("agent error: {}", err);
@@ -18931,14 +19822,1345 @@ fn run_agent_chat(args: &[String]) {
     }
 }
 
+fn run_agent_work(args: &[String]) {
+    let mut provider =
+        agent_env_var("MATTER_AGENT_PROVIDER").unwrap_or_else(|| "openai".to_string());
+    let mut profile = agent_env_var("MATTER_AGENT_PROFILE").unwrap_or_else(|| "coding".to_string());
+    let mut model = agent_env_var("MATTER_AGENT_MODEL").unwrap_or_default();
+    let mut api_key = agent_env_var("OPENAI_API_KEY")
+        .or_else(|| agent_env_var("MATTER_AGENT_API_KEY"))
+        .unwrap_or_default();
+    let mut max_steps = 8usize;
+    let mut dry_run = false;
+    let mut goal_parts: Vec<String> = Vec::new();
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--provider" if i + 1 < args.len() => {
+                provider = args[i + 1].clone();
+                i += 2;
+            }
+            "--profile" if i + 1 < args.len() => {
+                profile = args[i + 1].clone();
+                i += 2;
+            }
+            "--model" if i + 1 < args.len() => {
+                model = args[i + 1].clone();
+                i += 2;
+            }
+            "--api-key" if i + 1 < args.len() => {
+                api_key = args[i + 1].clone();
+                i += 2;
+            }
+            "--max-steps" if i + 1 < args.len() => {
+                max_steps = args[i + 1]
+                    .parse::<usize>()
+                    .unwrap_or(max_steps)
+                    .clamp(1, 20);
+                i += 2;
+            }
+            "--dry-run" => {
+                dry_run = true;
+                i += 1;
+            }
+            "--help" | "-h" => {
+                print_command_help("agent-work");
+                return;
+            }
+            flag if flag.starts_with("--") => {
+                eprintln!("Unknown option: {}", flag);
+                process::exit(1);
+            }
+            value => {
+                goal_parts.push(value.to_string());
+                i += 1;
+            }
+        }
+    }
+
+    let goal = goal_parts.join(" ").trim().to_string();
+    if goal.is_empty() {
+        eprintln!("Usage: matter-cli agent-work <goal> [--max-steps N]");
+        process::exit(1);
+    }
+
+    if model.trim().is_empty() {
+        model = resolve_agent_model(&provider, &profile).to_string();
+    }
+    api_key = resolve_agent_api_key(&api_key).unwrap_or_default();
+    if api_key.trim().is_empty() {
+        eprintln!("agent-work requires OPENAI_API_KEY or MATTER_AGENT_API_KEY.");
+        process::exit(1);
+    }
+
+    let workspace = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let workspace = workspace.canonicalize().unwrap_or(workspace);
+    println!(
+        "Matter Agent Work provider={} profile={} model={} dry_run={} workspace={}",
+        provider,
+        profile,
+        model,
+        dry_run,
+        workspace.display()
+    );
+
+    let system_prompt = agent_work_system_prompt();
+    let mut messages = vec![
+        json!({"role":"system","content": system_prompt}),
+        json!({"role":"user","content": format!("Goal: {}\nWorkspace: {}\nDry run: {}", goal, workspace.display(), dry_run)}),
+    ];
+    let started_at = chrono_like_timestamp();
+    let mut step_log: Vec<JsonValue> = Vec::new();
+
+    for step in 1..=max_steps {
+        let answer = match chat_completion_via_curl(&provider, &api_key, &model, &messages) {
+            Ok(v) => v,
+            Err(err) => {
+                let mut last_error = err;
+                let mut recovered: Option<String> = None;
+                for fallback_model in agent_work_fallback_models(&provider, &profile, &model) {
+                    println!(
+                        "agent-work fallback trying model={} (previous error: {})",
+                        fallback_model, last_error
+                    );
+                    match chat_completion_via_curl(
+                        &provider,
+                        &api_key,
+                        fallback_model.as_str(),
+                        &messages,
+                    ) {
+                        Ok(v) => {
+                            println!(
+                                "agent-work fallback success model={} (step {})",
+                                fallback_model, step
+                            );
+                            model = fallback_model;
+                            recovered = Some(v);
+                            break;
+                        }
+                        Err(next_error) => {
+                            last_error = next_error;
+                        }
+                    }
+                }
+                match recovered {
+                    Some(v) => v,
+                    None => {
+                        eprintln!("agent-work error: {}", last_error);
+                        process::exit(1);
+                    }
+                }
+            }
+        };
+
+        let action = match parse_first_json_value(&answer) {
+            Ok(doc) => doc,
+            Err(error) => {
+                println!("step {} protocol_retry invalid_json", step);
+                messages.push(json!({"role":"assistant","content": answer}));
+                messages.push(json!({
+                    "role":"user",
+                    "content": format!(
+                        "Protocol error: {}. You must respond with exactly one JSON object, no markdown and no prose. Use a tool call such as {{\"tool\":\"list_files\",\"path\":\".\",\"limit\":120}} or a final object only after using tools.",
+                        error
+                    )
+                }));
+                step_log.push(json!({
+                    "step": step,
+                    "protocol_error": "invalid_json",
+                    "answer_preview": truncate_preview(&answer, 1000)
+                }));
+                continue;
+            }
+        };
+
+        if let Some(final_text) = action.get("final").and_then(|v| v.as_str()) {
+            if step_log.is_empty() {
+                println!("step {} protocol_retry premature_final", step);
+                messages.push(json!({"role":"assistant","content": answer}));
+                messages.push(json!({
+                    "role":"user",
+                    "content": "Protocol error: do not finish before inspecting the workspace. Call list_files first, then read relevant files, then run validation if useful."
+                }));
+                step_log.push(json!({
+                    "step": step,
+                    "protocol_error": "premature_final",
+                    "answer_preview": truncate_preview(final_text, 1000)
+                }));
+                continue;
+            }
+            println!("final> {}", final_text);
+            let report_path = save_agent_work_report(AgentWorkReportInput {
+                started_at: &started_at,
+                provider: &provider,
+                profile: &profile,
+                model: &model,
+                workspace: &workspace,
+                goal: &goal,
+                dry_run,
+                status: "completed",
+                final_text,
+                steps: &step_log,
+            });
+            if let Ok(path) = report_path {
+                println!("report> {}", path);
+            }
+            return;
+        }
+
+        let tool = action.get("tool").and_then(|v| v.as_str()).unwrap_or("");
+        if tool.is_empty() {
+            println!("step {} protocol_retry missing_tool", step);
+            messages.push(json!({"role":"assistant","content": answer}));
+            messages.push(json!({
+                "role":"user",
+                "content": "Protocol error: JSON object must include either {\"tool\":\"...\"} or {\"final\":\"...\"}. Choose one valid tool."
+            }));
+            step_log.push(json!({
+                "step": step,
+                "protocol_error": "missing_tool",
+                "action": action
+            }));
+            continue;
+        }
+
+        println!("step {} tool {}", step, tool);
+        let result = execute_agent_work_tool(&workspace, &action, dry_run);
+        let result_text =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|_| result.to_string());
+        step_log.push(json!({
+            "step": step,
+            "action": action,
+            "result": result
+        }));
+        messages.push(json!({"role":"assistant","content": answer}));
+        messages.push(json!({"role":"user","content": format!("Tool result:\n{}", result_text)}));
+    }
+
+    println!(
+        "final> reached max steps ({}). Run again with --max-steps N if the task needs more work.",
+        max_steps
+    );
+    if let Ok(path) = save_agent_work_report(AgentWorkReportInput {
+        started_at: &started_at,
+        provider: &provider,
+        profile: &profile,
+        model: &model,
+        workspace: &workspace,
+        goal: &goal,
+        dry_run,
+        status: "max_steps",
+        final_text: "reached max steps",
+        steps: &step_log,
+    }) {
+        println!("report> {}", path);
+    }
+}
+
+fn agent_work_fallback_models(provider: &str, profile: &str, current_model: &str) -> Vec<String> {
+    let mut ordered: Vec<String> = Vec::new();
+    if provider.eq_ignore_ascii_case("nvidia") {
+        ordered.push(resolve_agent_model(provider, profile).to_string());
+        ordered.push("openai/gpt-oss-120b".to_string());
+        ordered.push("qwen/qwen3.5-397b-a17b".to_string());
+        ordered.push("qwen/qwen3-coder-480b-a35b-instruct".to_string());
+        ordered.push("moonshotai/kimi-k2.6".to_string());
+        ordered.push("nvidia/llama-3.1-nemotron-nano-8b-v1".to_string());
+    } else {
+        ordered.push(resolve_agent_model(provider, profile).to_string());
+        ordered.push("gpt-5.2-codex".to_string());
+        ordered.push("gpt-5.2".to_string());
+        ordered.push("gpt-5-mini".to_string());
+        ordered.push("gpt-5.2-pro".to_string());
+    }
+
+    let current = current_model.trim().to_ascii_lowercase();
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut out = Vec::new();
+    for item in ordered {
+        let key = item.trim().to_ascii_lowercase();
+        if key.is_empty() || key == current || !seen.insert(key) {
+            continue;
+        }
+        out.push(item);
+    }
+    out
+}
+
+fn run_agent_doctor_command(args: &[String]) {
+    let mut provider =
+        agent_env_var("MATTER_AGENT_PROVIDER").unwrap_or_else(|| "openai".to_string());
+    let mut profile = agent_env_var("MATTER_AGENT_PROFILE").unwrap_or_else(|| "coding".to_string());
+    let mut model = agent_env_var("MATTER_AGENT_MODEL").unwrap_or_default();
+    let mut api_key = agent_env_var("OPENAI_API_KEY")
+        .or_else(|| agent_env_var("MATTER_AGENT_API_KEY"))
+        .unwrap_or_default();
+    let mut json_output = false;
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--provider" if i + 1 < args.len() => {
+                provider = args[i + 1].clone();
+                i += 2;
+            }
+            "--profile" if i + 1 < args.len() => {
+                profile = args[i + 1].clone();
+                i += 2;
+            }
+            "--model" if i + 1 < args.len() => {
+                model = args[i + 1].clone();
+                i += 2;
+            }
+            "--api-key" if i + 1 < args.len() => {
+                api_key = args[i + 1].clone();
+                i += 2;
+            }
+            "--json" => {
+                json_output = true;
+                i += 1;
+            }
+            "--help" | "-h" => {
+                print_command_help("agent-doctor");
+                return;
+            }
+            other => {
+                eprintln!("Unknown option: {}", other);
+                process::exit(1);
+            }
+        }
+    }
+
+    if model.trim().is_empty() {
+        model = resolve_agent_model(&provider, &profile).to_string();
+    }
+    api_key = resolve_agent_api_key(&api_key).unwrap_or_default();
+    let has_key = !api_key.trim().is_empty();
+    if !has_key {
+        let report = json!({
+            "ok": false,
+            "provider": provider,
+            "profile": profile,
+            "model": model,
+            "has_key": false,
+            "error": "missing OPENAI_API_KEY or MATTER_AGENT_API_KEY"
+        });
+        print_agent_doctor_report(report, json_output);
+        process::exit(1);
+    }
+
+    let messages = vec![json!({
+        "role": "user",
+        "content": "Reply with exactly: matter-agent-ok"
+    })];
+    let started = Instant::now();
+    let result = chat_completion_via_curl(&provider, &api_key, &model, &messages);
+    let elapsed_ms = started.elapsed().as_millis() as u64;
+    let report = match result {
+        Ok(answer) => {
+            let normalized = answer.trim().to_ascii_lowercase();
+            json!({
+                "ok": normalized.contains("matter-agent-ok"),
+                "provider": provider,
+                "profile": profile,
+                "model": model,
+                "has_key": true,
+                "elapsed_ms": elapsed_ms,
+                "answer_preview": truncate_preview(&answer, 240)
+            })
+        }
+        Err(error) => json!({
+            "ok": false,
+            "provider": provider,
+            "profile": profile,
+            "model": model,
+            "has_key": true,
+            "elapsed_ms": elapsed_ms,
+            "error": error
+        }),
+    };
+    let ok = report.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
+    print_agent_doctor_report(report, json_output);
+    if !ok {
+        process::exit(1);
+    }
+}
+
+fn run_agent_review(args: &[String]) {
+    let mut provider =
+        agent_env_var("MATTER_AGENT_PROVIDER").unwrap_or_else(|| "openai".to_string());
+    let mut profile = agent_env_var("MATTER_AGENT_PROFILE").unwrap_or_else(|| "coding".to_string());
+    let mut model = agent_env_var("MATTER_AGENT_MODEL").unwrap_or_default();
+    let mut api_key = agent_env_var("OPENAI_API_KEY")
+        .or_else(|| agent_env_var("MATTER_AGENT_API_KEY"))
+        .unwrap_or_default();
+    let mut max_bytes = 60000usize;
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--provider" if i + 1 < args.len() => {
+                provider = args[i + 1].clone();
+                i += 2;
+            }
+            "--profile" if i + 1 < args.len() => {
+                profile = args[i + 1].clone();
+                i += 2;
+            }
+            "--model" if i + 1 < args.len() => {
+                model = args[i + 1].clone();
+                i += 2;
+            }
+            "--api-key" if i + 1 < args.len() => {
+                api_key = args[i + 1].clone();
+                i += 2;
+            }
+            "--max-bytes" if i + 1 < args.len() => {
+                max_bytes = args[i + 1]
+                    .parse::<usize>()
+                    .unwrap_or(max_bytes)
+                    .clamp(2000, 200000);
+                i += 2;
+            }
+            "--help" | "-h" => {
+                print_command_help("agent-review");
+                return;
+            }
+            other => {
+                eprintln!("Unknown option: {}", other);
+                process::exit(1);
+            }
+        }
+    }
+
+    if model.trim().is_empty() {
+        model = resolve_agent_model(&provider, &profile).to_string();
+    }
+    api_key = resolve_agent_api_key(&api_key).unwrap_or_default();
+    if api_key.trim().is_empty() {
+        eprintln!("agent-review requires OPENAI_API_KEY or MATTER_AGENT_API_KEY.");
+        process::exit(1);
+    }
+
+    let status = run_local_command_capture("git status --short").unwrap_or_else(|e| e);
+    let stat = run_local_command_capture("git diff --stat").unwrap_or_else(|e| e);
+    let diff_raw = run_local_command_capture("git diff -- crates/matter-cli/src/main.rs")
+        .or_else(|_| run_local_command_capture("git diff"))
+        .unwrap_or_else(|e| e);
+    let diff = truncate_preview(&diff_raw, max_bytes);
+
+    let prompt = format!(
+        "Review this git diff like a senior code reviewer. Prioritize bugs, regressions, security risks, unsafe filesystem behavior, and missing validation. Findings first, ordered by severity. If no findings, say so and name residual risks.\n\nGit status:\n{}\n\nDiff stat:\n{}\n\nDiff:\n{}",
+        status, stat, diff
+    );
+    let messages = vec![json!({"role":"user","content": prompt})];
+    match chat_completion_via_curl(&provider, &api_key, &model, &messages) {
+        Ok(answer) => println!("{}", answer),
+        Err(error) => {
+            eprintln!("agent-review error: {}", error);
+            process::exit(1);
+        }
+    }
+}
+
+fn print_agent_doctor_report(report: JsonValue, json_output: bool) {
+    if json_output {
+        println!("{}", report);
+        return;
+    }
+    println!("Matter Agent Doctor");
+    println!(
+        "provider={} profile={} model={}",
+        report
+            .get("provider")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown"),
+        report
+            .get("profile")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown"),
+        report
+            .get("model")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown")
+    );
+    if report.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
+        println!("status=ok");
+        if let Some(ms) = report.get("elapsed_ms").and_then(|v| v.as_u64()) {
+            println!("elapsed_ms={}", ms);
+        }
+    } else {
+        println!("status=fail");
+        if let Some(error) = report.get("error").and_then(|v| v.as_str()) {
+            println!("error={}", error);
+        }
+    }
+}
+
+fn print_agent_capabilities_json() {
+    let report = json!({
+        "ok": true,
+        "commands": [
+            "agent-chat",
+            "agent-ui",
+            "agent-work",
+            "agent-new-app",
+            "agent-doctor",
+            "agent-review",
+            "agent-reports-json",
+            "agent-report-json",
+            "agent-apply-report",
+            "agent-status-json",
+            "agent-capabilities-json"
+        ],
+        "tools": [
+            {
+                "name": "list_files",
+                "description": "List workspace files while skipping build and dependency directories"
+            },
+            {
+                "name": "search",
+                "description": "Search text files in the workspace"
+            },
+            {
+                "name": "read_file",
+                "description": "Read a UTF-8 text file"
+            },
+            {
+                "name": "write_file",
+                "description": "Write a full file inside the current workspace"
+            },
+            {
+                "name": "append_file",
+                "description": "Append text to a file inside the current workspace"
+            },
+            {
+                "name": "replace_in_file",
+                "description": "Replace one exact text block inside a workspace file"
+            },
+            {
+                "name": "create_dir",
+                "description": "Create a directory inside the current workspace"
+            },
+            {
+                "name": "run",
+                "description": "Run a whitelisted local command"
+            }
+        ],
+        "run_whitelist": [
+            "git status --short",
+            "git diff --stat",
+            "cargo check -p matter-cli",
+            "cargo check --workspace",
+            "cargo test -p matter-cli -q",
+            "cargo test --workspace -q",
+            "cargo clippy -p matter-cli --all-targets -- -D warnings",
+            "cargo clippy --workspace --exclude matter-llvm --all-targets -- -D warnings",
+            "matter project-check-json",
+            "matter project-run-json",
+            "matter project-run-json --with-energy"
+        ],
+        "providers": {
+            "nvidia": {
+                "coding": "qwen/qwen3-coder-480b-a35b-instruct",
+                "balanced": "qwen/qwen3.5-397b-a17b",
+                "cheap": "nvidia/llama-3.1-nemotron-nano-8b-v1",
+                "max": "openai/gpt-oss-120b"
+            },
+            "openai": {
+                "coding": "gpt-5.2-codex",
+                "balanced": "gpt-5.2",
+                "cheap": "gpt-5-mini",
+                "max": "gpt-5.2-pro"
+            }
+        },
+        "workspace_guard": {
+            "writes_restricted_to_current_workspace": true,
+            "skipped_directories": [".git", "target", "target_bench", ".build-artifacts", "node_modules", "dist"]
+        },
+        "execution": {
+            "agent_work_supports_dry_run": true,
+            "agent_work_reports": "env/sessions/agent_work_<timestamp>.json",
+            "agent_apply_report": "replays write actions from a dry-run report",
+            "agent_apply_report_plan": true,
+            "agent_apply_report_run_validation": true
+        }
+    });
+    println!("{}", report);
+}
+
+fn agent_work_system_prompt() -> &'static str {
+    r#"You are Matter Agent Work, a pragmatic coding agent operating inside a local workspace.
+Respond with exactly one JSON object per turn. Do not use markdown.
+Choose one tool call or a final response.
+Plans are not execution. To create or change files, you must call write_file, append_file, replace_in_file, or create_dir.
+Before finalizing, inspect the workspace with list_files/read_file and run validation when possible.
+Available tool calls:
+{"tool":"list_files","path":".","limit":120}
+{"tool":"search","query":"text","path":".","limit":80}
+{"tool":"read_file","path":"relative/path","max_bytes":40000}
+{"tool":"write_file","path":"relative/path","content":"full file content"}
+{"tool":"append_file","path":"relative/path","content":"text to append"}
+{"tool":"replace_in_file","path":"relative/path","old":"exact existing text","new":"replacement text"}
+{"tool":"create_dir","path":"relative/path"}
+{"tool":"run","command":"git status --short"}
+Allowed run commands are limited to the local whitelist.
+When finished, respond as {"final":"short outcome, files changed, validation run, remaining risk"}.
+Keep changes focused and verify when possible."#
+}
+
+struct AgentWorkReportInput<'a> {
+    started_at: &'a str,
+    provider: &'a str,
+    profile: &'a str,
+    model: &'a str,
+    workspace: &'a Path,
+    goal: &'a str,
+    dry_run: bool,
+    status: &'a str,
+    final_text: &'a str,
+    steps: &'a [JsonValue],
+}
+
+fn save_agent_work_report(input: AgentWorkReportInput<'_>) -> Result<String, String> {
+    let dir = agent_work_reports_dir();
+    fs::create_dir_all(&dir).map_err(|e| format!("create sessions dir failed: {}", e))?;
+    let path = dir.join(format!("agent_work_{}.json", input.started_at));
+    let payload = json!({
+        "schema": "matter.agent.work.report.v1",
+        "started_at": input.started_at,
+        "provider": input.provider,
+        "profile": input.profile,
+        "model": input.model,
+        "workspace": input.workspace.display().to_string(),
+        "goal": input.goal,
+        "dry_run": input.dry_run,
+        "status": input.status,
+        "final": input.final_text,
+        "steps": input.steps
+    });
+    let raw = serde_json::to_string_pretty(&payload)
+        .map_err(|e| format!("serialize agent work report failed: {}", e))?;
+    fs::write(&path, raw).map_err(|e| format!("write agent work report failed: {}", e))?;
+    Ok(path.display().to_string())
+}
+
+fn agent_work_reports_dir() -> PathBuf {
+    Path::new("env").join("sessions")
+}
+
+fn print_agent_reports_json() {
+    let reports = match list_agent_work_reports() {
+        Ok(v) => v,
+        Err(error) => {
+            println!(
+                "{}",
+                json!({
+                    "ok": false,
+                    "error": error
+                })
+            );
+            process::exit(1);
+        }
+    };
+    println!(
+        "{}",
+        json!({
+            "ok": true,
+            "count": reports.len(),
+            "reports": reports
+        })
+    );
+}
+
+fn print_agent_report_json(request: &str) {
+    let path = if request.eq_ignore_ascii_case("latest") {
+        match latest_agent_work_report_path() {
+            Ok(Some(path)) => path,
+            Ok(None) => {
+                println!(
+                    "{}",
+                    json!({"ok":false,"error":"no agent-work reports found"})
+                );
+                process::exit(1);
+            }
+            Err(error) => {
+                println!("{}", json!({"ok":false,"error":error}));
+                process::exit(1);
+            }
+        }
+    } else {
+        PathBuf::from(request)
+    };
+
+    let raw = match fs::read_to_string(&path) {
+        Ok(v) => v,
+        Err(error) => {
+            println!(
+                "{}",
+                json!({
+                    "ok": false,
+                    "path": path.display().to_string(),
+                    "error": error.to_string()
+                })
+            );
+            process::exit(1);
+        }
+    };
+    let doc: JsonValue = match serde_json::from_str(&raw) {
+        Ok(v) => v,
+        Err(error) => {
+            println!(
+                "{}",
+                json!({
+                    "ok": false,
+                    "path": path.display().to_string(),
+                    "error": format!("invalid report JSON: {}", error)
+                })
+            );
+            process::exit(1);
+        }
+    };
+    println!(
+        "{}",
+        json!({"ok":true,"path":path.display().to_string(),"report":doc})
+    );
+}
+
+fn apply_agent_work_report(args: &[String]) {
+    let request = args.first().map(String::as_str).unwrap_or("");
+    let plan_only = args.iter().skip(1).any(|arg| arg == "--plan");
+    let run_validation = args.iter().skip(1).any(|arg| arg == "--run-validation");
+    if args
+        .iter()
+        .skip(1)
+        .any(|arg| arg != "--plan" && arg != "--run-validation")
+    {
+        println!(
+            "{}",
+            json!({"ok":false,"error":"unknown option; use --plan and/or --run-validation"})
+        );
+        process::exit(1);
+    }
+    let path = if request.eq_ignore_ascii_case("latest") {
+        match latest_agent_work_report_path() {
+            Ok(Some(path)) => path,
+            Ok(None) => {
+                println!(
+                    "{}",
+                    json!({"ok":false,"error":"no agent-work reports found"})
+                );
+                process::exit(1);
+            }
+            Err(error) => {
+                println!("{}", json!({"ok":false,"error":error}));
+                process::exit(1);
+            }
+        }
+    } else {
+        PathBuf::from(request)
+    };
+
+    let raw = match fs::read_to_string(&path) {
+        Ok(v) => v,
+        Err(error) => {
+            println!(
+                "{}",
+                json!({"ok":false,"path":path.display().to_string(),"error":error.to_string()})
+            );
+            process::exit(1);
+        }
+    };
+    let report: JsonValue = match serde_json::from_str(&raw) {
+        Ok(v) => v,
+        Err(error) => {
+            println!(
+                "{}",
+                json!({"ok":false,"path":path.display().to_string(),"error":format!("invalid report JSON: {}", error)})
+            );
+            process::exit(1);
+        }
+    };
+
+    if report.get("dry_run").and_then(|v| v.as_bool()) != Some(true) {
+        println!(
+            "{}",
+            json!({"ok":false,"path":path.display().to_string(),"error":"refusing to apply a report that is not dry_run=true"})
+        );
+        process::exit(1);
+    }
+    let workspace_raw = report
+        .get("workspace")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    if workspace_raw.trim().is_empty() {
+        println!(
+            "{}",
+            json!({"ok":false,"path":path.display().to_string(),"error":"report is missing workspace"})
+        );
+        process::exit(1);
+    }
+    let workspace = PathBuf::from(workspace_raw)
+        .canonicalize()
+        .unwrap_or_else(|_| PathBuf::from(workspace_raw));
+
+    let steps = report
+        .get("steps")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let mut applied = Vec::new();
+    let mut skipped = Vec::new();
+    let mut planned = Vec::new();
+
+    for step in steps {
+        let step_no = step.get("step").and_then(|v| v.as_u64()).unwrap_or(0);
+        let action = step.get("action").unwrap_or(&JsonValue::Null);
+        let tool = action.get("tool").and_then(|v| v.as_str()).unwrap_or("");
+        if matches!(
+            tool,
+            "create_dir" | "write_file" | "append_file" | "replace_in_file"
+        ) {
+            planned.push(json!({
+                "step": step_no,
+                "tool": tool,
+                "path": action.get("path").cloned().unwrap_or(JsonValue::Null),
+                "bytes": action.get("content").and_then(|v| v.as_str()).map(|v| v.len()).unwrap_or(0),
+                "old_bytes": action.get("old").and_then(|v| v.as_str()).map(|v| v.len()).unwrap_or(0),
+                "new_bytes": action.get("new").and_then(|v| v.as_str()).map(|v| v.len()).unwrap_or(0)
+            }));
+            if plan_only {
+                continue;
+            }
+        }
+        let result = match tool {
+            "create_dir" => {
+                let path = action.get("path").and_then(|v| v.as_str()).unwrap_or("");
+                agent_tool_create_dir(&workspace, path).map(|_| json!({"path":path}))
+            }
+            "write_file" => {
+                let path = action.get("path").and_then(|v| v.as_str()).unwrap_or("");
+                let content = action.get("content").and_then(|v| v.as_str()).unwrap_or("");
+                agent_tool_write_file(&workspace, path, content)
+                    .map(|bytes| json!({"path":path,"bytes":bytes}))
+            }
+            "append_file" => {
+                let path = action.get("path").and_then(|v| v.as_str()).unwrap_or("");
+                let content = action.get("content").and_then(|v| v.as_str()).unwrap_or("");
+                agent_tool_append_file(&workspace, path, content)
+                    .map(|bytes| json!({"path":path,"bytes_appended":bytes}))
+            }
+            "replace_in_file" => {
+                let path = action.get("path").and_then(|v| v.as_str()).unwrap_or("");
+                let old = action.get("old").and_then(|v| v.as_str()).unwrap_or("");
+                let new = action.get("new").and_then(|v| v.as_str()).unwrap_or("");
+                agent_tool_replace_in_file(&workspace, path, old, new)
+                    .map(|count| json!({"path":path,"replacements":count}))
+            }
+            _ => {
+                skipped.push(json!({"step":step_no,"tool":tool,"reason":"not a write action"}));
+                continue;
+            }
+        };
+
+        match result {
+            Ok(details) => {
+                applied.push(json!({"step":step_no,"tool":tool,"ok":true,"details":details}))
+            }
+            Err(error) => {
+                applied.push(json!({"step":step_no,"tool":tool,"ok":false,"error":error}))
+            }
+        }
+    }
+
+    if plan_only {
+        println!(
+            "{}",
+            json!({
+                "ok": true,
+                "plan_only": true,
+                "report": path.display().to_string(),
+                "workspace": workspace.display().to_string(),
+                "planned_count": planned.len(),
+                "planned": planned
+            })
+        );
+        return;
+    }
+
+    let ok = applied
+        .iter()
+        .all(|item| item.get("ok").and_then(|v| v.as_bool()) == Some(true));
+    let validation = if ok && run_validation {
+        let manifest = workspace.join("matter.toml");
+        if manifest.exists() {
+            let command = format!("matter project-check-json {}", manifest.display());
+            match run_local_command_capture(&command) {
+                Ok(output) => {
+                    json!({"ok":true,"command":command,"output":truncate_preview(&output, 20000)})
+                }
+                Err(error) => json!({"ok":false,"command":command,"error":error}),
+            }
+        } else {
+            json!({"ok":true,"skipped":true,"reason":"matter.toml not found"})
+        }
+    } else {
+        JsonValue::Null
+    };
+    println!(
+        "{}",
+        json!({
+            "ok": ok,
+            "report": path.display().to_string(),
+            "workspace": workspace.display().to_string(),
+            "planned_count": planned.len(),
+            "applied_count": applied.len(),
+            "skipped_count": skipped.len(),
+            "planned": planned,
+            "applied": applied,
+            "skipped": skipped,
+            "validation": validation
+        })
+    );
+    if !ok {
+        process::exit(1);
+    }
+}
+
+fn list_agent_work_reports() -> Result<Vec<JsonValue>, String> {
+    let dir = agent_work_reports_dir();
+    if !dir.exists() {
+        return Ok(Vec::new());
+    }
+    let mut reports: Vec<(u128, JsonValue)> = Vec::new();
+    let entries = fs::read_dir(&dir).map_err(|e| format!("read reports dir failed: {}", e))?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|v| v.to_str()) else {
+            continue;
+        };
+        if !name.starts_with("agent_work_") || !name.ends_with(".json") {
+            continue;
+        }
+        let metadata = match fs::metadata(&path) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let modified_ms = metadata
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        let summary = read_agent_work_report_summary(&path);
+        reports.push((
+            modified_ms,
+            json!({
+                "path": path.display().to_string(),
+                "name": name,
+                "size_bytes": metadata.len(),
+                "modified_ms": modified_ms,
+                "summary": summary
+            }),
+        ));
+    }
+    reports.sort_by_key(|a| std::cmp::Reverse(a.0));
+    Ok(reports.into_iter().map(|(_, report)| report).collect())
+}
+
+fn latest_agent_work_report_path() -> Result<Option<PathBuf>, String> {
+    let reports = list_agent_work_reports()?;
+    Ok(reports
+        .first()
+        .and_then(|item| item.get("path"))
+        .and_then(|v| v.as_str())
+        .map(PathBuf::from))
+}
+
+fn read_agent_work_report_summary(path: &Path) -> JsonValue {
+    let raw = match fs::read_to_string(path) {
+        Ok(v) => v,
+        Err(_) => return JsonValue::Null,
+    };
+    let doc: JsonValue = match serde_json::from_str(&raw) {
+        Ok(v) => v,
+        Err(_) => return JsonValue::Null,
+    };
+    json!({
+        "status": doc.get("status").cloned().unwrap_or(JsonValue::Null),
+        "goal": doc.get("goal").cloned().unwrap_or(JsonValue::Null),
+        "model": doc.get("model").cloned().unwrap_or(JsonValue::Null),
+        "dry_run": doc.get("dry_run").cloned().unwrap_or(JsonValue::Null),
+        "steps": doc.get("steps").and_then(|v| v.as_array()).map(|v| v.len()).unwrap_or(0)
+    })
+}
+
+fn print_agent_status_json() {
+    let provider = agent_env_var("MATTER_AGENT_PROVIDER").unwrap_or_else(|| "openai".to_string());
+    let profile = agent_env_var("MATTER_AGENT_PROFILE").unwrap_or_else(|| "coding".to_string());
+    let model_env = agent_env_var("MATTER_AGENT_MODEL").unwrap_or_default();
+    let model = if model_env.trim().is_empty() {
+        resolve_agent_model(&provider, &profile).to_string()
+    } else {
+        model_env
+    };
+    let has_openai_key = agent_env_var("OPENAI_API_KEY")
+        .map(|v| !v.trim().is_empty())
+        .unwrap_or(false);
+    let has_matter_key = agent_env_var("MATTER_AGENT_API_KEY")
+        .map(|v| !v.trim().is_empty())
+        .unwrap_or(false);
+    let workspace = env::current_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .display()
+        .to_string();
+    let reports = list_agent_work_reports().unwrap_or_default();
+    let latest_report = reports
+        .first()
+        .and_then(|v| v.get("path"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    println!(
+        "{}",
+        json!({
+            "ok": true,
+            "provider": provider,
+            "profile": profile,
+            "model": model,
+            "keys": {
+                "openai": has_openai_key,
+                "matter_agent": has_matter_key
+            },
+            "workspace": workspace,
+            "reports": {
+                "count": reports.len(),
+                "latest": latest_report
+            },
+            "commands": [
+                "agent-chat",
+                "agent-work",
+                "agent-new-app",
+                "agent-review",
+                "agent-doctor",
+                "agent-status-json",
+                "agent-capabilities-json",
+                "agent-reports-json",
+                "agent-report-json"
+            ]
+        })
+    );
+}
+
+fn execute_agent_work_tool(workspace: &Path, action: &JsonValue, dry_run: bool) -> JsonValue {
+    let tool = action.get("tool").and_then(|v| v.as_str()).unwrap_or("");
+    match tool {
+        "list_files" => {
+            let path = action.get("path").and_then(|v| v.as_str()).unwrap_or(".");
+            let limit = action
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(120)
+                .min(500) as usize;
+            match agent_tool_list_files(workspace, path, limit) {
+                Ok(files) => json!({"ok":true,"tool":tool,"files":files}),
+                Err(error) => json!({"ok":false,"tool":tool,"error":error}),
+            }
+        }
+        "search" => {
+            let query = action.get("query").and_then(|v| v.as_str()).unwrap_or("");
+            let path = action.get("path").and_then(|v| v.as_str()).unwrap_or(".");
+            let limit = action
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(80)
+                .min(300) as usize;
+            match agent_tool_search(workspace, path, query, limit) {
+                Ok(matches) => json!({"ok":true,"tool":tool,"matches":matches}),
+                Err(error) => json!({"ok":false,"tool":tool,"error":error}),
+            }
+        }
+        "read_file" => {
+            let path = action.get("path").and_then(|v| v.as_str()).unwrap_or("");
+            let max_bytes = action
+                .get("max_bytes")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(40000)
+                .min(120000) as usize;
+            match agent_tool_read_file(workspace, path, max_bytes) {
+                Ok(content) => json!({"ok":true,"tool":tool,"path":path,"content":content}),
+                Err(error) => json!({"ok":false,"tool":tool,"path":path,"error":error}),
+            }
+        }
+        "write_file" => {
+            let path = action.get("path").and_then(|v| v.as_str()).unwrap_or("");
+            let content = action.get("content").and_then(|v| v.as_str()).unwrap_or("");
+            if dry_run {
+                return json!({"ok":true,"tool":tool,"path":path,"dry_run":true,"bytes":content.len()});
+            }
+            match agent_tool_write_file(workspace, path, content) {
+                Ok(bytes) => json!({"ok":true,"tool":tool,"path":path,"bytes":bytes}),
+                Err(error) => json!({"ok":false,"tool":tool,"path":path,"error":error}),
+            }
+        }
+        "append_file" => {
+            let path = action.get("path").and_then(|v| v.as_str()).unwrap_or("");
+            let content = action.get("content").and_then(|v| v.as_str()).unwrap_or("");
+            if dry_run {
+                return json!({"ok":true,"tool":tool,"path":path,"dry_run":true,"bytes_appended":content.len()});
+            }
+            match agent_tool_append_file(workspace, path, content) {
+                Ok(bytes) => json!({"ok":true,"tool":tool,"path":path,"bytes_appended":bytes}),
+                Err(error) => json!({"ok":false,"tool":tool,"path":path,"error":error}),
+            }
+        }
+        "replace_in_file" => {
+            let path = action.get("path").and_then(|v| v.as_str()).unwrap_or("");
+            let old = action.get("old").and_then(|v| v.as_str()).unwrap_or("");
+            let new = action.get("new").and_then(|v| v.as_str()).unwrap_or("");
+            if dry_run {
+                return json!({"ok":true,"tool":tool,"path":path,"dry_run":true,"old_bytes":old.len(),"new_bytes":new.len()});
+            }
+            match agent_tool_replace_in_file(workspace, path, old, new) {
+                Ok(count) => json!({"ok":true,"tool":tool,"path":path,"replacements":count}),
+                Err(error) => json!({"ok":false,"tool":tool,"path":path,"error":error}),
+            }
+        }
+        "create_dir" => {
+            let path = action.get("path").and_then(|v| v.as_str()).unwrap_or("");
+            if dry_run {
+                return json!({"ok":true,"tool":tool,"path":path,"dry_run":true});
+            }
+            match agent_tool_create_dir(workspace, path) {
+                Ok(()) => json!({"ok":true,"tool":tool,"path":path}),
+                Err(error) => json!({"ok":false,"tool":tool,"path":path,"error":error}),
+            }
+        }
+        "run" => {
+            let command = action.get("command").and_then(|v| v.as_str()).unwrap_or("");
+            match run_whitelisted_command(command) {
+                Ok(output) => {
+                    json!({"ok":true,"tool":tool,"command":command,"output":truncate_preview(&output, 20000)})
+                }
+                Err(error) => json!({"ok":false,"tool":tool,"command":command,"error":error}),
+            }
+        }
+        _ => json!({"ok":false,"tool":tool,"error":"unknown tool"}),
+    }
+}
+
+fn agent_tool_list_files(
+    workspace: &Path,
+    path: &str,
+    limit: usize,
+) -> Result<Vec<String>, String> {
+    let root = resolve_workspace_path(workspace, path, false)?;
+    let mut out = Vec::new();
+    collect_agent_files(workspace, &root, limit, &mut out);
+    Ok(out)
+}
+
+fn collect_agent_files(workspace: &Path, dir: &Path, limit: usize, out: &mut Vec<String>) {
+    if out.len() >= limit {
+        return;
+    }
+    let entries = match fs::read_dir(dir) {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        if out.len() >= limit {
+            return;
+        }
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().to_string();
+        if should_skip_agent_path(&name) {
+            continue;
+        }
+        if path.is_dir() {
+            collect_agent_files(workspace, &path, limit, out);
+        } else if path.is_file() {
+            out.push(relative_display_path(workspace, &path));
+        }
+    }
+}
+
+fn agent_tool_search(
+    workspace: &Path,
+    path: &str,
+    query: &str,
+    limit: usize,
+) -> Result<Vec<JsonValue>, String> {
+    if query.trim().is_empty() {
+        return Err("search query is empty".to_string());
+    }
+    let root = resolve_workspace_path(workspace, path, false)?;
+    let files = agent_tool_list_files(workspace, &relative_display_path(workspace, &root), 2000)?;
+    let needle = query.to_ascii_lowercase();
+    let mut out = Vec::new();
+    for file in files {
+        if out.len() >= limit {
+            break;
+        }
+        let full = resolve_workspace_path(workspace, &file, false)?;
+        let Ok(bytes) = fs::read(&full) else {
+            continue;
+        };
+        if bytes.len() > 1_000_000 || bytes.contains(&0) {
+            continue;
+        }
+        let text = String::from_utf8_lossy(&bytes);
+        for (idx, line) in text.lines().enumerate() {
+            if line.to_ascii_lowercase().contains(&needle) {
+                out.push(json!({
+                    "path": file,
+                    "line": idx + 1,
+                    "text": truncate_preview(line.trim(), 240)
+                }));
+                if out.len() >= limit {
+                    break;
+                }
+            }
+        }
+    }
+    Ok(out)
+}
+
+fn agent_tool_read_file(workspace: &Path, path: &str, max_bytes: usize) -> Result<String, String> {
+    let full = resolve_workspace_path(workspace, path, false)?;
+    let bytes = fs::read(&full).map_err(|e| format!("read failed: {}", e))?;
+    if bytes.contains(&0) {
+        return Err("refusing to read binary file".to_string());
+    }
+    let slice_len = bytes.len().min(max_bytes);
+    let mut content = String::from_utf8_lossy(&bytes[..slice_len]).to_string();
+    if bytes.len() > max_bytes {
+        content.push_str("\n... truncated ...");
+    }
+    Ok(content)
+}
+
+fn agent_tool_write_file(workspace: &Path, path: &str, content: &str) -> Result<usize, String> {
+    let full = resolve_workspace_path(workspace, path, true)?;
+    if let Some(parent) = full.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("create parent failed: {}", e))?;
+    }
+    fs::write(&full, content).map_err(|e| format!("write failed: {}", e))?;
+    Ok(content.len())
+}
+
+fn agent_tool_append_file(workspace: &Path, path: &str, content: &str) -> Result<usize, String> {
+    let full = resolve_workspace_path(workspace, path, true)?;
+    if let Some(parent) = full.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("create parent failed: {}", e))?;
+    }
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&full)
+        .map_err(|e| format!("open append failed: {}", e))?;
+    file.write_all(content.as_bytes())
+        .map_err(|e| format!("append failed: {}", e))?;
+    Ok(content.len())
+}
+
+fn agent_tool_replace_in_file(
+    workspace: &Path,
+    path: &str,
+    old: &str,
+    new: &str,
+) -> Result<usize, String> {
+    if old.is_empty() {
+        return Err("old text is empty".to_string());
+    }
+    let full = resolve_workspace_path(workspace, path, false)?;
+    let bytes = fs::read(&full).map_err(|e| format!("read failed: {}", e))?;
+    if bytes.contains(&0) {
+        return Err("refusing to edit binary file".to_string());
+    }
+    let content =
+        String::from_utf8(bytes).map_err(|e| format!("file is not valid UTF-8: {}", e))?;
+    let count = content.matches(old).count();
+    if count == 0 {
+        return Err("old text was not found".to_string());
+    }
+    if count > 1 {
+        return Err(format!(
+            "old text matched {} times; provide a more specific block",
+            count
+        ));
+    }
+    let updated = content.replacen(old, new, 1);
+    fs::write(&full, updated).map_err(|e| format!("write failed: {}", e))?;
+    Ok(1)
+}
+
+fn agent_tool_create_dir(workspace: &Path, path: &str) -> Result<(), String> {
+    let full = resolve_workspace_path(workspace, path, true)?;
+    fs::create_dir_all(&full).map_err(|e| format!("create dir failed: {}", e))
+}
+
+fn resolve_workspace_path(
+    workspace: &Path,
+    path: &str,
+    allow_missing: bool,
+) -> Result<PathBuf, String> {
+    if path.trim().is_empty() {
+        return Err("path is empty".to_string());
+    }
+    let raw = PathBuf::from(path);
+    let candidate = if raw.is_absolute() {
+        raw
+    } else {
+        workspace.join(raw)
+    };
+    if candidate.exists() {
+        let canonical = candidate
+            .canonicalize()
+            .map_err(|e| format!("canonicalize failed: {}", e))?;
+        if canonical.starts_with(workspace) {
+            Ok(canonical)
+        } else {
+            Err("path escapes workspace".to_string())
+        }
+    } else if allow_missing {
+        let parent = candidate.parent().unwrap_or(workspace);
+        let canonical_parent = parent
+            .canonicalize()
+            .map_err(|e| format!("parent canonicalize failed: {}", e))?;
+        if canonical_parent.starts_with(workspace) {
+            Ok(candidate)
+        } else {
+            Err("path escapes workspace".to_string())
+        }
+    } else {
+        Err(format!("path not found: {}", path))
+    }
+}
+
+fn should_skip_agent_path(name: &str) -> bool {
+    matches!(
+        name,
+        ".git" | "target" | "target_bench" | ".build-artifacts" | "node_modules" | "dist"
+    )
+}
+
+fn relative_display_path(workspace: &Path, path: &Path) -> String {
+    path.strip_prefix(workspace)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
 fn resolve_agent_model(provider: &str, profile: &str) -> &'static str {
     match provider.to_ascii_lowercase().as_str() {
         "nvidia" => match profile.to_ascii_lowercase().as_str() {
-            "coding" => "moonshotai/kimi-k2.5",
-            "balanced" => "meta/llama-3.3-70b-instruct",
+            "coding" => "qwen/qwen3-coder-480b-a35b-instruct",
+            "balanced" => "qwen/qwen3.5-397b-a17b",
             "cheap" => "nvidia/llama-3.1-nemotron-nano-8b-v1",
-            "max" => "deepseek-ai/deepseek-r1",
-            _ => "meta/llama-3.3-70b-instruct",
+            "max" => "openai/gpt-oss-120b",
+            _ => "qwen/qwen3.5-397b-a17b",
         },
         _ => match profile.to_ascii_lowercase().as_str() {
             "coding" => "gpt-5.2-codex",
@@ -18962,10 +21184,11 @@ fn print_agent_model_catalog() {
     println!("  gpt-5-nano");
     println!();
     println!("NVIDIA suggested models (provider=nvidia):");
-    println!("  moonshotai/kimi-k2.5");
-    println!("  meta/llama-3.3-70b-instruct");
-    println!("  nvidia/llama-3.1-nemotron-nano-8b-v1");
-    println!("  deepseek-ai/deepseek-r1");
+    println!("  openai/gpt-oss-120b (max)");
+    println!("  qwen/qwen3.5-397b-a17b (balanced)");
+    println!("  qwen/qwen3-coder-480b-a35b-instruct (coding)");
+    println!("  nvidia/llama-3.1-nemotron-nano-8b-v1 (cheap/fast)");
+    println!("  moonshotai/kimi-k2.6");
 }
 
 fn load_specialist_system_prompt() -> Option<String> {
@@ -19076,6 +21299,18 @@ fn print_summarized_command_output(command: &str, output: &str) {
     }
 }
 
+fn print_full_command_output(command: &str, output: &str) {
+    println!("{} => full output:", command);
+    if output.trim().is_empty() {
+        println!("(no output)");
+        return;
+    }
+    print!("{}", output);
+    if !output.ends_with('\n') {
+        println!();
+    }
+}
+
 fn run_whitelisted_command(command: &str) -> Result<String, String> {
     let allowed = [
         "git status --short",
@@ -19085,6 +21320,10 @@ fn run_whitelisted_command(command: &str) -> Result<String, String> {
         "cargo test --workspace -q",
         "cargo clippy -p matter-cli --all-targets -- -D warnings",
         "cargo clippy --workspace --exclude matter-llvm --all-targets -- -D warnings",
+        "matter project-check-json",
+        "matter project-run-json",
+        "matter project-run-json --with-energy",
+        "git diff --stat",
     ];
     if !allowed.contains(&command) {
         return Err(format!(
@@ -19491,6 +21730,94 @@ fn save_agent_session_json(
         .map_err(|e| format!("serialize session failed: {}", e))?;
     fs::write(&path, raw).map_err(|e| format!("write session failed: {}", e))?;
     Ok(path.display().to_string())
+}
+
+fn save_shared_agent_bridge_messages(
+    provider: &str,
+    profile: &str,
+    model: &str,
+    messages: &[JsonValue],
+) -> Result<(), String> {
+    let path = Path::new("env").join("agent_shared_context.json");
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("create shared context dir failed: {}", e))?;
+    }
+    let payload = json!({
+        "ok": true,
+        "saved_at": chrono_like_timestamp(),
+        "provider": provider,
+        "profile": profile,
+        "model": model,
+        "message_count": messages.len(),
+        "messages": messages
+    });
+    let raw = serde_json::to_string_pretty(&payload)
+        .map_err(|e| format!("serialize shared context failed: {}", e))?;
+    fs::write(path, raw).map_err(|e| format!("write shared context failed: {}", e))
+}
+
+fn load_shared_agent_bridge_messages() -> Option<Vec<JsonValue>> {
+    let path = Path::new("env").join("agent_shared_context.json");
+    let raw = fs::read_to_string(path).ok()?;
+    let doc: JsonValue = serde_json::from_str(&raw).ok()?;
+    let messages = doc.get("messages")?.as_array()?.clone();
+    if messages.is_empty() {
+        return None;
+    }
+    Some(messages)
+}
+
+fn shared_agent_bridge_status_json() -> String {
+    let path = Path::new("env").join("agent_shared_context.json");
+    if !path.exists() {
+        return json!({
+            "ok": true,
+            "exists": false,
+            "path": path.display().to_string()
+        })
+        .to_string();
+    }
+    let raw = match fs::read_to_string(&path) {
+        Ok(v) => v,
+        Err(err) => {
+            return json!({
+                "ok": false,
+                "exists": true,
+                "path": path.display().to_string(),
+                "error": format!("read failed: {}", err)
+            })
+            .to_string()
+        }
+    };
+    let doc: JsonValue = match serde_json::from_str(&raw) {
+        Ok(v) => v,
+        Err(err) => {
+            return json!({
+                "ok": false,
+                "exists": true,
+                "path": path.display().to_string(),
+                "error": format!("parse failed: {}", err)
+            })
+            .to_string()
+        }
+    };
+    let message_count = doc
+        .get("messages")
+        .and_then(|v| v.as_array())
+        .map(|v| v.len())
+        .unwrap_or(0);
+    json!({
+        "ok": true,
+        "exists": true,
+        "path": path.display().to_string(),
+        "saved_at": doc.get("saved_at").cloned().unwrap_or(JsonValue::Null),
+        "provider": doc.get("provider").cloned().unwrap_or(JsonValue::Null),
+        "profile": doc.get("profile").cloned().unwrap_or(JsonValue::Null),
+        "model": doc.get("model").cloned().unwrap_or(JsonValue::Null),
+        "message_count": message_count
+    })
+    .to_string()
 }
 
 fn list_saved_sessions() -> Result<Vec<String>, String> {
@@ -20758,6 +23085,7 @@ fn chat_completion_via_curl(
     let payload_str =
         serde_json::to_string(&payload).map_err(|e| format!("serialize payload failed: {}", e))?;
 
+    let payload_path = write_agent_payload_temp_file(&payload_str)?;
     let output = Command::new("curl")
         .arg("-sS")
         .arg(format!("{}/chat/completions", provider_base_url(provider)))
@@ -20765,18 +23093,25 @@ fn chat_completion_via_curl(
         .arg("Content-Type: application/json")
         .arg("-H")
         .arg(format!("Authorization: Bearer {}", api_key))
-        .arg("-d")
-        .arg(payload_str)
+        .arg("--data-binary")
+        .arg(format!("@{}", payload_path.display()))
         .output()
-        .map_err(|e| format!("failed to execute curl: {}", e))?;
+        .map_err(|e| format!("failed to execute curl: {}", e));
+    let _ = fs::remove_file(&payload_path);
+    let output = output?;
 
     if !output.status.success() {
         return Err(String::from_utf8_lossy(&output.stderr).to_string());
     }
 
     let body = String::from_utf8_lossy(&output.stdout);
-    let doc: JsonValue =
-        serde_json::from_str(&body).map_err(|e| format!("invalid API JSON: {}", e))?;
+    let doc = parse_first_json_value(&body).map_err(|e| {
+        format!(
+            "invalid API JSON: {} | raw-preview: {}",
+            e,
+            truncate_preview(body.trim(), 240)
+        )
+    })?;
 
     if let Some(message) = doc
         .get("choices")
@@ -20799,6 +23134,17 @@ fn chat_completion_via_curl(
     Err("missing assistant message in API response".to_string())
 }
 
+fn write_agent_payload_temp_file(payload: &str) -> Result<PathBuf, String> {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let path = env::temp_dir().join(format!("matter_agent_payload_{}.json", nanos));
+    fs::write(&path, payload)
+        .map_err(|e| format!("failed to write temporary payload file: {}", e))?;
+    Ok(path)
+}
+
 fn provider_base_url(provider: &str) -> &'static str {
     match provider.to_ascii_lowercase().as_str() {
         "nvidia" => "https://integrate.api.nvidia.com/v1",
@@ -20806,13 +23152,39 @@ fn provider_base_url(provider: &str) -> &'static str {
     }
 }
 
+fn agent_env_var(key: &str) -> Option<String> {
+    if let Ok(value) = env::var(key) {
+        if !value.trim().is_empty() {
+            return Some(value);
+        }
+    }
+
+    if cfg!(windows) {
+        let expr = format!(
+            "[Environment]::GetEnvironmentVariable('{}','User')",
+            key.replace('\'', "''")
+        );
+        if let Ok(output) = Command::new("powershell")
+            .args(["-NoProfile", "-Command", &expr])
+            .output()
+        {
+            if output.status.success() {
+                let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !value.is_empty() {
+                    return Some(value);
+                }
+            }
+        }
+    }
+
+    None
+}
+
 fn resolve_agent_api_key(cli_key: &str) -> Option<String> {
     if !cli_key.trim().is_empty() {
         return Some(cli_key.to_string());
     }
-    env::var("OPENAI_API_KEY")
-        .ok()
-        .or_else(|| env::var("MATTER_AGENT_API_KEY").ok())
+    agent_env_var("OPENAI_API_KEY").or_else(|| agent_env_var("MATTER_AGENT_API_KEY"))
 }
 
 fn list_models_via_curl(provider: &str, api_key: &str) -> Result<Vec<String>, String> {
@@ -20827,8 +23199,8 @@ fn list_models_via_curl(provider: &str, api_key: &str) -> Result<Vec<String>, St
         return Err(String::from_utf8_lossy(&output.stderr).to_string());
     }
     let body = String::from_utf8_lossy(&output.stdout);
-    let doc: JsonValue =
-        serde_json::from_str(&body).map_err(|e| format!("invalid model list JSON: {}", e))?;
+    let doc =
+        parse_first_json_value(&body).map_err(|e| format!("invalid model list JSON: {}", e))?;
     let mut out = Vec::new();
     if let Some(arr) = doc.get("data").and_then(|d| d.as_array()) {
         for item in arr {
@@ -20838,6 +23210,30 @@ fn list_models_via_curl(provider: &str, api_key: &str) -> Result<Vec<String>, St
         }
     }
     Ok(out)
+}
+
+fn parse_first_json_value(raw: &str) -> Result<JsonValue, String> {
+    let direct = raw.trim();
+    if direct.is_empty() {
+        return Err("empty response body".to_string());
+    }
+    if let Ok(doc) = serde_json::from_str::<JsonValue>(direct) {
+        return Ok(doc);
+    }
+
+    let first_json_start = direct
+        .char_indices()
+        .find(|(_, ch)| *ch == '{' || *ch == '[')
+        .map(|(idx, _)| idx)
+        .ok_or_else(|| "response body does not contain JSON start token".to_string())?;
+
+    let sliced = &direct[first_json_start..];
+    let mut stream = serde_json::Deserializer::from_str(sliced).into_iter::<JsonValue>();
+    match stream.next() {
+        Some(Ok(doc)) => Ok(doc),
+        Some(Err(err)) => Err(err.to_string()),
+        None => Err("response body JSON stream is empty".to_string()),
+    }
 }
 
 fn run_lsp() {
@@ -22041,6 +24437,32 @@ fn benchmark_program(file: &str, iterations: usize, json_output: bool) {
         }
     };
 
+    #[cfg(feature = "jit-exec")]
+    fn is_loop_sum_shape(bytecode: &Bytecode) -> bool {
+        let ins = &bytecode.main_instructions;
+        if ins.len() != 22 {
+            return false;
+        }
+        matches!(ins[0], Instruction::LoadConst(_))
+            && matches!(ins[1], Instruction::StoreGlobal(ref n) if n == "i")
+            && matches!(ins[2], Instruction::LoadConst(_))
+            && matches!(ins[3], Instruction::StoreGlobal(ref n) if n == "s")
+            && matches!(ins[4], Instruction::LoadGlobal(ref n) if n == "i")
+            && matches!(ins[6], Instruction::LtEq)
+            && matches!(ins[7], Instruction::JumpIfFalse(19))
+            && matches!(ins[9], Instruction::LoadGlobal(ref n) if n == "s")
+            && matches!(ins[10], Instruction::LoadGlobal(ref n) if n == "i")
+            && matches!(ins[11], Instruction::Add)
+            && matches!(ins[12], Instruction::StoreExisting(ref n) if n == "s")
+            && matches!(ins[13], Instruction::LoadGlobal(ref n) if n == "i")
+            && matches!(ins[15], Instruction::Add)
+            && matches!(ins[16], Instruction::StoreExisting(ref n) if n == "i")
+            && matches!(ins[18], Instruction::Jump(4))
+            && matches!(ins[19], Instruction::LoadGlobal(ref n) if n == "s")
+            && matches!(ins[20], Instruction::Print)
+            && matches!(ins[21], Instruction::Halt)
+    }
+
     if !json_output {
         println!("=== Matter Benchmark ===");
         println!("File: {}", file);
@@ -22053,7 +24475,70 @@ fn benchmark_program(file: &str, iterations: usize, json_output: bool) {
         println!("Running bytecode benchmark...");
     }
     let mut bytecode_times = Vec::new();
+    #[cfg(feature = "jit-exec")]
+    let mut jit_phase_json = JsonValue::Null;
+    #[cfg(not(feature = "jit-exec"))]
+    let jit_phase_json = JsonValue::Null;
 
+    #[cfg(feature = "jit-exec")]
+    {
+        if is_loop_sum_shape(&bytecode) && iterations >= 2 {
+            // Phase 1: first run includes potential JIT compile cost.
+            let mut runtime = Runtime::new_silent(bytecode.clone());
+            runtime.set_stdout_enabled(false);
+            let cold_start = Instant::now();
+            if let Err(e) = runtime.run() {
+                eprintln!("Runtime error in cold iteration: {}", e);
+                process::exit(1);
+            }
+            let cold_duration = cold_start.elapsed();
+
+            // Phase 2: warm runs on same runtime instance, reusing JIT/code cache.
+            let mut warm_times = Vec::new();
+            for i in 1..iterations {
+                let start = Instant::now();
+                if let Err(e) = runtime.run() {
+                    eprintln!("Runtime error in warm iteration {}: {}", i + 1, e);
+                    process::exit(1);
+                }
+                warm_times.push(start.elapsed());
+            }
+
+            let warm_stats = benchmark_stats(&warm_times);
+            bytecode_times.push(cold_duration);
+            bytecode_times.extend(warm_times.iter().copied());
+
+            if !json_output {
+                println!("JIT phases (loop_sum shape):");
+                println!("  Cold (compile+exec): {:?}", cold_duration);
+                println!("  Warm median: {:?}", warm_stats.median);
+            }
+
+            jit_phase_json = json!({
+                "enabled": true,
+                "cold_run": {
+                    "duration_ns": duration_ns(cold_duration),
+                    "duration_human": format!("{:?}", cold_duration)
+                },
+                "warm_runs": {
+                    "iterations": iterations - 1,
+                    "stats": benchmark_stats_json(&warm_stats)
+                }
+            });
+        } else {
+            for i in 0..iterations {
+                let mut runtime = Runtime::new_silent(bytecode.clone());
+                runtime.set_stdout_enabled(false);
+                let start = Instant::now();
+                if let Err(e) = runtime.run() {
+                    eprintln!("Runtime error in iteration {}: {}", i + 1, e);
+                    process::exit(1);
+                }
+                bytecode_times.push(start.elapsed());
+            }
+        }
+    }
+    #[cfg(not(feature = "jit-exec"))]
     for i in 0..iterations {
         let mut runtime = Runtime::new_silent(bytecode.clone());
         runtime.set_stdout_enabled(false);
@@ -22195,7 +24680,8 @@ fn benchmark_program(file: &str, iterations: usize, json_output: bool) {
                 "iterations": iterations,
                 "bytecode": {
                     "status": "ok",
-                    "stats": benchmark_stats_json(&bytecode_stats)
+                    "stats": benchmark_stats_json(&bytecode_stats),
+                    "jit_phases": jit_phase_json
                 },
                 "native": native_json
             })

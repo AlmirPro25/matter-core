@@ -202,6 +202,7 @@ impl GoBridge {
                 Ok(format!("map[string]interface{{}}{{{}}}", pairs.join(", ")))
             }
             Value::Unit => Ok("nil".to_string()),
+            Value::Null => Ok("nil".to_string()),
             Value::Function(_) => Err(BridgeError::ConversionError(
                 "Cannot convert Matter function to Go".to_string(),
             )),
@@ -323,6 +324,7 @@ mod tests {
         );
         assert_eq!(bridge.value_to_go(&Value::Bool(true)).unwrap(), "true");
         assert_eq!(bridge.value_to_go(&Value::Unit).unwrap(), "nil");
+        assert_eq!(bridge.value_to_go(&Value::Null).unwrap(), "nil");
     }
 
     #[test]
