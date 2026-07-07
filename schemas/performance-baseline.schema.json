@@ -1,0 +1,200 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://matter-lang.org/schemas/performance-baseline.schema.json",
+  "title": "Matter Core Performance Baseline",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schema_version",
+    "kind",
+    "ok",
+    "generated_at",
+    "iterations",
+    "startup_iterations",
+    "cli",
+    "benchmarks",
+    "startup",
+    "drift",
+    "summary"
+  ],
+  "properties": {
+    "$schema": { "const": "schemas/performance-baseline.schema.json" },
+    "schema_version": { "const": 1 },
+    "kind": { "const": "performance_baseline" },
+    "ok": { "type": "boolean" },
+    "generated_at": { "type": "string", "minLength": 1 },
+    "iterations": { "type": "integer", "minimum": 1 },
+    "startup_iterations": { "type": "integer", "minimum": 1 },
+    "cli": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "size_bytes"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "size_bytes": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "benchmarks": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/benchmark" }
+    },
+    "startup": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/startup" }
+    },
+    "drift": { "$ref": "#/$defs/drift" },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "benchmark_count",
+        "startup_command_count",
+        "native_enabled_count",
+        "slowest_benchmark",
+        "highest_p95_benchmark"
+      ],
+      "properties": {
+        "benchmark_count": { "type": "integer", "minimum": 1 },
+        "startup_command_count": { "type": "integer", "minimum": 1 },
+        "native_enabled_count": { "type": "integer", "minimum": 0 },
+        "slowest_benchmark": { "$ref": "#/$defs/summary_benchmark" },
+        "highest_p95_benchmark": { "$ref": "#/$defs/summary_benchmark" }
+      }
+    }
+  },
+  "$defs": {
+    "benchmark": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "path",
+        "iterations",
+        "status",
+        "median_ns",
+        "average_ns",
+        "p95_ns",
+        "min_ns",
+        "max_ns",
+        "median_ms",
+        "average_ms",
+        "p95_ms",
+        "min_ms",
+        "max_ms",
+        "native_status",
+        "native_reason"
+      ],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 },
+        "iterations": { "type": "integer", "minimum": 1 },
+        "status": { "const": "ok" },
+        "median_ns": { "type": "number", "exclusiveMinimum": 0 },
+        "average_ns": { "type": "number", "exclusiveMinimum": 0 },
+        "p95_ns": { "type": "number", "exclusiveMinimum": 0 },
+        "min_ns": { "type": "number", "exclusiveMinimum": 0 },
+        "max_ns": { "type": "number", "exclusiveMinimum": 0 },
+        "median_ms": { "type": "number", "exclusiveMinimum": 0 },
+        "average_ms": { "type": "number", "exclusiveMinimum": 0 },
+        "p95_ms": { "type": "number", "exclusiveMinimum": 0 },
+        "min_ms": { "type": "number", "exclusiveMinimum": 0 },
+        "max_ms": { "type": "number", "exclusiveMinimum": 0 },
+        "native_status": { "enum": ["ok", "skipped", "error"] },
+        "native_reason": { "type": ["string", "null"] }
+      }
+    },
+    "startup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "args",
+        "iterations",
+        "median_ms",
+        "average_ms",
+        "p95_ms",
+        "min_ms",
+        "max_ms",
+        "runs_ms"
+      ],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "args": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "iterations": { "type": "integer", "minimum": 1 },
+        "median_ms": { "type": "number", "exclusiveMinimum": 0 },
+        "average_ms": { "type": "number", "exclusiveMinimum": 0 },
+        "p95_ms": { "type": "number", "exclusiveMinimum": 0 },
+        "min_ms": { "type": "number", "exclusiveMinimum": 0 },
+        "max_ms": { "type": "number", "exclusiveMinimum": 0 },
+        "runs_ms": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "number", "exclusiveMinimum": 0 }
+        }
+      }
+    },
+    "drift": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "enforced",
+        "tolerance_percent",
+        "baseline_path",
+        "failures",
+        "comparisons"
+      ],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "enforced": { "type": "boolean" },
+        "tolerance_percent": { "type": "number", "minimum": 0 },
+        "baseline_path": { "type": ["string", "null"] },
+        "failures": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/drift_comparison" }
+        },
+        "comparisons": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/drift_comparison" }
+        }
+      }
+    },
+    "drift_comparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "baseline_median_ms",
+        "candidate_median_ms",
+        "delta_percent",
+        "allowed_median_ms",
+        "passed"
+      ],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "baseline_median_ms": { "type": "number", "exclusiveMinimum": 0 },
+        "candidate_median_ms": { "type": "number", "exclusiveMinimum": 0 },
+        "delta_percent": { "type": "number" },
+        "allowed_median_ms": { "type": "number", "exclusiveMinimum": 0 },
+        "passed": { "type": "boolean" }
+      }
+    },
+    "summary_benchmark": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "median_ms": { "type": "number", "exclusiveMinimum": 0 },
+        "p95_ms": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    }
+  }
+}

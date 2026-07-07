@@ -1,0 +1,35 @@
+﻿{
+    "ok":  true,
+    "status":  "pass",
+    "generated_at":  "2026-05-23T03:11:39.9016823-03:00",
+    "source":  {
+                   "latest":  "F:\\Users\\almir\\Desktop\\MANIFESTO DA LINGUAGEM MATTER CORE\\target\\validation\\status-triad-latest.json",
+                   "trend":  "F:\\Users\\almir\\Desktop\\MANIFESTO DA LINGUAGEM MATTER CORE\\target\\validation\\status-triad-trend-report.json"
+               },
+    "thresholds":  {
+                       "warn_p95_ms":  30000,
+                       "fail_p95_ms":  45000
+                   },
+    "summary":  {
+                    "max_p95_ms":  20815.729,
+                    "window_samples":  4,
+                    "total_samples":  4
+                },
+    "triad":  {
+                  "core":  {
+                               "latest_ms":  23914.587,
+                               "median_ms":  2379.333,
+                               "p95_ms":  20815.729
+                           },
+                  "world":  {
+                                "latest_ms":  1151.473,
+                                "median_ms":  1155.234,
+                                "p95_ms":  1781.02
+                            },
+                  "frontier":  {
+                                   "latest_ms":  1102.763,
+                                   "median_ms":  1127.452,
+                                   "p95_ms":  1168.844
+                               }
+              }
+}

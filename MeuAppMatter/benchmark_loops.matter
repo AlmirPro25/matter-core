@@ -1,0 +1,42 @@
+console.write("==================================================\n")
+console.write("🚀 MATTER CORE V25: BENCHMARK DE LOOPS DE JIT\n")
+console.write("==================================================\n")
+
+console.write("Preparando listas de alta performance...\n")
+let total = 30000
+
+// Gerando a lista para iteração
+let lista = []
+let i = 0
+while i < total {
+    lista.push(i)
+    set i = i + 1
+}
+
+console.write("Lista gerada com 30000 elementos.\n\n")
+
+// Teste 1: Loop WHILE clássico
+console.write("1. Iniciando Benchmark com Loop 'while'...\n")
+let sum_while = 0
+let idx = 0
+while idx < total {
+    let valor = lista[idx]
+    set sum_while = sum_while + valor
+    set idx = idx + 1
+}
+console.write("   -> Resultado Soma (While): ")
+console.write(sum_while)
+console.write("\n")
+console.write("   -> Loop 'while' concluido com sucesso!\n\n")
+
+// Teste 2: Loop FOR native
+console.write("2. Iniciando Benchmark com Loop 'for' nativo...\n")
+let sum_for = 0
+for x in lista {
+    set sum_for = sum_for + x
+}
+console.write("   -> Resultado Soma (For): ")
+console.write(sum_for)
+console.write("\n")
+console.write("   -> Loop 'for' nativo concluido com sucesso!\n")
+console.write("==================================================\n")

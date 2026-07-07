@@ -1,0 +1,36 @@
+fn abs_value(x) {
+    if x < 0 {
+        return 0 - x
+    }
+    return x
+}
+
+fn distance_score(driver, rider_lat, rider_lng) {
+    let dlat = abs_value(driver["lat"] - rider_lat)
+    let dlng = abs_value(driver["lng"] - rider_lng)
+    return dlat + dlng
+}
+
+fn choose_driver_index(drivers, rider_lat, rider_lng) {
+    if drivers.len() == 0 {
+        return 0
+    }
+
+    let best_idx = 0
+    let best_score = 999999
+    let i = 0
+
+    while i < drivers.len() {
+        let d = drivers[i]
+        if d["online"] && d["active_ride_id"] == 0 {
+            let score = distance_score(d, rider_lat, rider_lng)
+            if score < best_score {
+                set best_score = score
+                set best_idx = i
+            }
+        }
+        set i = i + 1
+    }
+
+    return best_idx
+}

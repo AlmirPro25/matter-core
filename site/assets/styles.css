@@ -384,6 +384,195 @@ dd {
   overflow-wrap: anywhere;
 }
 
+.health-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  font-family: "Cascadia Mono", "Lucida Console", Monaco, monospace;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.health-pill.is-pass {
+  border-color: rgba(120, 243, 211, 0.52);
+  color: #c8ffe5;
+  background: rgba(120, 243, 211, 0.16);
+}
+
+.health-pill.is-warn {
+  border-color: rgba(240, 184, 78, 0.56);
+  color: #ffe7b8;
+  background: rgba(240, 184, 78, 0.17);
+}
+
+.health-pill.is-fail {
+  border-color: rgba(255, 111, 60, 0.62);
+  color: #ffd0c0;
+  background: rgba(255, 111, 60, 0.18);
+}
+
+.health-pill.is-refresh-ok {
+  border-color: rgba(120, 243, 211, 0.52);
+  color: #c8ffe5;
+  background: rgba(120, 243, 211, 0.16);
+}
+
+.health-pill.is-refresh-error {
+  border-color: rgba(255, 111, 60, 0.62);
+  color: #ffd0c0;
+  background: rgba(255, 111, 60, 0.18);
+}
+
+.triad-sparkline {
+  display: block;
+  width: 100%;
+  max-width: 160px;
+  height: 36px;
+  border: 1px solid rgba(246, 241, 223, 0.12);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.triad-series-toggle {
+  display: inline-flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.triad-series-toggle button {
+  min-height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.04);
+  font-family: "Cascadia Mono", "Lucida Console", Monaco, monospace;
+  font-size: 0.68rem;
+  cursor: pointer;
+}
+
+.triad-series-toggle button.is-active {
+  color: var(--ink);
+  border-color: rgba(120, 243, 211, 0.45);
+  background: rgba(120, 243, 211, 0.12);
+}
+
+.runtime-refresh-now {
+  min-height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.07);
+  font-family: "Cascadia Mono", "Lucida Console", Monaco, monospace;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.runtime-refresh-now:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+#runtime-copy-status {
+  margin-left: 6px;
+}
+
+#runtime-export-status {
+  margin-left: 6px;
+}
+
+#runtime-import-status {
+  margin-left: 6px;
+}
+
+#runtime-resume-live {
+  margin-left: 6px;
+}
+
+#runtime-reset-panel {
+  margin-left: 6px;
+}
+
+.runtime-refresh-history {
+  margin: 0;
+  padding-left: 16px;
+  color: var(--muted);
+  font-family: "Cascadia Mono", "Lucida Console", Monaco, monospace;
+  font-size: 0.68rem;
+  line-height: 1.45;
+}
+
+#runtime-refresh-history-clear {
+  margin-top: 8px;
+}
+
+#runtime-refresh-history-export {
+  margin-top: 8px;
+  margin-left: 6px;
+}
+
+#runtime-refresh-history-import {
+  margin-top: 8px;
+  margin-left: 6px;
+}
+
+.runtime-refresh-history-action-status {
+  margin-top: 8px;
+  color: var(--muted);
+  font-family: "Cascadia Mono", "Lucida Console", Monaco, monospace;
+  font-size: 0.68rem;
+}
+
+.runtime-refresh-history-action-status.is-ok {
+  color: #c8ffe5;
+}
+
+.runtime-refresh-history-action-status.is-error {
+  color: #ffd0c0;
+}
+
+.triad-sparkline path {
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.triad-sparkline .line-core {
+  stroke: var(--gold);
+}
+
+.triad-sparkline .line-world {
+  stroke: var(--aqua);
+}
+
+.triad-sparkline .line-frontier {
+  stroke: var(--lime);
+}
+
+.triad-sparkline-severity-point {
+  stroke: rgba(8, 11, 16, 0.85);
+  stroke-width: 0.8;
+}
+
+.triad-sparkline-severity-point.is-pass {
+  fill: rgba(120, 243, 211, 0.95);
+}
+
+.triad-sparkline-severity-point.is-warn {
+  fill: rgba(240, 184, 78, 0.95);
+}
+
+.triad-sparkline-severity-point.is-fail {
+  fill: rgba(255, 111, 60, 0.96);
+}
+
 .metrics {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

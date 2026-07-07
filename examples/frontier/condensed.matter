@@ -1,0 +1,47 @@
+// Sprint 67: Condensed Matter Physics
+// Crystals, bands, phonons, solid properties
+
+use condensed;
+
+fn main() {
+    println("=== CONDENSED MATTER PHYSICS ===");
+    
+    // FCC crystal (copper-like)
+    println("\n1. FCC CRYSTAL (Cu-like)");
+    condensed.create_crystal_fcc(3.61e-10);
+    let density = condensed.atomic_density();
+    println("Atomic density: " + density + " atoms/m³");
+    println("FCC: 4 atoms/cell, CN=12");
+    
+    // Metal (zero band gap)
+    println("\n2. METAL (zero gap)");
+    condensed.create_bands(5.0, 0.0);
+    let mat_type = condensed.material_type();
+    println("Material type: " + mat_type);
+    println("Fermi energy: 5.0 eV");
+    
+    // Semiconductor (Si-like)
+    println("\n3. SEMICONDUCTOR (Si-like)");
+    condensed.create_bands(5.0, 1.1);
+    let mat_type2 = condensed.material_type();
+    println("Material type: " + mat_type2);
+    println("Band gap: 1.1 eV (Si)");
+    
+    // Insulator (diamond-like)
+    println("\n4. INSULATOR (diamond-like)");
+    condensed.create_bands(5.0, 5.5);
+    let mat_type3 = condensed.material_type();
+    println("Material type: " + mat_type3);
+    println("Band gap: 5.5 eV (diamond)");
+    
+    // Good conductor (copper)
+    println("\n5. CONDUCTOR (copper)");
+    condensed.create_conductor(8.5e28, 0.0043);
+    let sigma = condensed.conductivity();
+    println("Conductivity: " + sigma + " S/m");
+    println("Cu: σ ≈ 6×10⁷ S/m");
+    
+    println("\n=== SIMULATION COMPLETE ===");
+    println("Condensed matter: crystals, bands, conductors");
+    println("Solid state physics!");
+}

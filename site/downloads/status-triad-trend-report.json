@@ -1,0 +1,27 @@
+﻿{
+    "ok":  true,
+    "generated_at":  "2026-05-23T03:08:08.8604192-03:00",
+    "history":  "F:\\Users\\almir\\Desktop\\MANIFESTO DA LINGUAGEM MATTER CORE\\target\\validation\\status-triad-history.ndjson",
+    "total_samples":  4,
+    "window_samples":  4,
+    "triad":  {
+                  "core":  {
+                               "samples":  4,
+                               "latest_ms":  23914.587,
+                               "median_ms":  2379.333,
+                               "p95_ms":  20815.729
+                           },
+                  "world":  {
+                                "samples":  4,
+                                "latest_ms":  1151.473,
+                                "median_ms":  1155.234,
+                                "p95_ms":  1781.02
+                            },
+                  "frontier":  {
+                                   "samples":  4,
+                                   "latest_ms":  1102.763,
+                                   "median_ms":  1127.452,
+                                   "p95_ms":  1168.844
+                               }
+              }
+}

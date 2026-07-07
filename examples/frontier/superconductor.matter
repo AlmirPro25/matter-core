@@ -1,0 +1,52 @@
+// Sprint 62: Superconductivity
+// BCS theory, Josephson junctions, superconducting qubits
+
+use superconductor;
+
+fn main() {
+    println("=== SUPERCONDUCTIVITY ===");
+    
+    // BCS Superconductor (Niobium)
+    println("\n1. BCS SUPERCONDUCTOR (Nb)");
+    superconductor.create_bcs(9.2, 38.0, 39.0);
+    let gap_0 = superconductor.gap(0.0);
+    let gap_5 = superconductor.gap(5.0);
+    println("Gap at T=0K: " + gap_0 + " eV");
+    println("Gap at T=5K: " + gap_5 + " eV");
+    println("Tc = 9.2 K (critical temperature)");
+    
+    // Josephson Junction
+    println("\n2. JOSEPHSON JUNCTION");
+    superconductor.create_junction(1e-6, 1e-15, 1000.0);
+    superconductor.set_junction_phase(1.57);
+    let current = superconductor.junction_current();
+    println("Josephson current: " + current + " A");
+    println("I = Ic sin(φ), φ = π/2");
+    
+    // Transmon Qubit
+    println("\n3. TRANSMON QUBIT");
+    superconductor.create_transmon(20.0, 0.3);
+    let freq = superconductor.transmon_frequency();
+    println("Qubit frequency: " + freq + " Hz");
+    println("Typical: 4-6 GHz");
+    println("Used in quantum computers!");
+    
+    // SQUID (flux = 0)
+    println("\n4. SQUID (Φ = 0)");
+    superconductor.create_squid(1e-6, 1e-6, 1e-12);
+    let ic_0 = superconductor.squid_critical_current(0.0);
+    println("Critical current: " + ic_0 + " A");
+    println("Maximum at zero flux");
+    
+    // SQUID (flux = Φ₀/2)
+    println("\n5. SQUID (Φ = Φ₀/2)");
+    let phi_0 = 2.067e-15;
+    let ic_half = superconductor.squid_critical_current(phi_0 / 2.0);
+    println("Critical current: " + ic_half + " A");
+    println("Minimum at half flux quantum");
+    println("Flux quantum Φ₀ = h/2e = 2.067×10⁻¹⁵ Wb");
+    
+    println("\n=== SIMULATION COMPLETE ===");
+    println("Superconductivity: BCS, Josephson, qubits");
+    println("Quantum computing building blocks");
+}

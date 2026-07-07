@@ -1,0 +1,38 @@
+print "==========================================="
+print " 📊 MATTER ANALYTICS ENGINE "
+print "==========================================="
+
+print "Agregando dados de vendas..."
+
+let graficos = [
+    {
+        "kind": "bar",
+        "title": "Faturamento Trimestral (USD)",
+        "labels": ["T1", "T2", "T3", "T4"],
+        "values": [12500, 31000, 22500, 48000]
+    },
+    {
+        "kind": "pie",
+        "title": "Distribuicao de Produtos",
+        "labels": ["Matter Pro", "Sentinel OS", "Cloud API"],
+        "values": [55, 30, 15]
+    },
+    {
+        "kind": "line",
+        "title": "Acessos ao Servidor (Milhares)",
+        "labels": ["Seg", "Ter", "Qua", "Qui", "Sex"],
+        "values": [10, 15, 12, 30, 45]
+    }
+]
+
+print "Injetando dados no GraphBackend..."
+
+let caminho_saida = "F:/Users/almir/Desktop/MeuAppMatter/dashboard_analytics.html"
+
+// Chamada nativa para o motor em C++/Rust que desenha os SVGs e monta o HTML
+let resultado = graph.dashboard(caminho_saida, "Painel de Controle Corporativo - Matter OS", graficos)
+
+print "-------------------------------------------"
+print "✅ Dashboard HTML gerado com sucesso em:"
+print caminho_saida
+print "==========================================="

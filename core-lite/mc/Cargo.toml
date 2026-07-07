@@ -1,0 +1,16 @@
+[package]
+name = "mc"
+version = "0.1.0"
+edition = "2021"
+description = "Matter Core (lite) - nucleo enxuto da linguagem: compile + VM + stdlib, sem fisica"
+
+[[bin]]
+name = "mc"
+path = "src/main.rs"
+
+[dependencies]
+matter-compiler = { path = "../../crates/matter-compiler" }
+matter-vm = { path = "../../crates/matter-vm" }
+matter-bytecode = { path = "../../crates/matter-bytecode" }
+matter-stdlib = { path = "../../crates/matter-stdlib" }
+matter-backend = { path = "../../crates/matter-backend" }

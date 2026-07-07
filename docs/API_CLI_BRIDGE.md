@@ -88,6 +88,30 @@ Response:
 {"ok":true,"name":"matter-cli","version":"0.1.0","bytecode":"MBC1","stdin":true,"json_commands":["capabilities-json","package-json","project-deps-json","project-check-json","project-verify-json","project-run-json","project-imports-json","project-lock-json","project-fingerprint-json","project-source-json","project-compile-json","project-build-json","project-run-build-json","project-emit-build-json","eval-json","tokens-json","imports-json","check-json","run-json","emit-json","compile-json","inspect-json","run-bytecode-json","emit-bytecode-json"],"source_commands":["run","eval","emit","check","compile"],"bytecode_commands":["run-bytecode","emit-bytecode","inspect"],"language_features":["variables","functions","recursion","if","while","loop","for","break","continue","events","lists","maps","structs","backend_calls","imports","stdlib","persistence","network","concurrency","packages"]}
 ```
 
+The `json_commands` list includes `core-status-json`, which returns executable evidence for the real core loop:
+
+```bash
+.\target\release\matter-cli.exe core-status-json
+```
+
+The response is schema-versioned as `schemas/core-status.schema.json` and must prove parsing, bytecode compilation, VM/runtime execution, event dispatch, output capture, reflection, and guarded analysis on an embedded sample program. It deliberately reports `production_ready=false`; this is a reality contract, not a marketing claim.
+
+The same list includes `world-status-json`, which returns distributed world runtime evidence for partitioning and interest management:
+
+```bash
+.\target\release\matter-cli.exe world-status-json
+```
+
+The response is schema-versioned as `schemas/world-status.schema.json` and must prove `logical_world_partition` mode, sample overload (`hot_cells=1`), and interest visibility limits (`sample_visible_count=2`, `sample_hidden_count=1`).
+
+The same list includes `frontier-status-json`, which returns the audited reality contract for frontier backends:
+
+```bash
+.\target\release\matter-cli.exe frontier-status-json
+```
+
+The response is schema-versioned as `schemas/frontier-status.schema.json` and must report `all_non_stub=true`, `all_simulated=true`, and `any_hardware=false`.
+
 ## CI Decision Contract
 
 Matter CLI now exposes a dedicated CI decision contract for stable automation around
@@ -404,7 +428,7 @@ The JSON API contract is covered by:
 powershell -ExecutionPolicy Bypass -File .\test_api_bridge.ps1
 ```
 
-This script validates `capabilities-json`, `eval-json`, `tokens-json`, `imports-json`, `check-json`, `run-json`, `emit-json`, `compile-json`, `inspect-json`, `run-bytecode-json`, `emit-bytecode-json`, runtime errors, and load errors.
+This script validates `capabilities-json`, `core-status-json`, `world-status-json`, `frontier-status-json`, `eval-json`, `tokens-json`, `imports-json`, `check-json`, `run-json`, `emit-json`, `compile-json`, `inspect-json`, `run-bytecode-json`, `emit-bytecode-json`, runtime errors, and load errors.
 
 For a full system validation, run:
 

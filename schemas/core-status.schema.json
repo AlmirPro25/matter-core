@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://matter-lang.org/schemas/core-status.schema.json",
+  "title": "Matter Core Runtime Reality Status",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schema_version",
+    "ok",
+    "kind",
+    "summary",
+    "checks"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "schemas/core-status.schema.json"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "kind": {
+      "const": "core_status"
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "core_loop_validated",
+        "pipeline",
+        "bytecode",
+        "execution_controlled",
+        "introspection_available",
+        "guard_status",
+        "claim",
+        "production_ready"
+      ],
+      "properties": {
+        "core_loop_validated": {
+          "type": "boolean"
+        },
+        "pipeline": {
+          "const": "source_to_bytecode_to_vm_to_runtime"
+        },
+        "bytecode": {
+          "const": "MBC1"
+        },
+        "execution_controlled": {
+          "type": "boolean"
+        },
+        "introspection_available": {
+          "type": "boolean"
+        },
+        "guard_status": {
+          "enum": [
+            "pass",
+            "warn",
+            "fail",
+            "not_run",
+            "unknown"
+          ]
+        },
+        "claim": {
+          "const": "experimental_language_runtime"
+        },
+        "production_ready": {
+          "const": false
+        }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/check"
+      }
+    },
+    "evidence": {
+      "type": "object"
+    },
+    "error": {
+      "type": "object",
+      "required": [
+        "stage",
+        "message"
+      ],
+      "properties": {
+        "stage": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  },
+  "$defs": {
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "passed",
+        "severity",
+        "detail"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "severity": {
+          "enum": [
+            "pass",
+            "fail"
+          ]
+        },
+        "detail": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

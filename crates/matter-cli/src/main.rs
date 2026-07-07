@@ -83,6 +83,18 @@ fn main() {
         "capabilities-json" => {
             print_capabilities_json();
         }
+        "core-status-json" => {
+            print_core_status_json();
+        }
+        "world-status-json" => {
+            print_world_status_json();
+        }
+        "frontier-status-json" => {
+            print_frontier_status_json();
+        }
+        "frontier-sim-quality-json" => {
+            print_frontier_sim_quality_json();
+        }
         "polyglot-status-json" => {
             print_polyglot_status_json();
         }
@@ -1966,6 +1978,14 @@ fn print_usage() {
     println!();
     println!("Usage:");
     println!("  matter-cli capabilities-json                Print machine-readable capabilities");
+    println!("  matter-cli core-status-json                 Print executable core reality status");
+    println!(
+        "  matter-cli world-status-json                Print distributed world runtime status"
+    );
+    println!("  matter-cli frontier-status-json             Print frontier backend reality status");
+    println!(
+        "  matter-cli frontier-sim-quality-json        Print frontier simulation quality status"
+    );
     println!("  matter-cli polyglot-status-json             Print polyglot bridge runtime status");
     println!("  matter-cli tool-ci-catalog-json             Print CI decision reason/code catalog");
     println!("  matter-cli tool-ci-verify-json <reason> <code> Verify CI reason/code mapping");
@@ -2207,6 +2227,10 @@ fn print_capabilities_json() {
             "\"stdin\":true,",
             "\"json_commands\":[",
             "\"capabilities-json\",",
+            "\"core-status-json\",",
+            "\"world-status-json\",",
+            "\"frontier-status-json\",",
+            "\"frontier-sim-quality-json\",",
             "\"polyglot-status-json\",",
             "\"tool-ci-catalog-json\",",
             "\"tool-ci-verify-json\",",
@@ -2325,6 +2349,7 @@ fn print_capabilities_json() {
             "\"stdlib\",",
             "\"persistence\",",
             "\"network\",",
+            "\"world_partitioning\",",
             "\"concurrency\",",
             "\"packages\"",
             "],",
@@ -2385,6 +2410,577 @@ fn print_polyglot_status_json() {
         "{{\"ok\":true,\"kind\":\"polyglot_status\",\"bridges\":{{{}}}}}",
         entries.join(",")
     );
+}
+
+const CORE_STATUS_SAMPLE: &str = r#"
+fn fib(n) {
+    if n <= 1 {
+        return n
+    }
+
+    return fib(n - 1) + fib(n - 2)
+}
+
+on boot {
+    print "event: boot"
+}
+
+let scores = [95, 82]
+
+print "Matter Core"
+print "core status"
+print fib(6)
+print scores
+
+spawn boot
+"#;
+
+fn print_core_status_json() {
+    println!("{}", core_status_json_value());
+}
+
+fn core_status_json_value() -> JsonValue {
+    let mut checks = Vec::new();
+    let mut parser = Parser::from_source(CORE_STATUS_SAMPLE);
+    let program = match parser.parse() {
+        Ok(program) => {
+            checks.push(core_status_check_json(
+                "parse",
+                true,
+                format!("{} top-level statements", program.statements.len()),
+            ));
+            program
+        }
+        Err(error) => return core_status_failure_json("parse", &error.to_string(), checks),
+    };
+
+    let bytecode = match BytecodeBuilder::new().build_checked(&program) {
+        Ok(bytecode) => {
+            checks.push(core_status_check_json(
+                "compile",
+                true,
+                format!(
+                    "{} main instructions, {} functions, {} event handlers",
+                    bytecode.main_instructions.len(),
+                    bytecode.functions.len(),
+                    bytecode.event_handlers.len()
+                ),
+            ));
+            bytecode
+        }
+        Err(error) => return core_status_failure_json("compile", &error.to_string(), checks),
+    };
+
+    let ast_reflection = serde_json::from_str::<JsonValue>(&ast_reflection_json(&program))
+        .unwrap_or_else(|error| {
+            json!({
+                "error": error.to_string()
+            })
+        });
+    let bytecode_reflection = serde_json::from_str::<JsonValue>(&bytecode_reflection_json(
+        &bytecode,
+    ))
+    .unwrap_or_else(|error| {
+        json!({
+            "error": error.to_string()
+        })
+    });
+    let reflection_ok = ast_reflection.get("error").is_none()
+        && bytecode_reflection.get("error").is_none()
+        && ast_reflection["total_statements"].as_u64().unwrap_or(0) > 0
+        && bytecode_reflection["summary"]["instructions"]
+            .as_u64()
+            .unwrap_or(0)
+            > 0;
+    checks.push(core_status_check_json(
+        "reflection",
+        reflection_ok,
+        "AST and bytecode reflection generated".to_string(),
+    ));
+
+    let guard = reflexive_guard_report(&program, &bytecode, &ReflexiveGuardOptions::default());
+    let guard_status = guard["status"].as_str().unwrap_or("unknown").to_string();
+    checks.push(core_status_check_json(
+        "reflexive_guard",
+        guard_status != "fail",
+        format!("guard status={guard_status}"),
+    ));
+
+    let mut runtime = Runtime::new_silent(bytecode.clone());
+    runtime.set_stdout_enabled(false);
+    let run_result = runtime.run();
+    let output = runtime.take_output();
+    let run_ok = run_result.is_ok();
+    checks.push(core_status_check_json(
+        "run",
+        run_ok,
+        match &run_result {
+            Ok(_) => format!("{} output lines captured", output.len()),
+            Err(error) => error.clone(),
+        },
+    ));
+
+    let event_ok = output.iter().any(|line| line == "event: boot");
+    checks.push(core_status_check_json(
+        "event_dispatch",
+        event_ok,
+        "spawn boot drained the event handler".to_string(),
+    ));
+
+    let output_ok =
+        output.iter().any(|line| line == "8") && output.iter().any(|line| line == "[95, 82]");
+    checks.push(core_status_check_json(
+        "output_capture",
+        output_ok,
+        "VM captured print output without relying on stdout".to_string(),
+    ));
+
+    let ok = checks
+        .iter()
+        .all(|check| check["passed"].as_bool().unwrap_or(false));
+
+    json!({
+        "$schema": "schemas/core-status.schema.json",
+        "schema_version": 1,
+        "ok": ok,
+        "kind": "core_status",
+        "summary": {
+            "core_loop_validated": ok,
+            "pipeline": "source_to_bytecode_to_vm_to_runtime",
+            "bytecode": "MBC1",
+            "execution_controlled": run_ok,
+            "introspection_available": reflection_ok,
+            "guard_status": guard_status,
+            "claim": "experimental_language_runtime",
+            "production_ready": false
+        },
+        "checks": checks,
+        "evidence": {
+            "sample": "embedded:core-status",
+            "output": output,
+            "bytecode": bytecode_reflection,
+            "reflection": ast_reflection,
+            "guard": guard
+        }
+    })
+}
+
+fn core_status_check_json(name: &str, passed: bool, detail: String) -> JsonValue {
+    json!({
+        "name": name,
+        "passed": passed,
+        "severity": if passed { "pass" } else { "fail" },
+        "detail": detail
+    })
+}
+
+fn core_status_failure_json(stage: &str, error: &str, mut checks: Vec<JsonValue>) -> JsonValue {
+    checks.push(core_status_check_json(stage, false, error.to_string()));
+
+    json!({
+        "$schema": "schemas/core-status.schema.json",
+        "schema_version": 1,
+        "ok": false,
+        "kind": "core_status",
+        "summary": {
+            "core_loop_validated": false,
+            "pipeline": "source_to_bytecode_to_vm_to_runtime",
+            "bytecode": "MBC1",
+            "execution_controlled": false,
+            "introspection_available": false,
+            "guard_status": "not_run",
+            "claim": "experimental_language_runtime",
+            "production_ready": false
+        },
+        "checks": checks,
+        "error": {
+            "stage": stage,
+            "message": error
+        }
+    })
+}
+
+fn print_world_status_json() {
+    println!("{}", world_status_json_value());
+}
+
+fn world_status_json_value() -> JsonValue {
+    let mut runtime = Runtime::new_silent(Bytecode::new());
+
+    let configure = runtime.call_backend(
+        "world",
+        "configure",
+        vec![
+            Value::Float(100.0),
+            Value::Float(150.0),
+            Value::Int(2),
+            Value::Int(2),
+        ],
+    );
+    if let Err(error) = configure {
+        return json!({
+            "$schema": "schemas/world-status.schema.json",
+            "schema_version": 1,
+            "ok": false,
+            "kind": "world_status",
+            "error": {
+                "stage": "configure",
+                "message": error
+            }
+        });
+    }
+
+    for (id, x, y) in [
+        ("p1", 10.0, 10.0),
+        ("p2", 15.0, 15.0),
+        ("p3", 20.0, 20.0),
+        ("p4", 120.0, 10.0),
+    ] {
+        if let Err(error) = runtime.call_backend(
+            "world",
+            "place",
+            vec![
+                Value::new_string(id.to_string()),
+                Value::Float(x),
+                Value::Float(y),
+            ],
+        ) {
+            return json!({
+                "$schema": "schemas/world-status.schema.json",
+                "schema_version": 1,
+                "ok": false,
+                "kind": "world_status",
+                "error": {
+                    "stage": "seed",
+                    "message": error
+                }
+            });
+        }
+    }
+
+    let nearby =
+        match runtime.call_backend("world", "nearby", vec![Value::new_string("p1".to_string())]) {
+            Ok(value) => value,
+            Err(error) => {
+                return json!({
+                    "$schema": "schemas/world-status.schema.json",
+                    "schema_version": 1,
+                    "ok": false,
+                    "kind": "world_status",
+                    "error": {
+                        "stage": "nearby",
+                        "message": error
+                    }
+                });
+            }
+        };
+
+    let plan = match runtime.call_backend("world", "plan", vec![]) {
+        Ok(value) => value,
+        Err(error) => {
+            return json!({
+                "$schema": "schemas/world-status.schema.json",
+                "schema_version": 1,
+                "ok": false,
+                "kind": "world_status",
+                "error": {
+                    "stage": "plan",
+                    "message": error
+                }
+            });
+        }
+    };
+
+    let status = match runtime.call_backend("world", "status", vec![]) {
+        Ok(value) => value,
+        Err(error) => {
+            return json!({
+                "$schema": "schemas/world-status.schema.json",
+                "schema_version": 1,
+                "ok": false,
+                "kind": "world_status",
+                "error": {
+                    "stage": "status",
+                    "message": error
+                }
+            });
+        }
+    };
+
+    let nearby_json = serde_json::from_str::<JsonValue>(&value_to_json(&nearby))
+        .unwrap_or_else(|_| json!({ "error": "invalid nearby payload" }));
+    let plan_json = serde_json::from_str::<JsonValue>(&value_to_json(&plan))
+        .unwrap_or_else(|_| json!({ "error": "invalid plan payload" }));
+    let status_json = serde_json::from_str::<JsonValue>(&value_to_json(&status))
+        .unwrap_or_else(|_| json!({ "error": "invalid status payload" }));
+
+    let degraded = plan_json["degraded"].as_bool().unwrap_or(false);
+    let hot_cells = plan_json["hot_cells"].as_i64().unwrap_or(0);
+    let cell_count = plan_json["cell_count"].as_i64().unwrap_or(0);
+    let entities = plan_json["entities"].as_i64().unwrap_or(0);
+    let visible_count = nearby_json["visible_count"].as_i64().unwrap_or(0);
+    let hidden_count = nearby_json["hidden_count"].as_i64().unwrap_or(0);
+
+    json!({
+        "$schema": "schemas/world-status.schema.json",
+        "schema_version": 1,
+        "ok": true,
+        "kind": "world_status",
+        "summary": {
+            "mode": "logical_world_partition",
+            "degraded": degraded,
+            "hot_cells": hot_cells,
+            "cell_count": cell_count,
+            "entities": entities,
+            "sample_visible_count": visible_count,
+            "sample_hidden_count": hidden_count
+        },
+        "evidence": {
+            "seed": {
+                "cell_size": 100.0,
+                "interest_radius": 150.0,
+                "cell_capacity": 2,
+                "max_visible": 2,
+                "entities": ["p1", "p2", "p3", "p4"]
+            },
+            "nearby_p1": nearby_json,
+            "plan": plan_json,
+            "status": status_json
+        }
+    })
+}
+
+fn print_frontier_status_json() {
+    println!("{}", frontier_status_json_string());
+}
+
+fn print_frontier_sim_quality_json() {
+    println!("{}", frontier_sim_quality_json_string());
+}
+
+fn frontier_status_json_string() -> String {
+    let backends = ["quantum", "photonic", "neuromorphic", "wetware"];
+    let mut runtime = Runtime::new_silent(Bytecode::new());
+    let mut entries: Vec<String> = Vec::new();
+    let mut all_non_stub = true;
+    let mut all_simulated = true;
+    let mut any_hardware = false;
+
+    for key in backends {
+        let payload = runtime
+            .call_backend(key, "status", vec![])
+            .unwrap_or_else(|error| Value::new_string(format!("status call failed: {}", error)));
+
+        if let Value::Map(map) = &payload {
+            all_non_stub &= matches!(map.get("stub"), Some(Value::Bool(false)));
+            all_simulated &= matches!(map.get("simulated"), Some(Value::Bool(true)));
+            any_hardware |= matches!(map.get("hardware"), Some(Value::Bool(true)));
+        } else {
+            all_non_stub = false;
+            all_simulated = false;
+        }
+
+        entries.push(format!(
+            "\"{}\":{}",
+            json_escape(key),
+            value_to_json(&payload)
+        ));
+    }
+
+    format!(
+        "{{\"$schema\":\"schemas/frontier-status.schema.json\",\"schema_version\":1,\"ok\":true,\"kind\":\"frontier_status\",\"summary\":{{\"all_non_stub\":{},\"all_simulated\":{},\"any_hardware\":{}}},\"backends\":{{{}}}}}",
+        all_non_stub,
+        all_simulated,
+        any_hardware,
+        entries.join(",")
+    )
+}
+
+fn frontier_sim_quality_json_string() -> String {
+    let mut runtime = Runtime::new_silent(Bytecode::new());
+    let bell_started = std::time::Instant::now();
+    let bell = runtime
+        .call_backend(
+            "quantum",
+            "bell_stats",
+            vec![Value::Int(1000), Value::Int(42)],
+        )
+        .unwrap_or_else(|error| Value::new_string(format!("bell_stats call failed: {}", error)));
+    let bell_elapsed_ns = bell_started.elapsed().as_nanos().max(1);
+
+    let mut quantum_passed = false;
+    let mut quantum_checks = Vec::new();
+    if let Value::Map(map) = &bell {
+        quantum_passed = matches!(map.get("passed"), Some(Value::Bool(true)));
+        quantum_checks.push(format!(
+            "{{\"name\":\"bell_distribution\",\"passed\":{},\"severity\":\"{}\",\"detail\":{}}}",
+            quantum_passed,
+            if quantum_passed { "pass" } else { "fail" },
+            format!("\"{}\"", json_escape(&format!(
+                "Bell stats sampled with 1000 shots and seed 42; correlated_rate={}, forbidden_rate={}, balance_error={}",
+                map.get("correlated_rate")
+                    .map(Value::to_display_string)
+                    .unwrap_or_else(|| "missing".to_string()),
+                map.get("forbidden_rate")
+                    .map(Value::to_display_string)
+                    .unwrap_or_else(|| "missing".to_string()),
+                map.get("balance_error")
+                    .map(Value::to_display_string)
+                    .unwrap_or_else(|| "missing".to_string())
+            )))
+        ));
+    } else {
+        quantum_checks.push(format!(
+            "{{\"name\":\"bell_distribution\",\"passed\":false,\"severity\":\"fail\",\"detail\":{}}}",
+            format!("\"{}\"", json_escape("quantum.bell_stats did not return a map"))
+        ));
+    }
+
+    let lif_started = std::time::Instant::now();
+    let lif = runtime
+        .call_backend(
+            "neuromorphic",
+            "lif_threshold_probe",
+            vec![Value::Float(20.0), Value::Int(200)],
+        )
+        .unwrap_or_else(|error| {
+            Value::new_string(format!("lif_threshold_probe call failed: {}", error))
+        });
+    let lif_elapsed_ns = lif_started.elapsed().as_nanos().max(1);
+
+    let mut neuromorphic_passed = false;
+    let mut neuromorphic_checks = Vec::new();
+    if let Value::Map(map) = &lif {
+        neuromorphic_passed = matches!(map.get("passed"), Some(Value::Bool(true)));
+        neuromorphic_checks.push(format!(
+            "{{\"name\":\"lif_threshold_response\",\"passed\":{},\"severity\":\"{}\",\"detail\":{}}}",
+            neuromorphic_passed,
+            if neuromorphic_passed { "pass" } else { "fail" },
+            format!("\"{}\"", json_escape(&format!(
+                "LIF probe sampled with current 20 and 200 steps; spiked={}, spike_count={}, latency_ms={}, spike_rate_hz={}",
+                map.get("spiked")
+                    .map(Value::to_display_string)
+                    .unwrap_or_else(|| "missing".to_string()),
+                map.get("spike_count")
+                    .map(Value::to_display_string)
+                    .unwrap_or_else(|| "missing".to_string()),
+                map.get("latency_ms")
+                    .map(Value::to_display_string)
+                    .unwrap_or_else(|| "missing".to_string()),
+                map.get("spike_rate_hz")
+                    .map(Value::to_display_string)
+                    .unwrap_or_else(|| "missing".to_string())
+            )))
+        ));
+    } else {
+        neuromorphic_checks.push(format!(
+            "{{\"name\":\"lif_threshold_response\",\"passed\":false,\"severity\":\"fail\",\"detail\":{}}}",
+            format!(
+                "\"{}\"",
+                json_escape("neuromorphic.lif_threshold_probe did not return a map")
+            )
+        ));
+    }
+
+    let truth_table_started = std::time::Instant::now();
+    let truth_table = runtime
+        .call_backend("photonic", "truth_table", vec![])
+        .unwrap_or_else(|error| Value::new_string(format!("truth_table call failed: {}", error)));
+    let truth_table_elapsed_ns = truth_table_started.elapsed().as_nanos().max(1);
+    let loss_started = std::time::Instant::now();
+    let loss = runtime
+        .call_backend(
+            "photonic",
+            "waveguide_loss",
+            vec![Value::Float(10.0), Value::Float(1.0)],
+        )
+        .unwrap_or_else(|error| {
+            Value::new_string(format!("waveguide_loss call failed: {}", error))
+        });
+    let loss_elapsed_ns = loss_started.elapsed().as_nanos().max(1);
+
+    let truth_table_passed = matches!(
+        &truth_table,
+        Value::Map(map) if matches!(map.get("passed"), Some(Value::Bool(true)))
+    );
+    let waveguide_loss_passed = matches!(
+        &loss,
+        Value::Map(map) if matches!(map.get("passed"), Some(Value::Bool(true)))
+    );
+    let photonic_passed = truth_table_passed && waveguide_loss_passed;
+    let photonic_checks = [
+        format!(
+            "{{\"name\":\"truth_table\",\"passed\":{},\"severity\":\"{}\",\"detail\":\"Photonic AND, OR, and NOT threshold logic matches its reference table\"}}",
+            truth_table_passed,
+            if truth_table_passed { "pass" } else { "fail" }
+        ),
+        format!(
+            "{{\"name\":\"waveguide_loss\",\"passed\":{},\"severity\":\"{}\",\"detail\":\"Simplified waveguide propagation reports bounded attenuation\"}}",
+            waveguide_loss_passed,
+            if waveguide_loss_passed { "pass" } else { "fail" }
+        ),
+    ];
+
+    let bounded_state_started = std::time::Instant::now();
+    let bounded_state = runtime
+        .call_backend("wetware", "bounded_state_probe", vec![])
+        .unwrap_or_else(|error| {
+            Value::new_string(format!("bounded_state_probe call failed: {}", error))
+        });
+    let bounded_state_elapsed_ns = bounded_state_started.elapsed().as_nanos().max(1);
+    let wetware_passed = matches!(
+        &bounded_state,
+        Value::Map(map) if matches!(map.get("passed"), Some(Value::Bool(true)))
+    );
+    let wetware_checks = [format!(
+        "{{\"name\":\"bounded_state_adaptation\",\"passed\":{},\"severity\":\"{}\",\"detail\":\"Simulated culture health and dopamine remain bounded while reward, punishment, and decay follow the expected direction\"}}",
+        wetware_passed,
+        if wetware_passed { "pass" } else { "fail" }
+    )];
+
+    let probe_timings = [
+        ("quantum.bell_stats", bell_elapsed_ns),
+        ("neuromorphic.lif_threshold_probe", lif_elapsed_ns),
+        ("photonic.truth_table", truth_table_elapsed_ns),
+        ("photonic.waveguide_loss", loss_elapsed_ns),
+        ("wetware.bounded_state_probe", bounded_state_elapsed_ns),
+    ];
+    let total_elapsed_ns: u128 = probe_timings.iter().map(|(_, elapsed_ns)| elapsed_ns).sum();
+    let slowest_probe = probe_timings
+        .iter()
+        .max_by_key(|(_, elapsed_ns)| elapsed_ns)
+        .expect("frontier simulation quality probes are not empty");
+    let timing_json = probe_timings
+        .iter()
+        .map(|(name, elapsed_ns)| {
+            format!(
+                "{{\"name\":\"{}\",\"elapsed_ns\":{}}}",
+                json_escape(name),
+                elapsed_ns
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+
+    let ok = quantum_passed && neuromorphic_passed && photonic_passed && wetware_passed;
+    format!(
+        "{{\"$schema\":\"schemas/frontier-simulation-quality.schema.json\",\"schema_version\":1,\"ok\":{},\"kind\":\"frontier_simulation_quality\",\"summary\":{{\"all_simulated\":true,\"any_hardware\":false,\"quality_level\":1,\"implemented_modules\":[\"quantum\",\"neuromorphic\",\"photonic\",\"wetware\"],\"planned_modules\":[]}},\"checks\":{{\"quantum\":[{}],\"neuromorphic\":[{}],\"photonic\":[{}],\"wetware\":[{}]}},\"evidence\":{{\"quantum\":{{\"bell_stats\":{}}},\"neuromorphic\":{{\"lif_threshold_probe\":{}}},\"photonic\":{{\"truth_table\":{},\"waveguide_loss\":{}}},\"wetware\":{{\"bounded_state_probe\":{}}}}},\"performance\":{{\"unit\":\"ns\",\"probe_count\":{},\"total_elapsed_ns\":{},\"slowest_probe\":{{\"name\":\"{}\",\"elapsed_ns\":{}}},\"probes\":[{}]}}}}",
+        ok,
+        quantum_checks.join(","),
+        neuromorphic_checks.join(","),
+        photonic_checks.join(","),
+        wetware_checks.join(","),
+        value_to_json(&bell),
+        value_to_json(&lif),
+        value_to_json(&truth_table),
+        value_to_json(&loss),
+        value_to_json(&bounded_state),
+        probe_timings.len(),
+        total_elapsed_ns,
+        json_escape(slowest_probe.0),
+        slowest_probe.1,
+        timing_json
+    )
 }
 
 fn fnv1a64_text_hex(input: &str) -> String {
@@ -16714,9 +17310,16 @@ fn collect_expression_reflection(
             collect_expression_reflection(target, calls, backend_calls);
             collect_expression_reflection(index, calls, backend_calls);
         }
-        Expression::MethodCall { target, method, args } => {
+        Expression::MethodCall {
+            target,
+            method,
+            args,
+        } => {
             if let Expression::Identifier(name) = target.as_ref() {
-                if !matches!(method.as_str(), "push" | "pop" | "len" | "has" | "keys" | "values") {
+                if !matches!(
+                    method.as_str(),
+                    "push" | "pop" | "len" | "has" | "keys" | "values"
+                ) {
                     bump_count(backend_calls, &format!("{}.{}", name, method));
                 }
             }
@@ -17479,6 +18082,10 @@ fn print_help() {
     println!();
     println!("  JSON API (machine-readable output):");
     println!("    capabilities-json       Print CLI capabilities");
+    println!("    core-status-json        Print executable core reality status");
+    println!("    world-status-json       Print distributed world runtime status");
+    println!("    frontier-status-json    Print frontier backend reality status");
+    println!("    frontier-sim-quality-json Print frontier simulation quality status");
     println!("    polyglot-status-json    Print polyglot bridge runtime status");
     println!("    tool-ci-catalog-json    Print CI reason/code catalog");
     println!("    tool-ci-contract-json   Print CI contract bundle");
@@ -18233,6 +18840,10 @@ fn suggest_command(input: &str) {
         "run-bytecode-json",
         "emit-bytecode-json",
         "capabilities-json",
+        "core-status-json",
+        "world-status-json",
+        "frontier-status-json",
+        "frontier-sim-quality-json",
         "polyglot-status-json",
         "tool-ci-catalog-json",
         "tool-pipeline-validate-contract-json",
@@ -24702,6 +25313,166 @@ mod tests {
         ];
 
         assert_eq!(parse_benchmark_options(&args), (25, true));
+    }
+
+    #[test]
+    fn core_status_json_validates_executable_core_loop() {
+        let payload = core_status_json_value();
+
+        assert_eq!(payload["$schema"], "schemas/core-status.schema.json");
+        assert_eq!(payload["schema_version"], 1);
+        assert_eq!(payload["ok"], true);
+        assert_eq!(payload["kind"], "core_status");
+        assert_eq!(payload["summary"]["core_loop_validated"], true);
+        assert_eq!(
+            payload["summary"]["pipeline"],
+            "source_to_bytecode_to_vm_to_runtime"
+        );
+        assert_eq!(payload["summary"]["bytecode"], "MBC1");
+        assert_eq!(payload["summary"]["production_ready"], false);
+
+        let output = payload["evidence"]["output"]
+            .as_array()
+            .expect("core status output should be an array");
+        assert!(output
+            .iter()
+            .any(|line| line.as_str() == Some("Matter Core")));
+        assert!(output.iter().any(|line| line.as_str() == Some("8")));
+        assert!(output
+            .iter()
+            .any(|line| line.as_str() == Some("event: boot")));
+
+        let checks = payload["checks"]
+            .as_array()
+            .expect("core status checks should be an array");
+        for expected in [
+            "parse",
+            "compile",
+            "reflection",
+            "reflexive_guard",
+            "run",
+            "event_dispatch",
+            "output_capture",
+        ] {
+            assert!(checks.iter().any(|check| check["name"] == expected));
+        }
+        assert!(checks
+            .iter()
+            .all(|check| check["passed"].as_bool().unwrap_or(false)));
+    }
+
+    #[test]
+    fn world_status_json_reports_partition_and_overload_evidence() {
+        let payload = world_status_json_value();
+
+        assert_eq!(payload["$schema"], "schemas/world-status.schema.json");
+        assert_eq!(payload["schema_version"], 1);
+        assert_eq!(payload["ok"], true);
+        assert_eq!(payload["kind"], "world_status");
+        assert_eq!(payload["summary"]["mode"], "logical_world_partition");
+        assert_eq!(payload["summary"]["degraded"], true);
+        assert_eq!(payload["summary"]["hot_cells"], 1);
+        assert_eq!(payload["summary"]["cell_count"], 2);
+        assert_eq!(payload["summary"]["entities"], 4);
+        assert_eq!(payload["summary"]["sample_visible_count"], 2);
+        assert_eq!(payload["summary"]["sample_hidden_count"], 1);
+    }
+
+    #[test]
+    fn frontier_status_json_reports_simulated_non_stub_backends() {
+        let payload: JsonValue =
+            serde_json::from_str(&frontier_status_json_string()).expect("valid frontier JSON");
+
+        assert_eq!(payload["$schema"], "schemas/frontier-status.schema.json");
+        assert_eq!(payload["schema_version"], 1);
+        assert_eq!(payload["ok"], true);
+        assert_eq!(payload["kind"], "frontier_status");
+        assert_eq!(payload["summary"]["all_non_stub"], true);
+        assert_eq!(payload["summary"]["all_simulated"], true);
+        assert_eq!(payload["summary"]["any_hardware"], false);
+
+        for backend in ["quantum", "photonic", "neuromorphic", "wetware"] {
+            let status = &payload["backends"][backend];
+            assert_eq!(status["stub"], false);
+            assert_eq!(status["hardware"], false);
+            assert_eq!(status["simulated"], true);
+            assert!(status["capabilities"].as_array().is_some());
+        }
+    }
+
+    #[test]
+    fn frontier_sim_quality_json_reports_level_one_contract() {
+        let payload: JsonValue = serde_json::from_str(&frontier_sim_quality_json_string())
+            .expect("valid frontier simulation quality JSON");
+
+        assert_eq!(
+            payload["$schema"],
+            "schemas/frontier-simulation-quality.schema.json"
+        );
+        assert_eq!(payload["schema_version"], 1);
+        assert_eq!(payload["ok"], true);
+        assert_eq!(payload["kind"], "frontier_simulation_quality");
+        assert_eq!(payload["summary"]["all_simulated"], true);
+        assert_eq!(payload["summary"]["any_hardware"], false);
+        assert_eq!(payload["summary"]["quality_level"], 1);
+        assert_eq!(payload["evidence"]["quantum"]["bell_stats"]["passed"], true);
+        assert!(
+            payload["evidence"]["quantum"]["bell_stats"]["correlated_rate"]
+                .as_f64()
+                .unwrap()
+                >= 0.95
+        );
+        assert_eq!(payload["checks"]["quantum"][0]["passed"], true);
+        assert_eq!(
+            payload["evidence"]["neuromorphic"]["lif_threshold_probe"]["passed"],
+            true
+        );
+        assert_eq!(
+            payload["evidence"]["neuromorphic"]["lif_threshold_probe"]["spiked"],
+            true
+        );
+        assert!(
+            payload["evidence"]["neuromorphic"]["lif_threshold_probe"]["spike_count"]
+                .as_i64()
+                .unwrap()
+                > 0
+        );
+        assert_eq!(payload["checks"]["neuromorphic"][0]["passed"], true);
+        assert_eq!(
+            payload["evidence"]["photonic"]["truth_table"]["passed"],
+            true
+        );
+        assert_eq!(
+            payload["evidence"]["photonic"]["truth_table"]["truth_table_accuracy"],
+            1.0
+        );
+        assert_eq!(
+            payload["evidence"]["photonic"]["waveguide_loss"]["passed"],
+            true
+        );
+        assert_eq!(payload["checks"]["photonic"][0]["passed"], true);
+        assert_eq!(payload["checks"]["photonic"][1]["passed"], true);
+        assert_eq!(
+            payload["evidence"]["wetware"]["bounded_state_probe"]["bounded"],
+            true
+        );
+        assert_eq!(
+            payload["evidence"]["wetware"]["bounded_state_probe"]["passed"],
+            true
+        );
+        assert_eq!(payload["checks"]["wetware"][0]["passed"], true);
+        assert_eq!(payload["performance"]["unit"], "ns");
+        assert_eq!(payload["performance"]["probe_count"], 5);
+        assert!(payload["performance"]["total_elapsed_ns"].as_u64().unwrap() > 0);
+        assert_eq!(
+            payload["performance"]["probes"].as_array().unwrap().len(),
+            5
+        );
+        assert!(payload["performance"]["probes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|probe| probe["elapsed_ns"].as_u64().unwrap() > 0));
     }
 
     #[test]

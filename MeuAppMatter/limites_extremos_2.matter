@@ -1,0 +1,76 @@
+print "================================================================"
+print " 🧪 MATTER CORE - TESTE DE ANOMALIAS (FPU E COMPLEXIDADE)"
+print " Testando NaN, Infinity e Listas imutáveis massivas"
+print "================================================================"
+print " "
+
+let survived = 0
+
+// ===== TESTE 1: Anomalias de Ponto Flutuante =====
+print "[LIMITE 1] FPU - Infinity e NaN"
+let inf = 1.0 / 0.0
+let nan = 0.0 / 0.0
+let cast_inf = type.to_int(inf)
+let cast_nan = type.to_int(nan)
+
+print "  1.0 / 0.0 = " + inf
+print "  0.0 / 0.0 = " + nan
+print "  to_int(inf) = " + cast_inf
+print "  to_int(nan) = " + cast_nan
+set survived = survived + 1
+print "  SOBREVIVEU ✅"
+print " "
+
+// ===== TESTE 2: ListPushVar Exponencial (O(N^2) no motor) =====
+print "[LIMITE 2] Stress Imutável de Listas (ListPushVar)"
+// Adicionar 5000 elementos um por um para testar o copy-on-write
+let massive_list = []
+let i = 0
+while i < 5000 {
+    set massive_list = list.push(massive_list, i)
+    set i = i + 1
+}
+let m_len = massive_list.len()
+let m_last = massive_list[4999]
+print "  Criou lista por push seq. com " + m_len + " items. Ultimo = " + m_last
+set survived = survived + 1
+print "  SOBREVIVEU ✅"
+print " "
+
+// ===== TESTE 3: Deep Stack Scopes em Loop =====
+print "[LIMITE 3] Instabilidade de CallStack de Longa Duração"
+// Vamos executar 50.000 chamadas de função rasas. Se houver leak
+// na CallStack ou na ScopeStack que a gente implementou, isso explode.
+fn simple_ping(x) {
+    return x * 2
+}
+
+let k = 0
+let ping_acc = 0
+while k < 50000 {
+    set ping_acc = ping_acc + simple_ping(1)
+    set k = k + 1
+}
+print "  Executou simple_ping() 50.000 vezes, resultado: " + ping_acc
+set survived = survived + 1
+print "  SOBREVIVEU ✅"
+print " "
+
+// ===== TESTE 4: Loop infinito de String Casting =====
+print "[LIMITE 4] Casting pesado em memoria"
+let z = 0
+let cast_total = 0
+while z < 10000 {
+    let str_val = type.to_string(z)
+    let int_val = type.to_int(str_val)
+    set cast_total = cast_total + int_val
+    set z = z + 1
+}
+print "  Parse/Stringify 10000 vezes (total: " + cast_total + ")"
+set survived = survived + 1
+print "  SOBREVIVEU ✅"
+print " "
+
+print "================================================================"
+print " 🧪 RESULTADO: " + survived + "/4 ANOMALIAS SOBREVIVIDAS"
+print "================================================================"

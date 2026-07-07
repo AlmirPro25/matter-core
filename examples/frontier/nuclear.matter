@@ -1,0 +1,49 @@
+// Sprint 66: Nuclear Physics
+// Fission, fusion, decay, reactions
+
+use nuclear;
+
+fn main() {
+    println("=== NUCLEAR PHYSICS ===");
+    
+    // Iron-56 (most stable nucleus)
+    println("\n1. IRON-56 (most stable)");
+    nuclear.create_nucleus(26, 30);
+    let be = nuclear.binding_energy();
+    println("Binding energy: " + be + " MeV");
+    println("BE/A ≈ 8.8 MeV (peak of stability curve)");
+    
+    // Helium-4 (alpha particle)
+    println("\n2. HELIUM-4 (alpha particle)");
+    nuclear.create_nucleus(2, 2);
+    let be2 = nuclear.binding_energy();
+    println("Binding energy: " + be2 + " MeV");
+    println("Very stable, used in alpha decay");
+    
+    // U-235 Fission
+    println("\n3. URANIUM-235 FISSION");
+    nuclear.create_fission();
+    let e_fission = nuclear.fission_energy();
+    println("Energy released: " + e_fission + " MeV");
+    println("~200 MeV per fission");
+    println("Used in nuclear reactors & weapons");
+    
+    // D-T Fusion
+    println("\n4. DEUTERIUM-TRITIUM FUSION");
+    nuclear.create_fusion_dt();
+    let e_fusion = nuclear.fusion_energy();
+    println("Energy released: " + e_fusion + " MeV");
+    println("~17.6 MeV per reaction");
+    println("Used in fusion reactors (ITER)");
+    
+    // Nuclear Reactor
+    println("\n5. NUCLEAR REACTOR (100 kg fuel)");
+    nuclear.create_reactor(100.0);
+    let power = nuclear.reactor_power();
+    println("Electrical power: " + power + " MW");
+    println("Typical reactor: 1000 MW");
+    
+    println("\n=== SIMULATION COMPLETE ===");
+    println("Nuclear physics: fission, fusion, reactors");
+    println("E = mc² in action!");
+}

@@ -1,0 +1,126 @@
+# 🎶 CHIPTUNE SYNTH SHOWCASE SYSTEM (MATTER CORE) 🎶
+# Um aplicativo de síntese e orquestração de áudio retrô usando pipelines funcionais de ponta.
+
+# Importa a biblioteca padrão de coleções funcionais em Matter puro
+import "../stdlib/list.matter"
+
+print "╔════════════════════════════════════════════════════╗"
+print "║    👾 INICIANDO SINTETIZADOR CHIPTUNE MATTER 👾    ║"
+print "╚════════════════════════════════════════════════════╝"
+print ""
+
+# 📋 Partitura codificada (formato: "Frequencia-Duracao_ms")
+# Algumas notas normais, e algumas com frequências muito altas/ruídos
+let partitura_crua = [
+    "261-150", # Do4
+    "293-150", # Re4
+    "329-150", # Mi4
+    "349-150", # Fa4
+    "392-150", # Sol4
+    "440-150", # La4
+    "494-150", # Si4
+    "523-300", # Do5
+    "9999-100", # Filtro (frequência de ruído inaudível / a ser filtrada)
+    "587-150", # Re5
+    "659-150", # Mi5
+    "698-150", # Fa5
+    "784-150", # Sol5
+    "880-150", # La5
+    "987-150", # Si5
+    "1046-400" # Do6 (Oitava superior)
+]
+
+print "🎼 1. Partitura original carregada (bruta):"
+print partitura_crua
+print ""
+
+# Função para mapear cada string "Frequencia-Duracao" em um objeto estruturado/map
+fn parse_nota(nota_str) {
+    let partes = string.split(nota_str, "-")
+    let freq_str = partes[0]
+    let dur_str = partes[1]
+    
+    let res = {
+        freq: type.to_int(freq_str),
+        dur: type.to_int(dur_str)
+    }
+    return res
+}
+
+# Usando o pipeline funcional map do stdlib/list.matter para parsear todas as notas
+print "⚙️ 2. Parseando partitura crua usando 'map'..."
+let partitura_processada = map(partitura_crua, parse_nota)
+print "Notas parseadas com sucesso!"
+print ""
+
+# Função de filtro para remover notas de teste com frequências inaudíveis/ruídos (> 2000Hz)
+fn filtrar_audivel(nota) {
+    if nota["freq"] < 2000 {
+        return true
+    }
+    return false
+}
+
+# Usando o pipeline funcional filter do stdlib/list.matter para limpar a partitura
+print "🧹 3. Filtrando frequencias fora do espectro musical (> 2000 Hz) usando 'filter'..."
+let partitura_limpa = filter(partitura_processada, filtrar_audivel)
+print "Partitura limpa para execução!"
+print ""
+
+# 💾 Gravando logs de orquestração no disco usando a nova API de linhas
+print "💾 4. Gravando relatorio de sintetizacao por linhas no disco..."
+let linhas_relatorio = []
+set linhas_relatorio = list.push(linhas_relatorio, "=== CHIPTUNE SYNTH REPORT ===")
+set linhas_relatorio = list.push(linhas_relatorio, "Total de notas brutas: " + type.to_string(list.len(partitura_crua)))
+set linhas_relatorio = list.push(linhas_relatorio, "Total de notas limpas: " + type.to_string(list.len(partitura_limpa)))
+set linhas_relatorio = list.push(linhas_relatorio, "Data de geracao: 2026-05-22")
+
+let path_relatorio = "examples/chiptune_report.txt"
+let write_ok = file.write_lines(path_relatorio, linhas_relatorio)
+print "Relatorio escrito por linhas em: " + path_relatorio
+
+# Lê o arquivo de volta usando a nova API de linhas para verificação
+if file.exists(path_relatorio) {
+    print "📖 Confirmando gravacao lendo o arquivo por linhas:"
+    let linhas_lidas = file.lines(path_relatorio)
+    for linha in linhas_lidas {
+        print "  > " + linha
+    }
+}
+print ""
+
+# 🔊 Executando a música!
+print "🔊 5. Tocando Efeito Especial Retrô: Laser ascendente..."
+audio.laser()
+time.sleep(200)
+
+print "🎵 6. Executando acordes retro concorrentes (audio.chord) - Polifonia real!"
+# Do4 (261Hz) + Mi4 (329Hz) + Sol4 (392Hz) - Acorde Do Maior
+let acorde_c = [261, 329, 392]
+print "   -> Tocando Acorde Do Maior..."
+audio.chord(acorde_c, 500)
+time.sleep(100)
+
+# Re4 (293Hz) + Fa#4 (370Hz) + La4 (440Hz) - Acorde Re Maior
+let acorde_d = [293, 370, 440]
+print "   -> Tocando Acorde Re Maior..."
+audio.chord(acorde_d, 500)
+time.sleep(200)
+
+print "🎶 7. Executando a Melodia Sequencial Processada (audio.melody)..."
+# Separa frequências e durações em duas listas
+let freqs_melodia = []
+let durs_melodia = []
+
+for nota in partitura_limpa {
+    set freqs_melodia = list.push(freqs_melodia, nota["freq"])
+    set durs_melodia = list.push(durs_melodia, nota["dur"])
+}
+
+print "   -> Tocando partitura limpa..."
+audio.melody(freqs_melodia, durs_melodia)
+
+print ""
+print "🔊 8. Finalizando com Fanfarra de Sucesso..."
+audio.jump()
+print "🌟 SUCESSO TOTAL! Sintetizador Chiptune finalizado sem mediocridade! 🌟"

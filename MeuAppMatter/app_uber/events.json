@@ -1,0 +1,31 @@
+{
+  "format": "PXL_EVENT_QUEUE",
+  "events": [
+    {
+      "event": "tap",
+      "target": "dispatch_btn",
+      "scene": "main"
+    },
+    {
+      "event": "update",
+      "scene": "main"
+    },
+    {
+      "event": "update",
+      "scene": "main"
+    },
+    {
+      "event": "tap",
+      "target": "dispatch_btn",
+      "scene": "main"
+    },
+    {
+      "event": "update",
+      "scene": "main"
+    },
+    {
+      "event": "update",
+      "scene": "main"
+    }
+  ]
+}

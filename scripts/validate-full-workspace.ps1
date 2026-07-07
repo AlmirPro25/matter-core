@@ -21,7 +21,14 @@ param(
     [string]$AiFlowProgramPath = "examples\\first_run.matter",
     [string]$AiFlowOutDir = "target\\ai-flow",
     [int]$AiFlowBenchmarkIterations = 20,
-    [switch]$AiFlowSkipBenchmarkGate
+    [switch]$AiFlowSkipBenchmarkGate,
+    [switch]$EnforceStatusTriadLatency,
+    [double]$StatusTriadMaxCoreMs = 60000,
+    [double]$StatusTriadMaxWorldMs = 60000,
+    [double]$StatusTriadMaxFrontierMs = 60000,
+    [switch]$EnforceStatusTriadDrift,
+    [double]$StatusTriadDriftTolerancePercent = 50,
+    [string]$StatusTriadDriftBaselineJson = "scripts\\status-triad-latency-baseline.json"
 )
 
 $ErrorActionPreference = "Stop"
@@ -49,6 +56,13 @@ if ($Quick) {
     $SkipRunnableExamples = $true
     $SkipRustFfiSmoke = $true
     $SkipNativeFfiSmoke = $true
+}
+
+if ($CiMode -and -not $PSBoundParameters.ContainsKey("EnforceStatusTriadLatency")) {
+    $EnforceStatusTriadLatency = $true
+}
+if ($CiMode -and -not $PSBoundParameters.ContainsKey("EnforceStatusTriadDrift")) {
+    $EnforceStatusTriadDrift = $true
 }
 
 # Optional preflight to fail early on common environment issues.
@@ -256,6 +270,16 @@ try {
     }
     Run-Step -Name "Clippy workspace (strict)" -Command $workspaceClippyCmd -Critical
     Run-Step -Name "Workspace tests" -Command $workspaceTestCmd -Critical
+    $triadOut = "target\validation\status-triad-latest.json"
+    $triadHistory = "target\validation\status-triad-history.ndjson"
+    $triadCommand = "powershell -ExecutionPolicy Bypass -File .\scripts\test-status-triad-contract.ps1 -OutJson `"$triadOut`" -HistoryJsonl `"$triadHistory`""
+    if ($EnforceStatusTriadLatency) {
+        $triadCommand = "$triadCommand -EnforceLatencyBudget -MaxCoreMs $StatusTriadMaxCoreMs -MaxWorldMs $StatusTriadMaxWorldMs -MaxFrontierMs $StatusTriadMaxFrontierMs"
+    }
+    if ($EnforceStatusTriadDrift) {
+        $triadCommand = "$triadCommand -EnforceLatencyDrift -DriftTolerancePercent $StatusTriadDriftTolerancePercent -DriftBaselineJson `"$StatusTriadDriftBaselineJson`""
+    }
+    Run-Step -Name "Status triad contract" -Command $triadCommand -Critical
 
     if ($RunAiCanonicalFlow) {
         $aiFlowCommand = "powershell -ExecutionPolicy Bypass -File .\scripts\ai-app-canonical-flow.ps1 -ProgramPath `"$AiFlowProgramPath`" -BenchmarkIterations $AiFlowBenchmarkIterations"

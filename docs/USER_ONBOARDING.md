@@ -20,6 +20,9 @@ After downloading a release archive and opening PowerShell in the extracted fold
 .\scripts\install-release-local.ps1
 matter run examples\first_run.matter
 matter capabilities-json
+matter core-status-json
+matter world-status-json
+matter frontier-status-json
 ```
 
 When the release zip and checksum files are side by side, use the verified installer path:
@@ -28,6 +31,9 @@ When the release zip and checksum files are side by side, use the verified insta
 .\scripts\install-release-zip.ps1 -ZipPath dist\matter-core-windows-x64.zip -ChecksumJsonPath dist\release-checksums.json -Sha256Path dist\SHA256SUMS.txt
 matter run examples\first_run.matter
 matter capabilities-json
+matter core-status-json
+matter world-status-json
+matter frontier-status-json
 ```
 
 If something looks wrong after installing, run:

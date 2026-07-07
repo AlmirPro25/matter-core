@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://matter-lang.org/schemas/performance-trend-report.schema.json",
+  "title": "Matter Core Performance Trend Report",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "$schema",
+    "schema_version",
+    "kind",
+    "ok",
+    "status",
+    "generated_at",
+    "history",
+    "total_samples",
+    "window_samples",
+    "thresholds",
+    "summary",
+    "benchmarks",
+    "startup"
+  ],
+  "properties": {
+    "$schema": { "const": "schemas/performance-trend-report.schema.json" },
+    "schema_version": { "const": 1 },
+    "kind": { "const": "performance_trend_report" },
+    "ok": { "type": "boolean" },
+    "status": { "enum": ["pass", "warn", "fail"] },
+    "generated_at": { "type": "string", "minLength": 1 },
+    "history": { "type": "string", "minLength": 1 },
+    "total_samples": { "type": "integer", "minimum": 1 },
+    "window_samples": { "type": "integer", "minimum": 1 }
+  }
+}

@@ -1,0 +1,49 @@
+// Sprint 68: Fluid Dynamics
+// Navier-Stokes, turbulence, CFD, aerodynamics
+
+use fluid;
+
+fn main() {
+    println("=== FLUID DYNAMICS ===");
+    
+    // Water flow
+    println("\n1. WATER FLOW");
+    fluid.create_water();
+    fluid.create_flow(1.0, 0.1);
+    let re = fluid.reynolds_number();
+    println("Reynolds number: " + re);
+    println("Re < 2300: laminar, Re > 4000: turbulent");
+    
+    // Pipe flow
+    println("\n2. PIPE FLOW");
+    fluid.create_pipe(2.0, 0.1, 10.0);
+    let dp = fluid.pipe_pressure_drop();
+    println("Pressure drop: " + dp + " Pa");
+    println("Darcy-Weisbach equation");
+    
+    // Airfoil (subsonic)
+    println("\n3. AIRFOIL (subsonic)");
+    fluid.create_air();
+    fluid.create_airfoil(50.0, 1.0, 0.1);
+    let lift = fluid.airfoil_lift(10.0);
+    println("Lift force: " + lift + " N");
+    println("Thin airfoil theory: C_L = 2πα");
+    
+    // Shock wave (supersonic)
+    println("\n4. SHOCK WAVE (Mach 2)");
+    fluid.create_shock(2.0);
+    let p_ratio = fluid.shock_pressure_ratio();
+    println("Pressure ratio: " + p_ratio);
+    println("Normal shock relations");
+    
+    // Hypersonic shock
+    println("\n5. HYPERSONIC SHOCK (Mach 5)");
+    fluid.create_shock(5.0);
+    let p_ratio2 = fluid.shock_pressure_ratio();
+    println("Pressure ratio: " + p_ratio2);
+    println("Extreme compression!");
+    
+    println("\n=== SIMULATION COMPLETE ===");
+    println("Fluid dynamics: flows, pipes, airfoils, shocks");
+    println("CFD fundamentals!");
+}

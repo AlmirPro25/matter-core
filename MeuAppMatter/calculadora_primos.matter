@@ -1,0 +1,38 @@
+print "==========================================="
+print " 🧮 CALCULADORA DE NUMEROS PRIMOS "
+print "==========================================="
+
+fn eh_primo(n) {
+    if n <= 1 {
+        return false
+    }
+    
+    let divisor = 2
+    while divisor < n {
+        if (n % divisor) == 0 {
+            return false
+        }
+        set divisor = divisor + 1
+    }
+    return true
+}
+
+print "Iniciando processamento pesado..."
+let limite = 50
+let numero_atual = 2
+let lista_primos = []
+
+while numero_atual <= limite {
+    if eh_primo(numero_atual) {
+        lista_primos.push(numero_atual)
+    }
+    set numero_atual = numero_atual + 1
+}
+
+print "Busca concluida ate 50!"
+print "Os primos sao:"
+print lista_primos
+
+print "Total de primos encontrados:"
+print lista_primos.len()
+print "==========================================="

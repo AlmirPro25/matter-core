@@ -1,6 +1,20 @@
 //! Matter Standard Library
 //! Biblioteca padrão com módulos math, string, list, time, random, json, etc
 
+// Sprint 80: Extended stdlib modules
+pub mod file_io;
+pub mod vec;
+pub mod hashmap;
+
+// Tensor backend: algebra linear nativa em Rust (matmul, softmax, etc.)
+pub mod tensor;
+
+// Re-exports
+pub use file_io::FileBackend as FileIOBackend;
+pub use vec::VecBackend;
+pub use hashmap::HashMapBackend;
+pub use tensor::TensorBackend;
+
 use matter_backend::{Backend, Value};
 use std::collections::HashMap;
 use std::io::Write;
@@ -437,6 +451,97 @@ impl Backend for StringBackend {
                 Ok(Value::new_string(s.chars().nth(idx).unwrap().to_string()))
             }
 
+            "format" => {
+                // string.format("Hello, {0}! You have {1} messages.", ["Almir", 5])
+                // OR string.format("Hi {name}!", {name: "Almir"})
+                if args.len() < 2 {
+                    return Err(format!(
+                        "string.format expects at least 2 arguments, got {}",
+                        args.len()
+                    ));
+                }
+                let template = args[0]
+                    .as_string()
+                    .map_err(|e| format!("string.format: {}", e))?;
+                let mut result = template.clone();
+
+                match &args[1] {
+                    Value::List(items) => {
+                        for (i, item) in items.iter().enumerate() {
+                            let placeholder = format!("{{{}}}", i);
+                            result = result.replace(&placeholder, &item.to_display_string());
+                        }
+                    }
+                    Value::Map(m) => {
+                        for (key, val) in m.iter() {
+                            let placeholder = format!("{{{}}}", key);
+                            result = result.replace(&placeholder, &val.to_display_string());
+                        }
+                    }
+                    other => {
+                        // Single value: replace {0}
+                        result = result.replace("{0}", &other.to_display_string());
+                    }
+                }
+                Ok(Value::new_string(result))
+            }
+
+            "pad_left" => {
+                if args.len() != 3 {
+                    return Err(format!(
+                        "string.pad_left expects 3 arguments, got {}",
+                        args.len()
+                    ));
+                }
+                let s = args[0]
+                    .as_string()
+                    .map_err(|e| format!("string.pad_left: {}", e))?;
+                let width = args[1]
+                    .as_int()
+                    .map_err(|e| format!("string.pad_left: {}", e))?
+                    as usize;
+                let pad_char = args[2]
+                    .as_string()
+                    .map_err(|e| format!("string.pad_left: {}", e))?;
+                let pad = pad_char.chars().next().unwrap_or(' ');
+                if s.len() >= width {
+                    Ok(Value::new_string(s))
+                } else {
+                    let padding = std::iter::repeat(pad)
+                        .take(width - s.len())
+                        .collect::<String>();
+                    Ok(Value::new_string(format!("{}{}", padding, s)))
+                }
+            }
+
+            "pad_right" => {
+                if args.len() != 3 {
+                    return Err(format!(
+                        "string.pad_right expects 3 arguments, got {}",
+                        args.len()
+                    ));
+                }
+                let s = args[0]
+                    .as_string()
+                    .map_err(|e| format!("string.pad_right: {}", e))?;
+                let width = args[1]
+                    .as_int()
+                    .map_err(|e| format!("string.pad_right: {}", e))?
+                    as usize;
+                let pad_char = args[2]
+                    .as_string()
+                    .map_err(|e| format!("string.pad_right: {}", e))?;
+                let pad = pad_char.chars().next().unwrap_or(' ');
+                if s.len() >= width {
+                    Ok(Value::new_string(s))
+                } else {
+                    let padding = std::iter::repeat(pad)
+                        .take(width - s.len())
+                        .collect::<String>();
+                    Ok(Value::new_string(format!("{}{}", s, padding)))
+                }
+            }
+
             _ => Err(format!("Unknown string method: {}", method)),
         }
     }
@@ -669,6 +774,25 @@ impl Backend for ListBackend {
                 }
             }
 
+            "get" => {
+                if args.len() != 2 {
+                    return Err(format!("list.get expects 2 arguments, got {}", args.len()));
+                }
+                if let Value::List(items) = &args[0] {
+                    let idx = args[1].as_int().map_err(|e| format!("list.get: {}", e))?;
+                    if idx < 0 || idx >= items.len() as i64 {
+                        return Err(format!(
+                            "list.get: index {} out of bounds (len={})",
+                            idx,
+                            items.len()
+                        ));
+                    }
+                    Ok(items[idx as usize].clone())
+                } else {
+                    Err("list.get: first argument must be a list".to_string())
+                }
+            }
+
             _ => Err(format!("Unknown list method: {}", method)),
         }
     }
@@ -884,6 +1008,135 @@ mod tests {
             .call("parse", vec![Value::new_string("\"hello\"".to_string())])
             .unwrap();
         assert_eq!(result, Value::new_string("hello".to_string()));
+
+        // Test complex JSON with quotes, commas and escaping
+        let result = json
+            .call("parse", vec![Value::new_string("{\"name\":\"Almir, Dev\",\"skills\":[\"Rust\",\"Matter Core\"],\"active\":true,\"empty_list\":[]}".to_string())])
+            .unwrap();
+        if let Value::Map(map) = result {
+            assert_eq!(
+                map.get("name").unwrap(),
+                &Value::new_string("Almir, Dev".to_string())
+            );
+            assert_eq!(map.get("active").unwrap(), &Value::Bool(true));
+            if let Value::List(skills) = map.get("skills").unwrap() {
+                assert_eq!(skills[0], Value::new_string("Rust".to_string()));
+                assert_eq!(skills[1], Value::new_string("Matter Core".to_string()));
+            } else {
+                panic!("Expected list for skills");
+            }
+        } else {
+            panic!("Expected map result");
+        }
+    }
+
+    #[test]
+    fn test_list_get() {
+        let mut list_backend = ListBackend::new();
+        let list = Value::new_list(vec![Value::Int(10), Value::Int(20), Value::Int(30)]);
+        let result = list_backend.call("get", vec![list, Value::Int(1)]).unwrap();
+        assert_eq!(result, Value::Int(20));
+    }
+
+    #[test]
+    fn test_file_lines_and_write_lines() {
+        let mut file_backend = FileBackend::new();
+        let temp_path = std::env::temp_dir().join("matter_test_lines.txt");
+        let path_str = Value::new_string(temp_path.to_string_lossy().to_string());
+
+        let lines_to_write = Value::new_list(vec![
+            Value::new_string("linha 1".to_string()),
+            Value::new_string("linha 2".to_string()),
+            Value::new_string("linha 3".to_string()),
+        ]);
+
+        let write_res = file_backend
+            .call("write_lines", vec![path_str.clone(), lines_to_write])
+            .unwrap();
+        assert_eq!(write_res, Value::Bool(true));
+
+        let read_res = file_backend.call("lines", vec![path_str.clone()]).unwrap();
+        if let Value::List(lines) = read_res {
+            assert_eq!(lines.len(), 3);
+            assert_eq!(lines[0].as_string().unwrap(), "linha 1");
+            assert_eq!(lines[1].as_string().unwrap(), "linha 2");
+            assert_eq!(lines[2].as_string().unwrap(), "linha 3");
+        } else {
+            panic!("Expected list of lines");
+        }
+
+        let _ = std::fs::remove_file(temp_path);
+    }
+
+    #[test]
+    fn test_audio_melody_and_chord() {
+        let mut audio_backend = AudioBackend::new();
+
+        let freqs = Value::new_list(vec![Value::Int(440), Value::Int(880)]);
+        let durations = Value::new_list(vec![Value::Int(5), Value::Int(5)]); // short duration for test
+
+        let melody_res = audio_backend
+            .call("melody", vec![freqs.clone(), durations])
+            .unwrap();
+        assert_eq!(melody_res, Value::Bool(true));
+
+        let chord_res = audio_backend
+            .call("chord", vec![freqs, Value::Int(5)])
+            .unwrap();
+        assert_eq!(chord_res, Value::Bool(true));
+    }
+
+    #[test]
+    fn world_backend_partitions_cells_and_limits_interest() {
+        let mut world = WorldBackend::new();
+        world
+            .call(
+                "configure",
+                vec![
+                    Value::Float(100.0),
+                    Value::Float(150.0),
+                    Value::Int(2),
+                    Value::Int(2),
+                ],
+            )
+            .unwrap();
+
+        for (id, x, y) in [
+            ("p1", 10.0, 10.0),
+            ("p2", 15.0, 15.0),
+            ("p3", 20.0, 20.0),
+            ("p4", 120.0, 10.0),
+        ] {
+            world
+                .call(
+                    "place",
+                    vec![
+                        Value::new_string(id.to_string()),
+                        Value::Float(x),
+                        Value::Float(y),
+                    ],
+                )
+                .unwrap();
+        }
+
+        let nearby = world
+            .call("nearby", vec![Value::new_string("p1".to_string())])
+            .unwrap();
+        let Value::Map(nearby_map) = nearby else {
+            panic!("world.nearby should return a map");
+        };
+        assert_eq!(nearby_map.get("visible_count"), Some(&Value::Int(2)));
+        assert_eq!(nearby_map.get("hidden_count"), Some(&Value::Int(1)));
+        assert_eq!(nearby_map.get("degraded"), Some(&Value::Bool(true)));
+
+        let plan = world.call("plan", vec![]).unwrap();
+        let Value::Map(plan_map) = plan else {
+            panic!("world.plan should return a map");
+        };
+        assert_eq!(plan_map.get("entities"), Some(&Value::Int(4)));
+        assert_eq!(plan_map.get("cell_count"), Some(&Value::Int(2)));
+        assert_eq!(plan_map.get("hot_cells"), Some(&Value::Int(1)));
+        assert_eq!(plan_map.get("degraded"), Some(&Value::Bool(true)));
     }
 }
 
@@ -1108,72 +1361,225 @@ fn value_to_json(value: &Value) -> Result<String, String> {
     }
 }
 
-// Helper: Convert JSON string to Matter Value (simplified parser)
-fn json_to_value(json: &str) -> Result<Value, String> {
-    let json = json.trim();
+// Helper: Convert JSON string to Matter Value (robust parser)
+struct JsonParser<'a> {
+    chars: std::iter::Peekable<std::str::Chars<'a>>,
+}
 
-    // null
-    if json == "null" {
-        return Ok(Value::Unit);
-    }
-
-    // boolean
-    if json == "true" {
-        return Ok(Value::Bool(true));
-    }
-    if json == "false" {
-        return Ok(Value::Bool(false));
-    }
-
-    // number
-    if let Ok(n) = json.parse::<i64>() {
-        return Ok(Value::Int(n));
-    }
-
-    // string
-    if json.starts_with('"') && json.ends_with('"') {
-        let s = &json[1..json.len() - 1];
-        return Ok(Value::new_string(s.replace("\\\"", "\"")));
-    }
-
-    // array
-    if json.starts_with('[') && json.ends_with(']') {
-        let inner = &json[1..json.len() - 1].trim();
-        if inner.is_empty() {
-            return Ok(Value::new_list(Vec::new()));
+impl<'a> JsonParser<'a> {
+    fn new(input: &'a str) -> Self {
+        Self {
+            chars: input.chars().peekable(),
         }
-
-        // Simple split by comma (doesn't handle nested structures perfectly)
-        let items: Result<Vec<Value>, String> = inner
-            .split(',')
-            .map(|item| json_to_value(item.trim()))
-            .collect();
-        return Ok(Value::new_list(items?));
     }
 
-    // object
-    if json.starts_with('{') && json.ends_with('}') {
-        let inner = &json[1..json.len() - 1].trim();
-        if inner.is_empty() {
-            return Ok(Value::new_map(HashMap::new()));
-        }
-
-        let mut map = HashMap::new();
-        // Simple split by comma (doesn't handle nested structures perfectly)
-        for pair in inner.split(',') {
-            if let Some((key, value)) = pair.split_once(':') {
-                let key = key.trim();
-                if key.starts_with('"') && key.ends_with('"') {
-                    let key = &key[1..key.len() - 1];
-                    let value = json_to_value(value.trim())?;
-                    map.insert(key.to_string(), value);
-                }
+    fn skip_whitespace(&mut self) {
+        while let Some(&c) = self.chars.peek() {
+            if c.is_whitespace() {
+                self.chars.next();
+            } else {
+                break;
             }
         }
-        return Ok(Value::new_map(map));
     }
 
-    Err(format!("json.parse: invalid JSON: {}", json))
+    fn parse(&mut self) -> Result<Value, String> {
+        self.skip_whitespace();
+        match self.chars.peek() {
+            Some('{') => self.parse_object(),
+            Some('[') => self.parse_array(),
+            Some('"') => self.parse_string(),
+            Some(&c) if c == '-' || c == '+' || c.is_ascii_digit() => self.parse_number(),
+            Some('t') | Some('f') => self.parse_boolean(),
+            Some('n') => self.parse_null(),
+            Some(c) => Err(format!("Unexpected character: '{}'", c)),
+            None => Err("Unexpected end of input".to_string()),
+        }
+    }
+
+    fn parse_object(&mut self) -> Result<Value, String> {
+        self.chars.next(); // consume '{'
+        let mut map = HashMap::new();
+        loop {
+            self.skip_whitespace();
+            if self.chars.peek() == Some(&'}') {
+                self.chars.next();
+                break;
+            }
+            let key = match self.parse()? {
+                Value::String(s) => (*s).clone(),
+                other => return Err(format!("Expected string key in object, got {:?}", other)),
+            };
+            self.skip_whitespace();
+            if self.chars.next() != Some(':') {
+                return Err("Expected ':' after key in object".to_string());
+            }
+            let val = self.parse()?;
+            map.insert(key, val);
+            self.skip_whitespace();
+            match self.chars.peek() {
+                Some(',') => {
+                    self.chars.next();
+                }
+                Some('}') => {
+                    self.chars.next();
+                    break;
+                }
+                Some(c) => return Err(format!("Expected ',' or '}}' in object, got '{}'", c)),
+                None => return Err("Unexpected end of input inside object".to_string()),
+            }
+        }
+        Ok(Value::new_map(map))
+    }
+
+    fn parse_array(&mut self) -> Result<Value, String> {
+        self.chars.next(); // consume '['
+        let mut list = Vec::new();
+        loop {
+            self.skip_whitespace();
+            if self.chars.peek() == Some(&']') {
+                self.chars.next();
+                break;
+            }
+            let val = self.parse()?;
+            list.push(val);
+            self.skip_whitespace();
+            match self.chars.peek() {
+                Some(',') => {
+                    self.chars.next();
+                }
+                Some(']') => {
+                    self.chars.next();
+                    break;
+                }
+                Some(c) => return Err(format!("Expected ',' or ']' in array, got '{}'", c)),
+                None => return Err("Unexpected end of input inside array".to_string()),
+            }
+        }
+        Ok(Value::new_list(list))
+    }
+
+    fn parse_string(&mut self) -> Result<Value, String> {
+        self.chars.next(); // consume '"'
+        let mut s = String::new();
+        while let Some(c) = self.chars.next() {
+            if c == '"' {
+                return Ok(Value::new_string(s));
+            } else if c == '\\' {
+                match self.chars.next() {
+                    Some('"') => s.push('"'),
+                    Some('\\') => s.push('\\'),
+                    Some('/') => s.push('/'),
+                    Some('b') => s.push('\x08'),
+                    Some('f') => s.push('\x0C'),
+                    Some('n') => s.push('\n'),
+                    Some('r') => s.push('\r'),
+                    Some('t') => s.push('\t'),
+                    Some('u') => {
+                        let mut hex = String::new();
+                        for _ in 0..4 {
+                            if let Some(hc) = self.chars.next() {
+                                hex.push(hc);
+                            } else {
+                                return Err("Invalid unicode escape".to_string());
+                            }
+                        }
+                        if let Ok(code) = u32::from_str_radix(&hex, 16) {
+                            if let Some(ch) = std::char::from_u32(code) {
+                                s.push(ch);
+                            } else {
+                                s.push_str(&format!("\\u{}", hex));
+                            }
+                        } else {
+                            s.push_str(&format!("\\u{}", hex));
+                        }
+                    }
+                    Some(escaped) => {
+                        s.push('\\');
+                        s.push(escaped);
+                    }
+                    None => return Err("Unexpected end of input inside string escape".to_string()),
+                }
+            } else {
+                s.push(c);
+            }
+        }
+        Err("Unterminated string".to_string())
+    }
+
+    fn parse_number(&mut self) -> Result<Value, String> {
+        let mut s = String::new();
+        let mut is_float = false;
+        while let Some(&c) = self.chars.peek() {
+            if c == '-' || c == '+' || c.is_ascii_digit() || c == '.' || c == 'e' || c == 'E' {
+                if c == '.' || c == 'e' || c == 'E' {
+                    is_float = true;
+                }
+                s.push(self.chars.next().unwrap());
+            } else {
+                break;
+            }
+        }
+        if is_float {
+            if let Ok(f) = s.parse::<f64>() {
+                Ok(Value::Float(f))
+            } else {
+                Err(format!("Invalid float: {}", s))
+            }
+        } else {
+            if let Ok(i) = s.parse::<i64>() {
+                Ok(Value::Int(i))
+            } else if let Ok(f) = s.parse::<f64>() {
+                Ok(Value::Float(f))
+            } else {
+                Err(format!("Invalid integer: {}", s))
+            }
+        }
+    }
+
+    fn parse_boolean(&mut self) -> Result<Value, String> {
+        let mut s = String::new();
+        while let Some(&c) = self.chars.peek() {
+            if c.is_alphabetic() {
+                s.push(self.chars.next().unwrap());
+            } else {
+                break;
+            }
+        }
+        if s == "true" {
+            Ok(Value::Bool(true))
+        } else if s == "false" {
+            Ok(Value::Bool(false))
+        } else {
+            Err(format!("Expected boolean, got '{}'", s))
+        }
+    }
+
+    fn parse_null(&mut self) -> Result<Value, String> {
+        let mut s = String::new();
+        while let Some(&c) = self.chars.peek() {
+            if c.is_alphabetic() {
+                s.push(self.chars.next().unwrap());
+            } else {
+                break;
+            }
+        }
+        if s == "null" {
+            Ok(Value::Unit)
+        } else {
+            Err(format!("Expected null, got '{}'", s))
+        }
+    }
+}
+
+fn json_to_value(json: &str) -> Result<Value, String> {
+    let mut parser = JsonParser::new(json);
+    let val = parser.parse()?;
+    parser.skip_whitespace();
+    if parser.chars.peek().is_some() {
+        return Err("Unexpected trailing characters in JSON".to_string());
+    }
+    Ok(val)
 }
 
 /// Map backend - operações com dicionários
@@ -1622,6 +2028,50 @@ impl Backend for FileBackend {
                 Ok(Value::Bool(true))
             }
 
+            "lines" => {
+                if args.len() != 1 {
+                    return Err(format!("file.lines expects 1 argument, got {}", args.len()));
+                }
+                let path = args[0]
+                    .as_string()
+                    .map_err(|e| format!("file.lines: {}", e))?;
+                let content = std::fs::read_to_string(&path)
+                    .map_err(|e| format!("file.lines: failed to read '{}': {}", path, e))?;
+                let lines: Vec<Value> = content
+                    .lines()
+                    .map(|l| Value::new_string(l.to_string()))
+                    .collect();
+                Ok(Value::new_list(lines))
+            }
+
+            "write_lines" => {
+                if args.len() != 2 {
+                    return Err(format!(
+                        "file.write_lines expects 2 arguments (path, list_of_strings), got {}",
+                        args.len()
+                    ));
+                }
+                let path = args[0]
+                    .as_string()
+                    .map_err(|e| format!("file.write_lines: {}", e))?;
+                if let Value::List(lines) = &args[1] {
+                    let mut file = std::fs::File::create(&path).map_err(|e| {
+                        format!("file.write_lines: failed to create '{}': {}", path, e)
+                    })?;
+                    for line_val in lines.iter() {
+                        let line_str = line_val
+                            .as_string()
+                            .map_err(|e| format!("file.write_lines: {}", e))?;
+                        writeln!(file, "{}", line_str).map_err(|e| {
+                            format!("file.write_lines: failed to write to '{}': {}", path, e)
+                        })?;
+                    }
+                    Ok(Value::Bool(true))
+                } else {
+                    Err("file.write_lines: second argument must be a list of strings".to_string())
+                }
+            }
+
             _ => Err(format!("Unknown file method: {}", method)),
         }
     }
@@ -1702,7 +2152,579 @@ impl Backend for AudioBackend {
                 Ok(Value::Bool(true))
             }
 
+            "melody" => {
+                if args.len() != 2 {
+                    return Err(format!(
+                        "audio.melody expects 2 arguments (frequencies, durations), got {}",
+                        args.len()
+                    ));
+                }
+                if let (Value::List(freqs), Value::List(durations)) = (&args[0], &args[1]) {
+                    if freqs.len() != durations.len() {
+                        return Err(format!(
+                            "audio.melody: lists must be of the same length (freqs={}, durations={})",
+                            freqs.len(),
+                            durations.len()
+                        ));
+                    }
+                    for i in 0..freqs.len() {
+                        let freq = freqs[i]
+                            .as_int()
+                            .map_err(|e| format!("audio.melody: {}", e))?
+                            as u32;
+                        let duration = durations[i]
+                            .as_int()
+                            .map_err(|e| format!("audio.melody: {}", e))?
+                            as u32;
+                        #[cfg(target_os = "windows")]
+                        unsafe {
+                            Beep(freq, duration);
+                        }
+                        #[cfg(not(target_os = "windows"))]
+                        {
+                            print!("\x07");
+                            let _ = std::io::stdout().flush();
+                            std::thread::sleep(std::time::Duration::from_millis(duration as u64));
+                        }
+                    }
+                    Ok(Value::Bool(true))
+                } else {
+                    Err("audio.melody: both arguments must be lists".to_string())
+                }
+            }
+
+            "chord" => {
+                if args.len() != 2 {
+                    return Err(format!(
+                        "audio.chord expects 2 arguments (frequencies, duration_ms), got {}",
+                        args.len()
+                    ));
+                }
+                if let Value::List(freqs) = &args[0] {
+                    let duration = args[1]
+                        .as_int()
+                        .map_err(|e| format!("audio.chord: {}", e))?
+                        as u32;
+                    let mut handles = Vec::new();
+                    for freq_val in freqs.iter() {
+                        let freq = freq_val
+                            .as_int()
+                            .map_err(|e| format!("audio.chord: {}", e))?
+                            as u32;
+                        #[cfg(target_os = "windows")]
+                        {
+                            let handle = std::thread::spawn(move || unsafe {
+                                Beep(freq, duration);
+                            });
+                            handles.push(handle);
+                        }
+                    }
+                    #[cfg(target_os = "windows")]
+                    for handle in handles {
+                        let _ = handle.join();
+                    }
+                    #[cfg(not(target_os = "windows"))]
+                    {
+                        print!("\x07");
+                        let _ = std::io::stdout().flush();
+                        std::thread::sleep(std::time::Duration::from_millis(duration as u64));
+                    }
+                    Ok(Value::Bool(true))
+                } else {
+                    Err("audio.chord: first argument must be a list of frequencies".to_string())
+                }
+            }
+
             _ => Err(format!("Unknown audio method: {}", method)),
         }
     }
+}
+
+#[derive(Debug, Clone)]
+struct WorldEntity {
+    id: String,
+    x: f64,
+    y: f64,
+    cell_x: i64,
+    cell_y: i64,
+    layer: usize,
+    version: u64,
+}
+
+#[derive(Debug, Clone)]
+struct WorldConfig {
+    cell_size: f64,
+    interest_radius: f64,
+    cell_capacity: usize,
+    max_visible: usize,
+}
+
+impl Default for WorldConfig {
+    fn default() -> Self {
+        Self {
+            cell_size: 256.0,
+            interest_radius: 128.0,
+            cell_capacity: 64,
+            max_visible: 48,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct WorldVisibleEntity {
+    id: String,
+    distance: f64,
+    cell_x: i64,
+    cell_y: i64,
+    layer: usize,
+}
+
+/// World backend - spatial partitioning, interest management, and layered cells.
+pub struct WorldBackend {
+    config: WorldConfig,
+    entities: HashMap<String, WorldEntity>,
+    version: u64,
+}
+
+impl WorldBackend {
+    pub fn new() -> Self {
+        Self {
+            config: WorldConfig::default(),
+            entities: HashMap::new(),
+            version: 0,
+        }
+    }
+
+    fn configure(&mut self, args: Vec<Value>) -> Result<Value, String> {
+        if args.len() != 4 {
+            return Err(format!(
+                "world.configure expects 4 arguments (cell_size, interest_radius, cell_capacity, max_visible), got {}",
+                args.len()
+            ));
+        }
+
+        let cell_size = args[0]
+            .as_float()
+            .map_err(|e| format!("world.configure: {}", e))?;
+        let interest_radius = args[1]
+            .as_float()
+            .map_err(|e| format!("world.configure: {}", e))?;
+        let cell_capacity = args[2]
+            .as_int()
+            .map_err(|e| format!("world.configure: {}", e))?;
+        let max_visible = args[3]
+            .as_int()
+            .map_err(|e| format!("world.configure: {}", e))?;
+
+        if cell_size <= 0.0 {
+            return Err("world.configure: cell_size must be > 0".to_string());
+        }
+        if interest_radius <= 0.0 {
+            return Err("world.configure: interest_radius must be > 0".to_string());
+        }
+        if cell_capacity <= 0 {
+            return Err("world.configure: cell_capacity must be > 0".to_string());
+        }
+        if max_visible <= 0 {
+            return Err("world.configure: max_visible must be > 0".to_string());
+        }
+
+        self.config = WorldConfig {
+            cell_size,
+            interest_radius,
+            cell_capacity: cell_capacity as usize,
+            max_visible: max_visible as usize,
+        };
+        self.recompute_layers();
+        Ok(self.status_payload())
+    }
+
+    fn place_entity(&mut self, args: Vec<Value>, require_new: bool) -> Result<Value, String> {
+        if args.len() != 3 {
+            return Err(format!(
+                "world.place expects 3 arguments (id, x, y), got {}",
+                args.len()
+            ));
+        }
+
+        let id = args[0]
+            .as_string()
+            .map_err(|e| format!("world.place: {}", e))?;
+        if id.trim().is_empty() {
+            return Err("world.place: id must not be empty".to_string());
+        }
+        if require_new && self.entities.contains_key(&id) {
+            return Err(format!("world.spawn: entity '{}' already exists", id));
+        }
+
+        let x = args[1]
+            .as_float()
+            .map_err(|e| format!("world.place: {}", e))?;
+        let y = args[2]
+            .as_float()
+            .map_err(|e| format!("world.place: {}", e))?;
+        let (cell_x, cell_y) = self.cell_for(x, y);
+        self.version = self.version.saturating_add(1);
+        self.entities.insert(
+            id.clone(),
+            WorldEntity {
+                id: id.clone(),
+                x,
+                y,
+                cell_x,
+                cell_y,
+                layer: 0,
+                version: self.version,
+            },
+        );
+        self.recompute_layers();
+        Ok(self
+            .entity_payload(&id)
+            .unwrap_or_else(|| world_error_payload("missing entity after place")))
+    }
+
+    fn move_entity(&mut self, args: Vec<Value>) -> Result<Value, String> {
+        if args.len() != 3 {
+            return Err(format!(
+                "world.move expects 3 arguments (id, x, y), got {}",
+                args.len()
+            ));
+        }
+
+        let id = args[0]
+            .as_string()
+            .map_err(|e| format!("world.move: {}", e))?;
+        if !self.entities.contains_key(&id) {
+            return Err(format!("world.move: unknown entity '{}'", id));
+        }
+        self.place_entity(
+            vec![args[0].clone(), args[1].clone(), args[2].clone()],
+            false,
+        )
+    }
+
+    fn nearby_payload(&self, args: Vec<Value>) -> Result<Value, String> {
+        if args.len() != 1 {
+            return Err(format!(
+                "world.nearby expects 1 argument (id), got {}",
+                args.len()
+            ));
+        }
+        let id = args[0]
+            .as_string()
+            .map_err(|e| format!("world.nearby: {}", e))?;
+        let source = self
+            .entity_payload(&id)
+            .ok_or_else(|| format!("world.nearby: unknown entity '{}'", id))?;
+        let (visible, hidden_count) = self.visible_for(&id)?;
+        let visible_values = visible
+            .iter()
+            .map(|entity| {
+                world_map(vec![
+                    ("id", Value::new_string(entity.id.clone())),
+                    ("distance", Value::Float(entity.distance)),
+                    ("cell_x", Value::Int(entity.cell_x)),
+                    ("cell_y", Value::Int(entity.cell_y)),
+                    ("layer", Value::Int(entity.layer as i64)),
+                ])
+            })
+            .collect::<Vec<_>>();
+
+        Ok(world_map(vec![
+            ("entity", source),
+            ("visible", Value::new_list(visible_values)),
+            ("visible_count", Value::Int(visible.len() as i64)),
+            ("hidden_count", Value::Int(hidden_count as i64)),
+            ("interest_radius", Value::Float(self.config.interest_radius)),
+            ("max_visible", Value::Int(self.config.max_visible as i64)),
+            ("degraded", Value::Bool(hidden_count > 0)),
+        ]))
+    }
+
+    fn plan_payload(&self) -> Value {
+        let cells = self.cell_payloads();
+        let hot_cells = cells
+            .iter()
+            .filter(|cell| match cell {
+                Value::Map(map) => matches!(map.get("overloaded"), Some(Value::Bool(true))),
+                _ => false,
+            })
+            .count();
+        let worst_cell_population = cells
+            .iter()
+            .filter_map(|cell| match cell {
+                Value::Map(map) => map.get("population").and_then(|value| value.as_int().ok()),
+                _ => None,
+            })
+            .max()
+            .unwrap_or(0);
+        let total_layers = cells
+            .iter()
+            .filter_map(|cell| match cell {
+                Value::Map(map) => map.get("layers").and_then(|value| value.as_int().ok()),
+                _ => None,
+            })
+            .sum::<i64>();
+        let interest_edges = self
+            .entities
+            .keys()
+            .filter_map(|id| self.visible_for(id).ok())
+            .map(|(visible, _)| visible.len() as i64)
+            .sum::<i64>();
+
+        world_map(vec![
+            (
+                "mode",
+                Value::new_string("logical_world_partition".to_string()),
+            ),
+            ("entities", Value::Int(self.entities.len() as i64)),
+            ("cells", Value::new_list(cells)),
+            ("cell_count", Value::Int(self.cell_count() as i64)),
+            ("hot_cells", Value::Int(hot_cells as i64)),
+            ("total_layers", Value::Int(total_layers)),
+            ("interest_edges", Value::Int(interest_edges)),
+            ("worst_cell_population", Value::Int(worst_cell_population)),
+            ("degraded", Value::Bool(hot_cells > 0)),
+            (
+                "policy",
+                Value::new_string(
+                    "same-layer radius interest with overflow hidden as aggregate".to_string(),
+                ),
+            ),
+        ])
+    }
+
+    fn status_payload(&self) -> Value {
+        let plan = self.plan_payload();
+        world_map(vec![
+            ("backend", Value::new_string("world".to_string())),
+            (
+                "model",
+                Value::new_string("spatial_cell_interest_runtime".to_string()),
+            ),
+            ("mode", Value::new_string("simulated_runtime".to_string())),
+            ("stub", Value::Bool(false)),
+            ("hardware", Value::Bool(false)),
+            ("simulated", Value::Bool(true)),
+            ("entities", Value::Int(self.entities.len() as i64)),
+            ("cell_size", Value::Float(self.config.cell_size)),
+            ("interest_radius", Value::Float(self.config.interest_radius)),
+            (
+                "cell_capacity",
+                Value::Int(self.config.cell_capacity as i64),
+            ),
+            ("max_visible", Value::Int(self.config.max_visible as i64)),
+            ("version", Value::Int(self.version as i64)),
+            (
+                "capabilities",
+                Value::new_list(vec![
+                    Value::new_string("configure".to_string()),
+                    Value::new_string("place".to_string()),
+                    Value::new_string("spawn".to_string()),
+                    Value::new_string("move".to_string()),
+                    Value::new_string("nearby".to_string()),
+                    Value::new_string("plan".to_string()),
+                    Value::new_string("status".to_string()),
+                ]),
+            ),
+            ("plan", plan),
+        ])
+    }
+
+    fn visible_for(&self, id: &str) -> Result<(Vec<WorldVisibleEntity>, usize), String> {
+        let source = self
+            .entities
+            .get(id)
+            .ok_or_else(|| format!("world.nearby: unknown entity '{}'", id))?;
+        let mut visible = Vec::new();
+        let mut hidden_count = 0usize;
+
+        for entity in self.entities.values() {
+            if entity.id == source.id {
+                continue;
+            }
+            let distance = ((source.x - entity.x).powi(2) + (source.y - entity.y).powi(2)).sqrt();
+            if distance > self.config.interest_radius {
+                continue;
+            }
+            if entity.layer != source.layer {
+                hidden_count += 1;
+                continue;
+            }
+            visible.push(WorldVisibleEntity {
+                id: entity.id.clone(),
+                distance,
+                cell_x: entity.cell_x,
+                cell_y: entity.cell_y,
+                layer: entity.layer,
+            });
+        }
+
+        visible.sort_by(|a, b| {
+            a.distance
+                .partial_cmp(&b.distance)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.id.cmp(&b.id))
+        });
+        if visible.len() > self.config.max_visible {
+            hidden_count += visible.len() - self.config.max_visible;
+            visible.truncate(self.config.max_visible);
+        }
+
+        Ok((visible, hidden_count))
+    }
+
+    fn recompute_layers(&mut self) {
+        let mut cells: HashMap<(i64, i64), Vec<String>> = HashMap::new();
+        for (id, entity) in &self.entities {
+            cells
+                .entry((entity.cell_x, entity.cell_y))
+                .or_default()
+                .push(id.clone());
+        }
+
+        for members in cells.values_mut() {
+            members.sort();
+            for (index, id) in members.iter().enumerate() {
+                if let Some(entity) = self.entities.get_mut(id) {
+                    entity.layer = index / self.config.cell_capacity;
+                }
+            }
+        }
+    }
+
+    fn cell_for(&self, x: f64, y: f64) -> (i64, i64) {
+        (
+            (x / self.config.cell_size).floor() as i64,
+            (y / self.config.cell_size).floor() as i64,
+        )
+    }
+
+    fn entity_payload(&self, id: &str) -> Option<Value> {
+        let entity = self.entities.get(id)?;
+        Some(world_map(vec![
+            ("id", Value::new_string(entity.id.clone())),
+            ("x", Value::Float(entity.x)),
+            ("y", Value::Float(entity.y)),
+            ("cell_x", Value::Int(entity.cell_x)),
+            ("cell_y", Value::Int(entity.cell_y)),
+            (
+                "cell",
+                Value::new_string(world_cell_key(entity.cell_x, entity.cell_y)),
+            ),
+            ("layer", Value::Int(entity.layer as i64)),
+            ("version", Value::Int(entity.version as i64)),
+        ]))
+    }
+
+    fn cell_payloads(&self) -> Vec<Value> {
+        let mut cells: HashMap<(i64, i64), Vec<&WorldEntity>> = HashMap::new();
+        for entity in self.entities.values() {
+            cells
+                .entry((entity.cell_x, entity.cell_y))
+                .or_default()
+                .push(entity);
+        }
+
+        let mut keys = cells.keys().copied().collect::<Vec<_>>();
+        keys.sort();
+        keys.into_iter()
+            .map(|(cell_x, cell_y)| {
+                let members = cells.get(&(cell_x, cell_y)).cloned().unwrap_or_default();
+                let population = members.len();
+                let layers = members
+                    .iter()
+                    .map(|entity| entity.layer)
+                    .max()
+                    .map(|layer| layer + 1)
+                    .unwrap_or(0);
+                world_map(vec![
+                    ("key", Value::new_string(world_cell_key(cell_x, cell_y))),
+                    ("x", Value::Int(cell_x)),
+                    ("y", Value::Int(cell_y)),
+                    ("population", Value::Int(population as i64)),
+                    ("layers", Value::Int(layers as i64)),
+                    (
+                        "overloaded",
+                        Value::Bool(population > self.config.cell_capacity),
+                    ),
+                ])
+            })
+            .collect()
+    }
+
+    fn cell_count(&self) -> usize {
+        let mut cells = Vec::new();
+        for entity in self.entities.values() {
+            let key = (entity.cell_x, entity.cell_y);
+            if !cells.contains(&key) {
+                cells.push(key);
+            }
+        }
+        cells.len()
+    }
+}
+
+impl Default for WorldBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Backend for WorldBackend {
+    fn call(&mut self, method: &str, args: Vec<Value>) -> Result<Value, String> {
+        match method {
+            "configure" => self.configure(args),
+            "reset" => {
+                if !args.is_empty() {
+                    return Err(format!(
+                        "world.reset expects 0 arguments, got {}",
+                        args.len()
+                    ));
+                }
+                self.entities.clear();
+                self.version = 0;
+                Ok(self.status_payload())
+            }
+            "spawn" => self.place_entity(args, true),
+            "place" | "upsert" => self.place_entity(args, false),
+            "move" => self.move_entity(args),
+            "nearby" | "interest" => self.nearby_payload(args),
+            "plan" => {
+                if !args.is_empty() {
+                    return Err(format!(
+                        "world.plan expects 0 arguments, got {}",
+                        args.len()
+                    ));
+                }
+                Ok(self.plan_payload())
+            }
+            "status" => {
+                if !args.is_empty() {
+                    return Err(format!(
+                        "world.status expects 0 arguments, got {}",
+                        args.len()
+                    ));
+                }
+                Ok(self.status_payload())
+            }
+            _ => Err(format!("Unknown world method: {}", method)),
+        }
+    }
+}
+
+fn world_map(entries: Vec<(&str, Value)>) -> Value {
+    let mut map = HashMap::new();
+    for (key, value) in entries {
+        map.insert(key.to_string(), value);
+    }
+    Value::new_map(map)
+}
+
+fn world_cell_key(x: i64, y: i64) -> String {
+    format!("{},{}", x, y)
+}
+
+fn world_error_payload(message: &str) -> Value {
+    world_map(vec![("error", Value::new_string(message.to_string()))])
 }

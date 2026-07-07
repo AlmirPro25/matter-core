@@ -1,17 +1,36 @@
 ﻿{
-    "generated_at":  "2026-05-17T12:50:24.7924588-03:00",
+    "generated_at":  "2026-05-22T21:27:00.2274269-03:00",
     "format":  "matter-download-site-release-v1",
     "version":  "0.1.0-beta",
     "channel":  "beta",
     "status":  "beta-ready",
     "production_ready":  false,
     "install_command":  ".\\matter-core-beta-setup.exe",
+    "runtime_health_summary":  {
+                                   "status":  "pass",
+                                   "max_p95_ms":  20815.729,
+                                   "window_samples":  4,
+                                   "total_samples":  4,
+                                   "source":  "downloads/status-triad-health.json"
+                               },
+    "runtime_health_thresholds":  {
+                                      "warn_p95_ms":  30000,
+                                      "fail_p95_ms":  45000
+                                  },
+    "runtime_trend_summary":  {
+                                  "window_samples":  4,
+                                  "total_samples":  4,
+                                  "core_p95_ms":  20815.729,
+                                  "world_p95_ms":  1781.02,
+                                  "frontier_p95_ms":  1168.844,
+                                  "source":  "downloads/status-triad-trend-report.json"
+                              },
     "artifacts":  [
                       {
                           "name":  "matter-core-windows-x64.zip",
                           "path":  "downloads/matter-core-windows-x64.zip",
-                          "size_bytes":  3887005,
-                          "sha256":  "97a227c9d2bcea31ea471418bf9bbfc3dea9afbbea9e627270bc224d4d7b4b45"
+                          "size_bytes":  15773327,
+                          "sha256":  "1e5037074a31db29db4f83120f98162ffc84ab02dd79b0eacbc8e7b734f0ad33"
                       },
                       {
                           "name":  "matter-core-beta-setup.exe",
@@ -35,20 +54,38 @@
                       {
                           "name":  "release-checksums.json",
                           "path":  "downloads/release-checksums.json",
-                          "size_bytes":  539,
-                          "sha256":  "50eb23c9723ef07d5899e07680b705ea1b6cf67de3998dc03991e04821052f70"
+                          "size_bytes":  540,
+                          "sha256":  "c47569a61a668e701de956965661e802dae4bb57be4f536a808eabaf09128d58"
                       },
                       {
                           "name":  "SHA256SUMS.txt",
                           "path":  "downloads/SHA256SUMS.txt",
                           "size_bytes":  100,
-                          "sha256":  "dfef0cf42f4ebd927e572805dcbef1c2b86bcd4829081362644ccb17ca07fc7a"
+                          "sha256":  "0d727dd009fdf8c7868016a7d9c648595f11516bc5816eee58cf9aee4e1a57a7"
+                      },
+                      {
+                          "name":  "status-triad-health.json",
+                          "path":  "downloads/status-triad-health.json",
+                          "size_bytes":  1477,
+                          "sha256":  "31709bb5cce6e987102e363f68ba772d273892073d397b4abd8434e7d9d37a2f"
+                      },
+                      {
+                          "name":  "status-triad-trend-report.json",
+                          "path":  "downloads/status-triad-trend-report.json",
+                          "size_bytes":  1150,
+                          "sha256":  "c7fbb1fa5e21870cb36dd6919fb91410968d337889d8824b24d0e63d862f0d1c"
+                      },
+                      {
+                          "name":  "status-triad-history.ndjson",
+                          "path":  "downloads/status-triad-history.ndjson",
+                          "size_bytes":  2921,
+                          "sha256":  "39bb9923bf861cbfc0eef8fec8ae2a86210f3534213537150df3b991a771e6ba"
                       },
                       {
                           "name":  "TESTER_GUIDE.md",
                           "path":  "TESTER_GUIDE.md",
-                          "size_bytes":  1925,
-                          "sha256":  "740a04ec16b8fcbaf388971b0975ef8019d506e4f4ddac26eacd7bd7d0a3ea44"
+                          "size_bytes":  1953,
+                          "sha256":  "db8952589c181d4e69c69e7739ff60977febb2f99a8cf91429210199200b1312"
                       },
                       {
                           "name":  "BETA_NOTES.md",

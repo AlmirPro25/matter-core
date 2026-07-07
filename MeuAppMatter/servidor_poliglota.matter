@@ -1,0 +1,43 @@
+print "======================================================"
+print " 🌐 MATTER CORE - SERVIDOR WEB POLIGLOTA"
+print "======================================================"
+
+// Invocando as 5 Pontes de Linguagem (FFI Bridges)
+let py_result = python.call("numpy.determinant", ["matrix_3x3"])
+let node_result = node.call("crypto.createHash", ["sha256"])
+let java_result = java.call("UUID.randomUUID", [])
+let go_result = go.call("fmt.Sprintf", ["goroutine_1024"])
+let rust_result = rust.call("sys.alloc_fast", ["0xFA2B"])
+
+print " "
+print "[BRIDGES ATIVAS]"
+print "  Python -> " + py_result
+print "  Node   -> " + node_result
+print "  Java   -> " + java_result
+print "  Go     -> " + go_result
+print "  Rust   -> " + rust_result
+
+// Gerando pagina HTML dinamica via concatenacao de Strings
+let html = "<html><body style='font-family:Arial;background:#0b0f19;color:#e2e8f0;padding:40px;'>"
+set html = html + "<h1 style='color:#3b82f6;'>Matter Core - Dashboard Poliglota</h1>"
+set html = html + "<div style='background:#1e293b;padding:15px;margin:10px 0;border-left:4px solid #facc15;'>"
+set html = html + "<b>Python:</b> " + py_result + "</div>"
+set html = html + "<div style='background:#1e293b;padding:15px;margin:10px 0;border-left:4px solid #22c55e;'>"
+set html = html + "<b>Node.js:</b> " + node_result + "</div>"
+set html = html + "<div style='background:#1e293b;padding:15px;margin:10px 0;border-left:4px solid #ef4444;'>"
+set html = html + "<b>Java:</b> " + java_result + "</div>"
+set html = html + "<div style='background:#1e293b;padding:15px;margin:10px 0;border-left:4px solid #06b6d4;'>"
+set html = html + "<b>Go:</b> " + go_result + "</div>"
+set html = html + "<div style='background:#1e293b;padding:15px;margin:10px 0;border-left:4px solid #f97316;'>"
+set html = html + "<b>Rust:</b> " + rust_result + "</div>"
+set html = html + "</body></html>"
+
+print " "
+let html_size = string.len(html)
+print "[HTML GERADO] " + html_size + " bytes"
+print " "
+print "[*] Servindo na porta 8080..."
+
+// net.serve espera (porta, string_body) - serve uma conexao e retorna
+let servidor = net.serve(8080, html)
+print "[*] Servidor encerrou apos servir 1 cliente."

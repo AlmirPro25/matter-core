@@ -1,0 +1,43 @@
+// Teste rápido de Física Avançada
+print("=== TESTE FÍSICA AVANÇADA ===")
+print("")
+
+// 1. Molecular Dynamics
+print("1. MOLECULAR DYNAMICS")
+let atom = molecular.atom_new("C", 0.0, 0.0, 0.0)
+print("   " + atom)
+print("")
+
+// 2. Nanomaterials
+print("2. NANOMATERIALS")
+let graphene = nano.graphene_new(10, 10)
+print("   " + graphene)
+let fermi = nano.graphene_fermi_velocity()
+print("   Fermi velocity: " + fermi + " m/s")
+print("")
+
+// 3. Plasma Physics
+print("3. PLASMA")
+let plasma = plasma.plasma_new(10000000000000000000.0, 10000.0)
+print("   " + plasma)
+let debye = plasma.debye_length(10000000000000000000.0, 10000.0)
+print("   Debye length: " + debye + " m")
+print("")
+
+// 4. Nuclear Physics
+print("4. NUCLEAR")
+let nucleus = nuclear.nucleus_new(92, 235)
+print("   " + nucleus)
+let binding = nuclear.binding_energy(92, 235)
+print("   Binding energy: " + binding + " MeV")
+print("")
+
+// 5. Fluid Dynamics
+print("5. FLUID")
+let flow = fluid.flow_new(1000.0, 1.0, 0.001)
+print("   " + flow)
+let reynolds = fluid.reynolds_number(1000.0, 1.0, 0.1, 0.001)
+print("   Reynolds: " + reynolds)
+print("")
+
+print("✅ FÍSICA AVANÇADA FUNCIONANDO!")

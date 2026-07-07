@@ -1,0 +1,30 @@
+﻿{
+    "ok":  true,
+    "generated_at":  "2026-05-22T22:21:24.8257553-03:00",
+    "checked":  [
+                    "core status contract",
+                    "world status contract",
+                    "frontier status contract"
+                ],
+    "latency_budget":  {
+                           "enforced":  true,
+                           "max_ms":  {
+                                          "core":  120000,
+                                          "world":  120000,
+                                          "frontier":  120000
+                                      },
+                           "observed_ms":  {
+                                               "core":  1503.129,
+                                               "world":  1158.995,
+                                               "frontier":  1172.829
+                                           }
+                       },
+    "schemas":  {
+                    "core":  "schemas/core-status.schema.json",
+                    "world":  "schemas/world-status.schema.json",
+                    "frontier":  "schemas/frontier-status.schema.json"
+                }
+}
+{"ok":true,"generated_at":"2026-05-23T02:34:56.5888533-03:00","checked":["core status contract","world status contract","frontier status contract"],"latency_budget":{"enforced":true,"max_ms":{"core":120000,"world":120000,"frontier":120000},"observed_ms":{"core":3255.537,"world":1148.394,"frontier":1108.643}},"latency_drift":{"enforced":true,"tolerance_percent":80,"baseline":{"path":"F:\\Users\\almir\\Desktop\\MANIFESTO DA LINGUAGEM MATTER CORE\\scripts\\status-triad-latency-baseline.json","core_ms":2000,"world_ms":1800,"frontier_ms":1800}},"schemas":{"core":"schemas/core-status.schema.json","world":"schemas/world-status.schema.json","frontier":"schemas/frontier-status.schema.json"}}
+{"ok":true,"generated_at":"2026-05-23T03:03:37.1107238-03:00","checked":["core status contract","world status contract","frontier status contract"],"latency_budget":{"enforced":false,"max_ms":{"core":60000,"world":60000,"frontier":60000},"observed_ms":{"core":1408.154,"world":1890.789,"frontier":1146.26}},"latency_drift":{"enforced":false,"tolerance_percent":50,"baseline":null},"schemas":{"core":"schemas/core-status.schema.json","world":"schemas/world-status.schema.json","frontier":"schemas/frontier-status.schema.json"}}
+{"ok":true,"generated_at":"2026-05-23T03:07:58.8752849-03:00","checked":["core status contract","world status contract","frontier status contract"],"latency_budget":{"enforced":false,"max_ms":{"core":60000,"world":60000,"frontier":60000},"observed_ms":{"core":23914.587,"world":1151.473,"frontier":1102.763}},"latency_drift":{"enforced":false,"tolerance_percent":50,"baseline":null},"schemas":{"core":"schemas/core-status.schema.json","world":"schemas/world-status.schema.json","frontier":"schemas/frontier-status.schema.json"}}

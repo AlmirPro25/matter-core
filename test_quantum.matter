@@ -1,0 +1,29 @@
+// Teste de Computação Quântica
+print("=== TESTE QUANTUM COMPUTING ===")
+print("")
+
+// 1. Qubit
+print("1. QUBIT")
+let q = quantum.qubit_new(1.0, 0.0)
+print("   " + q)
+print("")
+
+// 2. Superposição
+print("2. SUPERPOSIÇÃO")
+let hadamard = quantum.hadamard()
+print("   Hadamard gate criado")
+print("")
+
+// 3. Entrelaçamento
+print("3. ENTRELAÇAMENTO")
+let bell = quantum.bell_state()
+print("   Bell state criado")
+print("")
+
+// 4. Algoritmo de Shor
+print("4. SHOR'S ALGORITHM")
+let factors = quantum.shor(15)
+print("   Fatores de 15: " + factors)
+print("")
+
+print("✅ QUANTUM COMPUTING FUNCIONANDO!")

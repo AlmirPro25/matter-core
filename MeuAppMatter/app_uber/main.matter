@@ -1,0 +1,177 @@
+import "modules/domain.matter"
+import "modules/matching.matter"
+import "modules/pricing.matter"
+import "modules/lifecycle.matter"
+import "modules/dispatch.matter"
+import "modules/analytics.matter"
+
+# Global state
+let drivers = []
+let rides = []
+let next_ride_id = 1
+let revenue = 0
+let completed_rides_count = 0
+let active_ride = null
+let current_status = "Aguardando chamada..."
+
+fn get_status_str(active_ride_id) {
+    if active_ride_id != 0 {
+        return "Busy"
+    }
+    return "Free"
+}
+
+on boot {
+    # Seeds
+    drivers.push(make_driver(1, "Carlos", "Corolla", 10, 10, 49))
+    drivers.push(make_driver(2, "Ana", "Civic", 14, 12, 47))
+    drivers.push(make_driver(3, "Bruno", "Onix", 20, 18, 45))
+
+    # Canvas Setup
+    visual.surface("uber_app", 1080, 1920)
+    
+    # Regions
+    visual.region("header", 0, 0, 1080, 160)
+    visual.region("stats_revenue", 80, 200, 440, 140)
+    visual.region("stats_completed", 560, 200, 440, 140)
+    visual.region("map_area", 80, 380, 920, 540)
+    visual.region("driver_list", 80, 960, 920, 400)
+    visual.region("status_bar", 80, 1400, 920, 120)
+    visual.region("dispatch_btn", 340, 1580, 400, 120)
+
+    # Style Properties
+    visual.set("header", "text", "Uber Real-Time Platform")
+    visual.set("header", "material", "glass")
+
+    visual.set("stats_revenue", "text", "Revenue: $0.00")
+    visual.set("stats_revenue", "material", "panel")
+
+    visual.set("stats_completed", "text", "Rides Completed: 0")
+    visual.set("stats_completed", "material", "panel")
+
+    visual.set("map_area", "text", "Map Coordinates: [Center]")
+    visual.set("map_area", "material", "canvas")
+
+    visual.set("driver_list", "text", "Online Drivers: Carlos (Free), Ana (Free), Bruno (Free)")
+    visual.set("driver_list", "material", "panel")
+
+    visual.set("status_bar", "text", current_status)
+    visual.set("status_bar", "material", "glass")
+
+    visual.set("dispatch_btn", "text", "Match Ride")
+    visual.set("dispatch_btn", "semantic", "primary_action")
+    visual.set("dispatch_btn", "behavior", "pulse")
+    visual.set("dispatch_btn", "state", "active")
+
+    # Animations
+    visual.pulse("header")
+    visual.pulse("dispatch_btn")
+
+    print "=== UBER REAL-TIME SIMULATOR INITIALIZED ==="
+    agent.say("Simulador do Uber carregado com UI nativa!")
+}
+
+on tap {
+    # Check if there is already an active ride in progress
+    if active_ride == null {
+        let rider_lat = 12
+        let rider_lng = 11
+        let chosen_idx = choose_driver_index(drivers, rider_lat, rider_lng)
+        
+        if chosen_idx < drivers.len() {
+            let chosen_driver = drivers[chosen_idx]
+            
+            # Pricing & surge
+            let demand = 32
+            let supply = 12
+            let surge = surge_multiplier(demand, supply)
+            let fare = estimate_fare(16, surge)
+
+            # Match
+            let ride = make_ride(
+                next_ride_id,
+                101, # Rider ID
+                rider_lat,
+                rider_lng,
+                25, # Dest Lat
+                20, # Dest Lng
+                16, # Dist KM
+                surge,
+                chosen_driver["id"],
+                fare
+            )
+            set next_ride_id = next_ride_id + 1
+
+            let busy_driver = mark_driver_busy(chosen_driver, ride["id"])
+            set drivers[chosen_idx] = busy_driver
+            set active_ride = ride
+            
+            let d_name = busy_driver["name"]
+            let f_val = fare
+            let s_val = surge
+            set current_status = "Driver {d_name} matched! Fare: ${f_val} (Surge: {s_val}x)"
+            visual.set("status_bar", "text", current_status)
+
+            let c_status = get_status_str(drivers[0]["active_ride_id"])
+            let a_status = get_status_str(drivers[1]["active_ride_id"])
+            let b_status = get_status_str(drivers[2]["active_ride_id"])
+            visual.set("driver_list", "text", "Online Drivers: Carlos ({c_status}), Ana ({a_status}), Bruno ({b_status})")
+            
+            visual.pulse("status_bar")
+            visual.pulse("dispatch_btn")
+            print "Ride matched successfully!"
+        }
+    }
+}
+
+on update {
+    if active_ride != null {
+        if active_ride["status"] == "assigned" {
+            let started = start_ride(active_ride)
+            set active_ride = started
+            set current_status = "Ride in progress... Driver driving to destination."
+            visual.set("status_bar", "text", current_status)
+            visual.pulse("status_bar")
+            print "Ride started."
+        } else {
+            if active_ride["status"] == "in_progress" {
+                let completed = complete_ride(active_ride)
+                set active_ride = null
+                
+                # Free the driver
+                let i = 0
+                while i < drivers.len() {
+                    let d = drivers[i]
+                    if d["active_ride_id"] == completed["id"] {
+                        let freed = mark_driver_free(d)
+                        set drivers[i] = freed
+                    }
+                    set i = i + 1
+                }
+                
+                set revenue = revenue + completed["fare"]
+                set completed_rides_count = completed_rides_count + 1
+                
+                let fare_val = completed["fare"]
+                set current_status = "Ride completed! Revenue generated: ${fare_val}"
+                
+                let rev_val = revenue
+                let count_val = completed_rides_count
+                
+                visual.set("status_bar", "text", current_status)
+                visual.set("stats_revenue", "text", "Revenue: ${rev_val}.00")
+                visual.set("stats_completed", "text", "Rides Completed: {count_val}")
+                
+                let c_status = get_status_str(drivers[0]["active_ride_id"])
+                let a_status = get_status_str(drivers[1]["active_ride_id"])
+                let b_status = get_status_str(drivers[2]["active_ride_id"])
+                visual.set("driver_list", "text", "Online Drivers: Carlos ({c_status}), Ana ({a_status}), Bruno ({b_status})")
+
+                visual.pulse("stats_revenue")
+                visual.pulse("stats_completed")
+                visual.pulse("status_bar")
+                print "Ride completed successfully."
+            }
+        }
+    }
+}

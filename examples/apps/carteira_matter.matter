@@ -1,0 +1,128 @@
+# ============================================================
+#  CARTEIRA MATTER - Controle de gastos pessoais
+#  Escrito 100% na linguagem Matter Core
+#  Demonstra: estado, funcoes, listas, maps, stdlib e eventos
+# ============================================================
+
+# ---------- Configuracao ----------
+let dono = "Almir"
+let saldo_inicial = 3000
+let orcamento_mensal = 2500
+
+# Gastos do mes (listas paralelas: descricao / categoria / valor)
+let descricoes = ["Mercado", "Aluguel", "Internet", "Gasolina", "Cafe", "Jogo novo", "Farmacia"]
+let categorias = ["essencial", "essencial", "essencial", "transporte", "lazer", "lazer", "saude"]
+let valores     = [420, 1200, 110, 250, 38, 199, 87]
+
+# ---------- Funcoes ----------
+fn total_gastos() {
+    return list.sum(valores)
+}
+
+fn saldo_final() {
+    return saldo_inicial - total_gastos()
+}
+
+fn total_por_categoria(alvo) {
+    let soma = 0
+    let i = 0
+    while i < list.len(valores) {
+        if categorias[i] == alvo {
+            set soma = soma + valores[i]
+        }
+        set i = i + 1
+    }
+    return soma
+}
+
+fn barra(valor, maximo) {
+    let blocos = math.clamp(valor * 20 / maximo, 0, 20)
+    let saida = ""
+    let i = 0
+    while i < blocos {
+        set saida = saida + "#"
+        set i = i + 1
+    }
+    return saida
+}
+
+fn classificar_orcamento(gasto, limite) {
+    if gasto > limite {
+        return "ESTOUROU o orcamento!"
+    }
+    if gasto > limite * 8 / 10 {
+        return "Atencao: perto do limite"
+    }
+    return "Dentro do orcamento"
+}
+
+# ---------- Relatorio ----------
+fn imprimir_relatorio() with io {
+    print "============================================"
+    print "         CARTEIRA MATTER - RELATORIO"
+    print "============================================"
+    print "Dono:"
+    print dono
+    print "Saldo inicial:"
+    print saldo_inicial
+    print ""
+
+    print "--- Lancamentos do mes ---"
+    let i = 0
+    while i < list.len(valores) {
+        print string.upper(categorias[i]) + " | " + descricoes[i] + " : R$ " + valores[i]
+        set i = i + 1
+    }
+    print ""
+
+    print "--- Gastos por categoria ---"
+    let total = total_gastos()
+    let cats = ["essencial", "transporte", "lazer", "saude"]
+    let c = 0
+    while c < list.len(cats) {
+        let valor_cat = total_por_categoria(cats[c])
+        print string.upper(cats[c]) + ": R$ " + valor_cat + "  " + barra(valor_cat, total)
+        set c = c + 1
+    }
+    print ""
+
+    print "--- Resumo ---"
+    print "Total gasto: R$"
+    print total
+    print "Maior gasto: R$"
+    print list.max(valores)
+    print "Menor gasto: R$"
+    print list.min(valores)
+    print "Saldo final: R$"
+    print saldo_final()
+    print ""
+
+    print "Status do orcamento (limite R$ " + orcamento_mensal + "):"
+    print classificar_orcamento(total, orcamento_mensal)
+    print "============================================"
+}
+
+# ---------- Eventos ----------
+on boot {
+    print "[BOOT] Carteira Matter iniciada para:"
+    print dono
+    agent.say("Bem-vindo a sua carteira, " + dono + "!")
+}
+
+on fechar_mes {
+    print ""
+    print "[EVENTO] Fechamento de mes solicitado"
+    let sobra = saldo_final()
+    if sobra > 0 {
+        print "Parabens! Voce economizou R$"
+        print sobra
+    } else {
+        print "Mes no vermelho. Reveja os gastos de lazer."
+    }
+}
+
+# ---------- Execucao ----------
+spawn boot
+print ""
+imprimir_relatorio()
+spawn fechar_mes

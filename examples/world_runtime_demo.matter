@@ -1,0 +1,17 @@
+# Distributed world runtime demo.
+# One logical map is split into spatial cells, layers, and interest sets.
+
+print "Matter World Runtime"
+
+world.configure(100, 150, 2, 2)
+
+world.place("p1", 10, 10)
+world.place("p2", 15, 15)
+world.place("p3", 20, 20)
+world.place("p4", 120, 10)
+
+print "nearby p1"
+print world.nearby("p1")
+
+print "world plan"
+print world.plan()

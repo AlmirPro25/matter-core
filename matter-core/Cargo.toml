@@ -1,0 +1,132 @@
+[workspace]
+members = [
+    "crates/matter-lexer",
+    "crates/matter-parser",
+    "crates/matter-ast",
+    "crates/matter-bytecode",
+    "crates/matter-vm",
+    "crates/matter-runtime",
+    "crates/matter-backend",
+    "crates/matter-energy",
+    "crates/matter-visual",
+    "crates/matter-error",
+    "crates/matter-stdlib",
+    "crates/matter-optimizer",
+    "crates/matter-package",
+    "crates/matter-lsp",
+    "crates/matter-debugger",
+    "crates/matter-formatter",
+    "crates/matter-linter",
+    "crates/matter-bench",
+    "crates/matter-docs",
+    "crates/matter-async",
+    "crates/matter-wasm",
+    "crates/matter-llvm",
+    "crates/matter-jit",
+    "crates/matter-memory",
+    "crates/matter-native",
+    "crates/matter-hotreload",
+    "crates/matter-types",
+    "crates/matter-effects",
+    "crates/matter-effect-handlers",
+    "crates/matter-effect-inference",
+    "crates/matter-cli",
+    "crates/matter-polyglot",
+    "crates/matter-package-resolver",
+    "crates/matter-bridge-python",
+    "crates/matter-bridge-nodejs",
+    "crates/matter-bridge-rust",
+    "crates/matter-bridge-go",
+    "crates/matter-bridge-java",
+    "crates/matter-bridge-nodejs-native",
+    "crates/matter-bridge-go-native",
+    "crates/matter-bridge-java-native",
+    "crates/matter-cache",
+    "crates/matter-smart-inference",
+    "crates/matter-auto-parallel",
+    "crates/matter-distributed-cache",
+    "crates/matter-security",
+    "crates/matter-profiler",
+    "crates/matter-leak-detector",
+    "crates/matter-crash-reporter",
+    "crates/matter-deployment",
+    "crates/matter-quantum",
+    "crates/matter-biological",
+    "crates/matter-neuromorphic",
+    "crates/matter-quantum-hybrid",
+    "crates/matter-bio-advanced",
+    "crates/matter-neuro-hardware",
+    "crates/matter-molecular",
+    "crates/matter-photonic",
+    "crates/matter-topological",
+    "crates/matter-spintronics",
+    "crates/matter-memristive",
+    "crates/matter-vcpu",
+    "crates/matter-photonic-vpu",
+    "crates/matter-bus",
+    "crates/matter-scheduler",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Matter Core Team"]
+license = "MIT"
+
+[workspace.dependencies]
+matter-lexer = { path = "crates/matter-lexer" }
+matter-parser = { path = "crates/matter-parser" }
+matter-ast = { path = "crates/matter-ast" }
+matter-bytecode = { path = "crates/matter-bytecode" }
+matter-vm = { path = "crates/matter-vm" }
+matter-vcpu = { path = "crates/matter-vcpu" }
+matter-photonic-vpu = { path = "crates/matter-photonic-vpu" }
+matter-bus = { path = "crates/matter-bus" }
+matter-scheduler = { path = "crates/matter-scheduler" }
+matter-runtime = { path = "crates/matter-runtime" }
+matter-backend = { path = "crates/matter-backend" }
+matter-energy = { path = "crates/matter-energy" }
+matter-visual = { path = "crates/matter-visual" }
+matter-error = { path = "crates/matter-error" }
+matter-stdlib = { path = "crates/matter-stdlib" }
+matter-optimizer = { path = "crates/matter-optimizer" }
+matter-package = { path = "crates/matter-package" }
+matter-lsp = { path = "crates/matter-lsp" }
+matter-debugger = { path = "crates/matter-debugger" }
+matter-formatter = { path = "crates/matter-formatter" }
+matter-linter = { path = "crates/matter-linter" }
+matter-jit = { path = "crates/matter-jit" }
+matter-memory = { path = "crates/matter-memory" }
+matter-native = { path = "crates/matter-native" }
+matter-hotreload = { path = "crates/matter-hotreload" }
+matter-types = { path = "crates/matter-types" }
+matter-effects = { path = "crates/matter-effects" }
+matter-effect-handlers = { path = "crates/matter-effect-handlers" }
+matter-effect-inference = { path = "crates/matter-effect-inference" }
+
+# Root package for integration tests
+[package]
+name = "matter-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+matter-lexer.workspace = true
+matter-parser.workspace = true
+matter-ast.workspace = true
+matter-bytecode.workspace = true
+matter-vm.workspace = true
+matter-runtime.workspace = true
+matter-backend.workspace = true
+matter-energy.workspace = true
+matter-visual.workspace = true
+matter-error.workspace = true
+matter-stdlib.workspace = true
+matter-optimizer.workspace = true
+matter-scheduler.workspace = true
+
+[profile.release.package.matter-wasm]
+opt-level = "z"

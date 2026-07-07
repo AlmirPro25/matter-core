@@ -1,0 +1,61 @@
+// Sprint 61: Topological Materials
+// Quantum Hall effect, topological insulators, Majorana fermions
+
+use topology;
+
+fn main() {
+    println("=== TOPOLOGICAL MATERIALS ===");
+    
+    // Quantum Hall Effect
+    println("\n1. QUANTUM HALL EFFECT");
+    topology.create_quantum_hall(10.0, 2.0);
+    let sigma = topology.hall_conductance();
+    let chern = topology.chern_number();
+    println("Hall conductance: " + sigma + " S");
+    println("Chern number: " + chern);
+    println("Quantized conductance σ_xy = ν e²/h");
+    
+    // Integer QHE
+    println("\n2. INTEGER QUANTUM HALL (ν=1)");
+    topology.create_quantum_hall(15.0, 1.0);
+    let sigma1 = topology.hall_conductance();
+    let chern1 = topology.chern_number();
+    println("Hall conductance: " + sigma1 + " S");
+    println("Chern number: " + chern1);
+    println("Topological invariant protects edge states");
+    
+    // 2D Topological Insulator
+    println("\n3. 2D TOPOLOGICAL INSULATOR");
+    topology.create_topological_insulator(2, 0.3, 0.5);
+    let is_topo = topology.is_topological();
+    println("Is topological: " + is_topo);
+    println("Z2 invariant = 1 (non-trivial)");
+    println("Helical edge states (spin-momentum locked)");
+    
+    // 3D Topological Insulator
+    println("\n4. 3D TOPOLOGICAL INSULATOR");
+    topology.create_topological_insulator(3, 0.5, 1.0);
+    let is_topo3d = topology.is_topological();
+    println("Is topological: " + is_topo3d);
+    println("Dirac cone on surface");
+    println("Bulk insulator, surface conductor");
+    
+    // Majorana Fermions (topological phase)
+    println("\n5. MAJORANA FERMIONS (topological)");
+    topology.create_majorana(1.0, 0.5, 2.0);
+    let is_majorana = topology.majorana_is_topological();
+    println("Topological phase: " + is_majorana);
+    println("Majorana zero modes at ends");
+    println("Non-Abelian statistics (quantum computing!)");
+    
+    // Majorana Fermions (trivial phase)
+    println("\n6. MAJORANA FERMIONS (trivial)");
+    topology.create_majorana(1.0, 0.5, 0.5);
+    let is_majorana2 = topology.majorana_is_topological();
+    println("Topological phase: " + is_majorana2);
+    println("Trivial phase (no Majorana modes)");
+    
+    println("\n=== SIMULATION COMPLETE ===");
+    println("Topological materials: QHE, TI, Majorana");
+    println("Topological invariants calculated");
+}

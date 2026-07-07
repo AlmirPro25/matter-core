@@ -1,0 +1,21 @@
+[package]
+name = "uberrealandroid_android"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+eframe = { version = "0.34.2", features = ["android-activity"] }
+android-activity = { version = "0.5", features = ["game-activity"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+log = "0.4"
+android_logger = "0.13"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"

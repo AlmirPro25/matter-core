@@ -1,0 +1,40 @@
+// Sprint 65: Particle Accelerators
+// LHC, collisions, detectors, high energy physics
+
+use accelerator;
+
+fn main() {
+    println("=== PARTICLE ACCELERATORS ===");
+    
+    // Proton beam (LHC energy)
+    println("\n1. PROTON BEAM (7 TeV)");
+    accelerator.create_proton_beam(7e12);
+    let v = accelerator.beam_velocity();
+    let gamma = accelerator.beam_lorentz_factor();
+    println("Velocity: " + v + " m/s");
+    println("Lorentz factor: " + gamma);
+    println("v ≈ 0.999999991c (ultra-relativistic!)");
+    
+    // Electron beam (LEP energy)
+    println("\n2. ELECTRON BEAM (100 GeV)");
+    accelerator.create_electron_beam(100e9);
+    let v2 = accelerator.beam_velocity();
+    let gamma2 = accelerator.beam_lorentz_factor();
+    println("Velocity: " + v2 + " m/s");
+    println("Lorentz factor: " + gamma2);
+    println("Electrons radiate more (lighter mass)");
+    
+    // LHC (Large Hadron Collider)
+    println("\n3. LHC (CERN)");
+    accelerator.create_lhc();
+    let e_cms = accelerator.lhc_collision_energy();
+    let higgs = accelerator.lhc_higgs_per_year();
+    println("Collision energy: " + e_cms + " eV");
+    println("Higgs bosons/year: " + higgs);
+    println("Circumference: 27 km");
+    println("Discovered Higgs boson in 2012!");
+    
+    println("\n=== SIMULATION COMPLETE ===");
+    println("Particle accelerators: LHC simulation");
+    println("Probing fundamental physics!");
+}

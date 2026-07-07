@@ -1,0 +1,109 @@
+print "================================================================"
+print " 🌐 MATTER CORE v25.3 - SERVIDOR WEB COM ROTEAMENTO"
+print "================================================================"
+print " "
+
+// ===== TESTE: Comparacao de Strings =====
+print "[PRE-TEST] Comparacao de Strings na VM"
+let lang = "matter"
+if lang == "matter" {
+    print "  lang == 'matter' -> TRUE ✅"
+}
+if lang != "python" {
+    print "  lang != 'python' -> TRUE ✅"
+}
+print " "
+
+// ===== CONSTRUCAO DAS PAGINAS =====
+
+fn css() {
+    return "body{font-family:'Segoe UI',sans-serif;background:#0b0f19;color:#e2e8f0;margin:0;padding:0;} .container{max-width:800px;margin:0 auto;padding:40px;} h1{color:#3b82f6;font-size:2.5em;} .card{background:#1e293b;border-radius:12px;padding:20px;margin:16px 0;border-left:4px solid #3b82f6;} .nav{background:#1e293b;padding:16px;display:flex;gap:20px;} .nav a{color:#60a5fa;text-decoration:none;font-weight:bold;} .badge{background:#22c55e;color:#fff;padding:4px 12px;border-radius:999px;font-size:0.8em;}"
+}
+
+fn page_home() with io {
+    let pi = math.pi()
+    let sin_val = math.sin(pi / 4.0)
+    let now = time.now()
+
+    let html = "<!DOCTYPE html><html><head><title>Matter Core Dashboard</title>"
+    set html = html + "<style>" + css() + "</style></head><body>"
+    set html = html + "<div class='nav'><a href='/'>Home</a><a href='/api'>API</a><a href='/about'>About</a><a href='/neural'>Neural</a></div>"
+    set html = html + "<div class='container'>"
+    set html = html + "<h1>Matter Core <span class='badge'>v25.3</span></h1>"
+    set html = html + "<div class='card'><h3>Sistema de Tipos</h3>"
+    set html = html + "<p>int, float, bool, string, list, map, struct, function</p></div>"
+    set html = html + "<div class='card'><h3>Matematica</h3>"
+    set html = html + "<p>pi = " + pi + " | sin(pi/4) = " + sin_val + "</p></div>"
+    set html = html + "<div class='card'><h3>Timestamp</h3><p>" + now + " ms</p></div>"
+    set html = html + "</div></body></html>"
+    return html
+}
+
+fn page_api() with io {
+    let data = map.new()
+    set data = map.set(data, "status", "online")
+    set data = map.set(data, "version", "25.3")
+    set data = map.set(data, "backends", 24)
+    let json_out = json.stringify(data)
+    print "  [API] Gerando JSON: " + json_out
+    return json_out
+}
+
+fn page_about() {
+    let html = "<!DOCTYPE html><html><head><title>About Matter</title>"
+    set html = html + "<style>" + css() + "</style></head><body>"
+    set html = html + "<div class='nav'><a href='/'>Home</a><a href='/api'>API</a><a href='/about'>About</a><a href='/neural'>Neural</a></div>"
+    set html = html + "<div class='container'>"
+    set html = html + "<h1>Sobre o Matter Core</h1>"
+    set html = html + "<div class='card'><p>Linguagem de programacao criada por <b>Almir</b></p>"
+    set html = html + "<p>70 pacotes | JIT x86_64 | Servidor Web nativo | Rede Neural | 5 FFI Bridges</p></div>"
+    set html = html + "</div></body></html>"
+    return html
+}
+
+fn relu(x) {
+    if x > 0.0 { return x }
+    return 0.0
+}
+
+fn neuron(inp, w, b) {
+    let i = 0
+    let s = 0.0
+    while i < inp.len() {
+        set s = s + (inp[i] * w[i])
+        set i = i + 1
+    }
+    return relu(s + b)
+}
+
+fn page_neural() with io {
+    let h1 = neuron([1.0, 0.5], [0.8, -0.4], 0.1)
+    let h2 = neuron([1.0, 0.5], [-0.2, 0.9], -0.3)
+    let out = neuron([h1, h2], [1.5, 0.7], 0.2)
+
+    let html = "<!DOCTYPE html><html><head><title>Neural Network</title>"
+    set html = html + "<style>" + css() + "</style></head><body>"
+    set html = html + "<div class='nav'><a href='/'>Home</a><a href='/api'>API</a><a href='/about'>About</a><a href='/neural'>Neural</a></div>"
+    set html = html + "<div class='container'>"
+    set html = html + "<h1>Rede Neural ao Vivo</h1>"
+    set html = html + "<div class='card'><h3>Forward Pass (3 camadas)</h3>"
+    set html = html + "<p>Input: [1.0, 0.5]</p>"
+    set html = html + "<p>Hidden: h1=" + h1 + " | h2=" + h2 + "</p>"
+    set html = html + "<p><b>Output: " + out + "</b></p></div>"
+    set html = html + "</div></body></html>"
+    return html
+}
+
+// ===== MONTAR ROTAS =====
+print "[ROTAS] Construindo paginas..."
+let rotas = map.new()
+set rotas = map.set(rotas, "/", page_home())
+set rotas = map.set(rotas, "/api", page_api())
+set rotas = map.set(rotas, "/about", page_about())
+set rotas = map.set(rotas, "/neural", page_neural())
+set rotas = map.set(rotas, "/favicon.ico", "")
+print "[ROTAS] " + map.size(rotas) + " rotas prontas!"
+print " "
+
+// ===== SERVIR =====
+let s = net.serve_routes(8080, rotas)

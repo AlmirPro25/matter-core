@@ -1,0 +1,49 @@
+// Sprint 60: Nanomaterials & Graphene
+// Graphene, carbon nanotubes, quantum dots
+
+use nano;
+
+fn main() {
+    println("=== NANOMATERIALS SIMULATION ===");
+    
+    // Graphene sheet
+    println("\n1. GRAPHENE");
+    nano.create_graphene(20, 20);
+    let vf = nano.graphene_fermi_velocity();
+    println("Fermi velocity: " + vf + " m/s");
+    println("Expected: ~10^6 m/s (relativistic electrons!)");
+    
+    // Carbon nanotube (5,5) - metallic
+    println("\n2. CARBON NANOTUBE (5,5)");
+    nano.create_nanotube(5, 5, 100.0);
+    let is_metallic = nano.nanotube_is_metallic();
+    let conductance = nano.nanotube_conductance();
+    println("Metallic: " + is_metallic);
+    println("Conductance: " + conductance + " S");
+    println("Quantum conductance G0 = 7.748e-5 S");
+    
+    // Carbon nanotube (10,0) - semiconducting
+    println("\n3. CARBON NANOTUBE (10,0)");
+    nano.create_nanotube(10, 0, 100.0);
+    let is_metallic2 = nano.nanotube_is_metallic();
+    println("Metallic: " + is_metallic2);
+    println("This is a semiconducting zigzag nanotube");
+    
+    // Quantum dot - CdSe
+    println("\n4. QUANTUM DOT (CdSe)");
+    nano.create_quantum_dot(3.0, "CdSe", 100);
+    let wavelength = nano.quantum_dot_wavelength();
+    println("Emission wavelength: " + wavelength + " nm");
+    println("Visible light range: 400-700 nm");
+    
+    // Quantum dot - smaller (blue shift)
+    println("\n5. QUANTUM DOT (CdSe, smaller)");
+    nano.create_quantum_dot(2.0, "CdSe", 50);
+    let wavelength2 = nano.quantum_dot_wavelength();
+    println("Emission wavelength: " + wavelength2 + " nm");
+    println("Smaller dot = higher energy = blue shift");
+    
+    println("\n=== SIMULATION COMPLETE ===");
+    println("Nanomaterials: graphene, CNTs, quantum dots");
+    println("Electronic properties calculated");
+}

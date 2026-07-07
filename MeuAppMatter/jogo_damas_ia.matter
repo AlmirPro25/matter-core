@@ -1,0 +1,144 @@
+print "==========================================="
+print " 👑 SIMULADOR DE DAMAS (IA vs IA) MATTER "
+print "==========================================="
+
+// Tabuleiro 8x8 flat = 64 posicoes
+// 0 = Vazio, 1 = IA Branca, 2 = IA Preta, 8 = Quadrado Branco (Invalido)
+let tab = []
+
+// Registradores Globais para a IA
+let ia_turn = 1 
+let ia_move_from = -1
+let ia_move_to = -1
+
+// Inicializando o Tabuleiro Matematicamente
+let init_idx = 0
+while init_idx < 64 {
+    let r = init_idx / 8
+    let c = init_idx % 8
+    let soma = r + c
+    let is_dark = soma % 2
+    
+    if is_dark == 1 {
+        if r < 3 { tab.push(1) }
+        if r >= 3 {
+            if r < 5 { tab.push(0) }
+            if r >= 5 { tab.push(2) }
+        }
+    }
+    if is_dark == 0 {
+        tab.push(8)
+    }
+    set init_idx = init_idx + 1
+}
+
+fn print_tabuleiro() with io {
+    print "---------------------------------"
+    let r = 0
+    while r < 8 {
+        let linha = []
+        let c = 0
+        while c < 8 {
+            let idx = (r * 8) + c
+            linha.push(tab[idx])
+            set c = c + 1
+        }
+        print linha
+        set r = r + 1
+    }
+    print "---------------------------------"
+}
+
+print "ESTADO INICIAL (1 = P1, 2 = P2):"
+print_tabuleiro()
+
+// Cerebro da IA: Acha a primeira peca valida e avanca na diagonal
+fn ia_escolher_movimento() {
+    set ia_move_from = -1
+    set ia_move_to = -1
+    
+    let i = 0
+    while i < 64 {
+        if tab[i] == ia_turn {
+            let r = i / 8
+            let c = i % 8
+            
+            let dir = 0
+            if ia_turn == 1 { set dir = 1 }
+            if ia_turn == 2 { set dir = -1 }
+            
+            let alvo_r = r + dir
+            let alvo_c_esq = c - 1
+            let alvo_c_dir = c + 1
+            
+            if alvo_r >= 0 {
+                if alvo_r < 8 {
+                    if alvo_c_esq >= 0 {
+                        let idx_esq = (alvo_r * 8) + alvo_c_esq
+                        if tab[idx_esq] == 0 {
+                            set ia_move_from = i
+                            set ia_move_to = idx_esq
+                        }
+                    }
+                    if ia_move_from == -1 {
+                        if alvo_c_dir < 8 {
+                            let idx_dir = (alvo_r * 8) + alvo_c_dir
+                            if tab[idx_dir] == 0 {
+                                set ia_move_from = i
+                                set ia_move_to = idx_dir
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        if ia_move_from != -1 {
+            // IA ja decidiu o movimento, forcar quebra do loop
+            set i = 64
+        }
+        if ia_move_from == -1 {
+            set i = i + 1
+        }
+    }
+}
+
+// Loop de Jogo da VM
+let turnos = 0
+let game_over = false
+
+while turnos < 10 {
+    if game_over == false {
+        ia_escolher_movimento()
+        
+        if ia_move_from != -1 {
+            // Mutacao do Tabuleiro via Arrays
+            set tab[ia_move_from] = 0
+            set tab[ia_move_to] = ia_turn
+            
+            print " "
+            print ">> IA Realizou Jogada. Turno da equipe:"
+            print ia_turn
+            print_tabuleiro()
+            
+            // Troca o turno usando ponteiros
+            let proximo_turno = 0
+            if ia_turn == 1 { set proximo_turno = 2 }
+            if ia_turn == 2 { set proximo_turno = 1 }
+            set ia_turn = proximo_turno
+            
+            set turnos = turnos + 1
+        }
+        if ia_move_from == -1 {
+            print "IA sem movimentos! Fim de jogo."
+            set game_over = true
+        }
+    }
+    if game_over == true {
+        set turnos = 10
+    }
+}
+
+print "==========================================="
+print " FIM DA SIMULACAO DE DAMAS NEURAIS! "
+print "==========================================="

@@ -1,0 +1,22 @@
+import "module_a.matter"
+
+print "================================================================"
+print " 📦 MATTER CORE - TESTE DE SISTEMA DE MÓDULOS E PACOTES "
+print "================================================================"
+
+print "Iniciando pacote principal..."
+hello_from_module()
+
+print " "
+print "================================================================"
+print " 🌐 MATTER CORE - TESTE DE SERVIDOR ASYNC "
+print "================================================================"
+
+let rotas = map.new()
+set rotas = map.set(rotas, "/", "<h1>Matter Core Async Server</h1><p>Bem-vindo ao servidor multithread do Matter!</p>")
+set rotas = map.set(rotas, "/status", "{\"status\": \"online\", \"threads\": \"async\"}")
+
+print "Iniciando servidor na porta 8081 (nao vai bloquear o programa graças às threads? Wait, net.serve_routes bloqueia pra aceitar conexoes)"
+
+// net.serve_routes(8081, rotas)
+print "Servidor assíncrono habilitado no core. Para testar, descomente a linha net.serve_routes."

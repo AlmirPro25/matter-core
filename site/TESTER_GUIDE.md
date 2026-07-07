@@ -35,6 +35,7 @@ Open a new PowerShell window and run:
 matter run examples\first_run.matter
 matter run examples\agent_policy_demo.matter
 matter capabilities-json
+matter frontier-status-json
 ```
 
 ## Demo That Shows The Point

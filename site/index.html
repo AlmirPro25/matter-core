@@ -85,8 +85,134 @@
               <dd id="artifact-signature">nao assinado</dd>
             </div>
             <div>
+              <dt>Status runtime</dt>
+              <dd><span id="triad-health-status" class="health-pill">carregando...</span></dd>
+            </div>
+            <div>
+              <dt>Max P95</dt>
+              <dd id="triad-health-max-p95">carregando...</dd>
+            </div>
+            <div>
+              <dt>Amostras</dt>
+              <dd id="triad-health-samples">carregando...</dd>
+            </div>
+            <div>
+              <dt>Fonte health</dt>
+              <dd id="triad-health-source">carregando...</dd>
+            </div>
+            <div>
+              <dt>P95 core</dt>
+              <dd id="triad-trend-core-p95">carregando...</dd>
+            </div>
+            <div>
+              <dt>P95 world</dt>
+              <dd id="triad-trend-world-p95">carregando...</dd>
+            </div>
+            <div>
+              <dt>P95 frontier</dt>
+              <dd id="triad-trend-frontier-p95">carregando...</dd>
+            </div>
+            <div>
+              <dt>Fonte trend</dt>
+              <dd id="triad-trend-source">carregando...</dd>
+            </div>
+            <div>
+              <dt>Trend class</dt>
+              <dd><span id="triad-trend-class" class="health-pill">carregando...</span></dd>
+            </div>
+            <div>
+              <dt>Trend (ultimas 12)</dt>
+              <dd>
+                <div class="triad-series-toggle" role="group" aria-label="Serie do sparkline">
+                  <button type="button" class="is-active" data-triad-series="max">max</button>
+                  <button type="button" data-triad-series="core">core</button>
+                  <button type="button" data-triad-series="world">world</button>
+                  <button type="button" data-triad-series="frontier">frontier</button>
+                </div>
+                <svg id="triad-trend-sparkline" class="triad-sparkline" viewBox="0 0 160 36" role="img" aria-label="Trend P95 das ultimas amostras">
+                  <path id="triad-trend-sparkline-core" class="line-core" d=""></path>
+                  <path id="triad-trend-sparkline-world" class="line-world" d=""></path>
+                  <path id="triad-trend-sparkline-frontier" class="line-frontier" d=""></path>
+                  <g id="triad-trend-sparkline-severity"></g>
+                </svg>
+              </dd>
+            </div>
+            <div>
+              <dt>Delta latest/mediana</dt>
+              <dd id="triad-trend-delta">carregando...</dd>
+            </div>
+            <div>
+              <dt>Warn P95</dt>
+              <dd id="triad-threshold-warn">carregando...</dd>
+            </div>
+            <div>
+              <dt>Fail P95</dt>
+              <dd id="triad-threshold-fail">carregando...</dd>
+            </div>
+            <div>
               <dt>Gerado em</dt>
               <dd id="artifact-date">carregando...</dd>
+            </div>
+            <div>
+              <dt>Ultima atualizacao</dt>
+              <dd><span id="runtime-last-refresh" class="health-pill">carregando...</span></dd>
+            </div>
+            <div>
+              <dt>Intervalo refresh</dt>
+              <dd id="runtime-refresh-interval">carregando...</dd>
+            </div>
+            <div>
+              <dt>Proximo refresh</dt>
+              <dd id="runtime-refresh-countdown">carregando...</dd>
+            </div>
+            <div>
+              <dt>Falhas consecutivas</dt>
+              <dd id="runtime-refresh-failures">carregando...</dd>
+            </div>
+            <div>
+              <dt>Origem refresh</dt>
+              <dd id="runtime-refresh-source">carregando...</dd>
+            </div>
+            <div>
+              <dt>Modo dados</dt>
+              <dd><span id="runtime-data-mode" class="health-pill">live</span></dd>
+            </div>
+            <div>
+              <dt>Snapshot info</dt>
+              <dd id="runtime-snapshot-info">n/a</dd>
+            </div>
+            <div>
+              <dt>Snapshot hash</dt>
+              <dd id="runtime-snapshot-hash">n/a</dd>
+            </div>
+            <div>
+              <dt>Atalho</dt>
+              <dd>Retomar: Ctrl/Cmd+Shift+R | Atualizar: Ctrl/Cmd+Shift+U | Exportar: Ctrl/Cmd+Shift+E | Copiar: Ctrl/Cmd+Shift+C | Reset: Ctrl/Cmd+Shift+X</dd>
+            </div>
+            <div>
+              <dt>Acao</dt>
+              <dd>
+                <button type="button" id="runtime-refresh-now" class="runtime-refresh-now">Atualizar agora</button>
+                <button type="button" id="runtime-copy-status" class="runtime-refresh-now">Copiar status runtime</button>
+                <button type="button" id="runtime-export-status" class="runtime-refresh-now">Exportar status runtime</button>
+                <button type="button" id="runtime-import-status" class="runtime-refresh-now">Importar status runtime</button>
+                <button type="button" id="runtime-resume-live" class="runtime-refresh-now">Retomar live</button>
+                <button type="button" id="runtime-reset-panel" class="runtime-refresh-now">Reset painel</button>
+                <input type="file" id="runtime-import-status-file" accept="application/json" hidden />
+              </dd>
+            </div>
+            <div>
+              <dt>Historico refresh</dt>
+              <dd>
+                <ul id="runtime-refresh-history" class="runtime-refresh-history">
+                  <li>carregando...</li>
+                </ul>
+                <button type="button" id="runtime-refresh-history-clear" class="runtime-refresh-now">Limpar historico</button>
+                <button type="button" id="runtime-refresh-history-export" class="runtime-refresh-now">Exportar JSON</button>
+                <button type="button" id="runtime-refresh-history-import" class="runtime-refresh-now">Importar JSON</button>
+                <input type="file" id="runtime-refresh-history-file" accept="application/json" hidden />
+                <div id="runtime-refresh-history-action-status" class="runtime-refresh-history-action-status" aria-live="polite">pronto</div>
+              </dd>
             </div>
           </dl>
         </aside>
@@ -295,6 +421,9 @@ matter capabilities-json</code></pre>
           <a href="downloads/install-release-zip.ps1" download>Instalador verificavel</a>
           <a href="downloads/release-checksums.json" download>Checksums JSON</a>
           <a href="downloads/SHA256SUMS.txt" download>SHA256SUMS</a>
+          <a href="downloads/status-triad-health.json" download>Status triad health</a>
+          <a href="downloads/status-triad-trend-report.json" download>Status triad trend report</a>
+          <a href="downloads/status-triad-history.ndjson" download>Status triad history</a>
           <a href="TESTER_GUIDE.md">Guia do tester</a>
           <a href="BETA_NOTES.md">Notas beta</a>
           <a href="https://github.com/AlmirPro25/matter/issues/new/choose" rel="noreferrer">Enviar feedback</a>

@@ -45,9 +45,12 @@ try {
     $matterExe = Join-Path $installRoot "bin\matter.exe"
     $matterCliExe = Join-Path $installRoot "bin\matter-cli.exe"
     $firstRun = Join-Path $installRoot "examples\first_run.matter"
+    $coreStatus = Join-Path $installRoot "target\core\core-status.json"
+    $worldStatus = Join-Path $installRoot "target\world\world-status.json"
+    $frontierStatus = Join-Path $installRoot "target\frontier\frontier-status.json"
     $installManifest = Join-Path $installRoot "INSTALL_MANIFEST.json"
     $diagnoser = Join-Path $installRoot "scripts\diagnose-local-install.ps1"
-    foreach ($required in @($matterExe, $matterCliExe, $firstRun, (Join-Path $installRoot "INFO.txt"), $installManifest, $diagnoser)) {
+    foreach ($required in @($matterExe, $matterCliExe, $firstRun, $coreStatus, $worldStatus, $frontierStatus, (Join-Path $installRoot "INFO.txt"), $installManifest, $diagnoser)) {
         if (-not (Test-Path $required -PathType Leaf)) {
             throw "Installed release missing expected file: $required"
         }
@@ -60,7 +63,7 @@ try {
     if ($manifest.path_modified) {
         throw "Installed release manifest should report path_modified=false when -NoPath is used"
     }
-    if ($manifest.post_install_check -ne "capabilities-json") {
+    if ($manifest.post_install_check -ne "capabilities-json,world-status-json,frontier-status-json") {
         throw "Installed release manifest did not record the post-install check"
     }
     $binaryEntries = @($manifest.installed_binaries)
@@ -80,6 +83,24 @@ try {
     $capabilitiesJson = $capabilities | ConvertFrom-Json
     if (-not $capabilitiesJson.ok) {
         throw "Installed matter capabilities-json did not report ok=true"
+    }
+
+    $world = & $matterExe world-status-json
+    if ($LASTEXITCODE -ne 0) {
+        throw "Installed matter world-status-json failed with exit code $LASTEXITCODE"
+    }
+    $worldJson = $world | ConvertFrom-Json
+    if (-not $worldJson.ok -or $worldJson.summary.mode -ne "logical_world_partition") {
+        throw "Installed matter world-status-json failed runtime contract"
+    }
+
+    $frontier = & $matterExe frontier-status-json
+    if ($LASTEXITCODE -ne 0) {
+        throw "Installed matter frontier-status-json failed with exit code $LASTEXITCODE"
+    }
+    $frontierJson = $frontier | ConvertFrom-Json
+    if (-not $frontierJson.summary.all_non_stub -or -not $frontierJson.summary.all_simulated -or $frontierJson.summary.any_hardware) {
+        throw "Installed matter frontier-status-json failed reality contract"
     }
 
     $runOutput = & $matterExe run $firstRun
@@ -144,11 +165,16 @@ try {
                     "installer copied matter.exe",
                     "installer copied matter-cli.exe",
                     "installer copied first_run example",
+                    "installer copied core status artifact",
+                    "installer copied world status artifact",
+                    "installer copied frontier status artifact",
                     "installer copied diagnosis script",
                     "installer wrote install manifest",
                     "install manifest hashes matter.exe",
                     "installer post-install check passed",
                     "installed CLI capabilities-json works",
+                    "installed CLI world-status-json works",
+                    "installed CLI frontier-status-json works",
                     "installed CLI runs first_run",
                     "installed diagnosis passes",
                     "installed uninstaller refuses unsafe directory",

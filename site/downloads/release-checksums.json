@@ -1,13 +1,13 @@
 ﻿{
-    "generated_at":  "2026-05-17T12:50:24.7924588-03:00",
+    "generated_at":  "2026-05-22T21:27:00.2274269-03:00",
     "format":  "matter-release-artifact-checksums-v1",
     "artifact_count":  1,
     "artifacts":  [
                       {
                           "path":  "dist\\matter-core-windows-x64.zip",
                           "name":  "matter-core-windows-x64.zip",
-                          "size_bytes":  3887005,
-                          "sha256":  "97a227c9d2bcea31ea471418bf9bbfc3dea9afbbea9e627270bc224d4d7b4b45"
+                          "size_bytes":  15773327,
+                          "sha256":  "1e5037074a31db29db4f83120f98162ffc84ab02dd79b0eacbc8e7b734f0ad33"
                       }
                   ]
 }

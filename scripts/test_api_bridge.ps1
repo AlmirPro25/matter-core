@@ -64,6 +64,26 @@ function Assert-Equal($actual, $expected, $message) {
     }
 }
 
+function Normalize-PathForCompare([string]$Path) {
+    if (-not $Path) {
+        return ""
+    }
+
+    $full = [System.IO.Path]::GetFullPath($Path)
+    if ($full.StartsWith("\\?\")) {
+        $full = $full.Substring(4)
+    }
+    return $full.TrimEnd('\', '/')
+}
+
+function Assert-PathEqual($actual, $expected, $message) {
+    $normalizedActual = Normalize-PathForCompare $actual
+    $normalizedExpected = Normalize-PathForCompare $expected
+    if ($normalizedActual -ne $normalizedExpected) {
+        Fail "$message (esperado: $normalizedExpected, recebido: $normalizedActual)"
+    }
+}
+
 if (-not (Test-Path $cli)) {
     Fail "CLI release nao encontrada em $cli. Rode cargo build --release primeiro."
     exit 1
@@ -125,6 +145,15 @@ entry = "api_bridge_project_event_entry.matter"
         Assert-Equal $json.ok $true "capabilities-json deveria retornar ok=true"
         Assert-Equal $json.name "matter-cli" "capabilities-json deveria identificar a CLI"
         Assert-Equal $json.bytecode "MBC1" "capabilities-json deveria declarar bytecode MBC1"
+        if (@($json.json_commands) -notcontains "core-status-json") {
+            Fail "capabilities-json deveria listar core-status-json"
+        }
+        if (@($json.json_commands) -notcontains "world-status-json") {
+            Fail "capabilities-json deveria listar world-status-json"
+        }
+        if (@($json.json_commands) -notcontains "frontier-status-json") {
+            Fail "capabilities-json deveria listar frontier-status-json"
+        }
         if (@($json.json_commands) -notcontains "run-json") {
             Fail "capabilities-json deveria listar run-json"
         }
@@ -194,6 +223,65 @@ entry = "api_bridge_project_event_entry.matter"
         Pass "capabilities-json"
     }
 
+    Write-Host "Validando contrato core-status-json..."
+    $json = Invoke-JsonNoInput @("core-status-json") 0
+    if ($null -ne $json) {
+        Assert-Equal $json.ok $true "core-status-json deveria retornar ok=true"
+        Assert-Equal $json.kind "core_status" "core-status-json deveria declarar kind=core_status"
+        Assert-Equal $json.schema_version 1 "core-status-json deveria declarar schema_version=1"
+        Assert-Equal $json.summary.core_loop_validated $true "core-status-json deveria validar o core loop"
+        Assert-Equal $json.summary.pipeline "source_to_bytecode_to_vm_to_runtime" "core-status-json deveria declarar o pipeline real"
+        Assert-Equal $json.summary.bytecode "MBC1" "core-status-json deveria declarar MBC1"
+        Assert-Equal $json.summary.production_ready $false "core-status-json nao deveria declarar production-ready"
+        foreach ($check in @("parse", "compile", "reflection", "reflexive_guard", "run", "event_dispatch", "output_capture")) {
+            $match = @($json.checks) | Where-Object { $_.name -eq $check } | Select-Object -First 1
+            if ($null -eq $match) {
+                Fail "core-status-json deveria listar check $check"
+            }
+            else {
+                Assert-Equal $match.passed $true "core-status-json check $check deveria passar"
+            }
+        }
+        if (@($json.evidence.output) -notcontains "event: boot") {
+            Fail "core-status-json deveria capturar output do evento boot"
+        }
+        Pass "core-status-json"
+    }
+
+    Write-Host "Validando contrato world-status-json..."
+    $json = Invoke-JsonNoInput @("world-status-json") 0
+    if ($null -ne $json) {
+        Assert-Equal $json.ok $true "world-status-json deveria retornar ok=true"
+        Assert-Equal $json.kind "world_status" "world-status-json deveria declarar kind=world_status"
+        Assert-Equal $json.schema_version 1 "world-status-json deveria declarar schema_version=1"
+        Assert-Equal $json.summary.mode "logical_world_partition" "world-status-json deveria declarar modo distribuido"
+        Assert-Equal $json.summary.degraded $true "world-status-json deveria provar sobrecarga no sample"
+        Assert-Equal $json.summary.hot_cells 1 "world-status-json deveria reportar uma hot cell no sample"
+        Assert-Equal $json.summary.sample_visible_count 2 "world-status-json deveria reportar visiveis para p1"
+        Assert-Equal $json.summary.sample_hidden_count 1 "world-status-json deveria reportar ocultos para p1"
+        Pass "world-status-json"
+    }
+
+    Write-Host "Validando contrato frontier-status-json..."
+    $json = Invoke-JsonNoInput @("frontier-status-json") 0
+    if ($null -ne $json) {
+        Assert-Equal $json.ok $true "frontier-status-json deveria retornar ok=true"
+        Assert-Equal $json.kind "frontier_status" "frontier-status-json deveria declarar kind=frontier_status"
+        Assert-Equal $json.schema_version 1 "frontier-status-json deveria declarar schema_version=1"
+        Assert-Equal $json.summary.all_non_stub $true "frontier-status-json deveria provar all_non_stub=true"
+        Assert-Equal $json.summary.all_simulated $true "frontier-status-json deveria provar all_simulated=true"
+        Assert-Equal $json.summary.any_hardware $false "frontier-status-json deveria provar any_hardware=false"
+        foreach ($backend in @("quantum", "photonic", "neuromorphic", "wetware")) {
+            if ($null -eq $json.backends.$backend) {
+                Fail "frontier-status-json deveria listar backend $backend"
+            }
+            Assert-Equal $json.backends.$backend.stub $false "$backend deveria declarar stub=false"
+            Assert-Equal $json.backends.$backend.hardware $false "$backend deveria declarar hardware=false"
+            Assert-Equal $json.backends.$backend.simulated $true "$backend deveria declarar simulated=true"
+        }
+        Pass "frontier-status-json"
+    }
+
     Write-Host "Inspecionando pacote via package-json..."
     $json = Invoke-JsonNoInput @("package-json") 0
     if ($null -ne $json) {
@@ -223,7 +311,7 @@ entry = "api_bridge_project_event_entry.matter"
     if ($null -ne $json) {
         Assert-Equal $json.ok $true "project-check-json deveria retornar ok=true"
         Assert-Equal $json.package "api-bridge-project" "project-check-json deveria usar nome do pacote"
-        Assert-Equal $json.manifest $projectManifestFile "project-check-json deveria devolver manifesto"
+        Assert-PathEqual $json.manifest $projectManifestFile "project-check-json deveria devolver manifesto"
         Pass "project-check-json"
     }
 

@@ -1,0 +1,9 @@
+console.write("==================================================\n")
+console.write("🌋 MATTER CORE V25: STRESS TEST DE FISICA POR GPU\n")
+console.write("==================================================\n")
+console.write("Carregando 5000 particulas fisicas animadas a 60 FPS...\n")
+
+// Dispara a engine gráfica nativa na placa de vídeo com o simulador físico!
+visual.run_physics_test(5000)
+
+console.write("Simulador finalizado.\n")

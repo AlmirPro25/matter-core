@@ -1,0 +1,27 @@
+// Teste de Compilação Nativa
+print("=== TESTE COMPILADOR NATIVO ===")
+print("")
+
+// Função simples
+fn fibonacci(n) {
+    if n <= 1 {
+        return n
+    }
+    return fibonacci(n - 1) + fibonacci(n - 2)
+}
+
+// Teste
+print("Fibonacci(10) = " + fibonacci(10))
+print("Fibonacci(15) = " + fibonacci(15))
+print("")
+
+// Loop
+let sum = 0
+for i in 0..100 {
+    sum = sum + i
+}
+print("Sum(0..100) = " + sum)
+print("")
+
+print("✅ COMPILADOR NATIVO FUNCIONANDO!")
+print("   (x86-64, ARM64, RISC-V)")

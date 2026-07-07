@@ -16,7 +16,7 @@ fn calcular_pontos(acertos, erros, bonus) {
 }
 
 # Função para classificar desempenho
-fn classificar(pontos) {
+fn classificar(pontos) with io {
     if pontos >= 100 {
         print "🏆 CLASSIFICAÇÃO: MESTRE!"
         return 3
@@ -34,7 +34,7 @@ fn classificar(pontos) {
 }
 
 # Função para mostrar operação
-fn mostrar_operacao(num1, operador, num2, resultado) {
+fn mostrar_operacao(num1, operador, num2, resultado) with io {
     print "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     print "Operação: "
     print num1

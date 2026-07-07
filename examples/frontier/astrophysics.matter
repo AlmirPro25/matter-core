@@ -1,0 +1,70 @@
+// Sprint 64: Astrophysics
+// Stars, supernovae, black holes, neutron stars
+
+use astro;
+
+fn main() {
+    println("=== ASTROPHYSICS ===");
+    
+    // Sun-like star
+    println("\n1. SUN-LIKE STAR");
+    let m_sun = 1.989e30;
+    astro.create_star(m_sun);
+    let lum = astro.star_luminosity();
+    let lifetime = astro.star_lifetime();
+    println("Luminosity: " + lum + " W");
+    println("Main sequence lifetime: " + lifetime + " years");
+    println("Spectral type: G (yellow)");
+    
+    // Massive star
+    println("\n2. MASSIVE STAR (10 M☉)");
+    astro.create_star(10.0 * m_sun);
+    let lum2 = astro.star_luminosity();
+    let lifetime2 = astro.star_lifetime();
+    println("Luminosity: " + lum2 + " W");
+    println("Lifetime: " + lifetime2 + " years");
+    println("Much brighter, shorter life!");
+    
+    // Supernova (forms neutron star)
+    println("\n3. SUPERNOVA (20 M☉)");
+    astro.create_supernova(20.0 * m_sun);
+    let forms_bh = astro.supernova_forms_black_hole();
+    println("Forms black hole: " + forms_bh);
+    println("Type II supernova");
+    println("Leaves neutron star remnant");
+    
+    // Supernova (forms black hole)
+    println("\n4. SUPERNOVA (30 M☉)");
+    astro.create_supernova(30.0 * m_sun);
+    let forms_bh2 = astro.supernova_forms_black_hole();
+    println("Forms black hole: " + forms_bh2);
+    println("Massive enough for black hole!");
+    
+    // Stellar-mass black hole
+    println("\n5. STELLAR BLACK HOLE (10 M☉)");
+    astro.create_black_hole(10.0 * m_sun, 0.0);
+    let temp = astro.black_hole_hawking_temp();
+    println("Hawking temperature: " + temp + " K");
+    println("Schwarzschild (non-rotating)");
+    println("Extremely cold!");
+    
+    // Rotating black hole
+    println("\n6. KERR BLACK HOLE (10 M☉, a=0.9)");
+    astro.create_black_hole(10.0 * m_sun, 0.9);
+    let temp2 = astro.black_hole_hawking_temp();
+    println("Hawking temperature: " + temp2 + " K");
+    println("Rapidly rotating");
+    println("Frame dragging effects");
+    
+    // Neutron star (pulsar)
+    println("\n7. NEUTRON STAR (1.4 M☉)");
+    astro.create_neutron_star(1.4 * m_sun);
+    let g = astro.neutron_star_gravity();
+    println("Surface gravity: " + g + " m/s²");
+    println("Radius: ~12 km");
+    println("Extreme density: nuclear matter!");
+    
+    println("\n=== SIMULATION COMPLETE ===");
+    println("Astrophysics: stellar evolution");
+    println("From stars to black holes");
+}

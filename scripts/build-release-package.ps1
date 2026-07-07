@@ -12,6 +12,24 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
 
+function Test-ReleaseCliContract {
+    param([string]$Path)
+
+    $oldErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        & $Path core-status-json > $null 2> $null
+        if ($LASTEXITCODE -ne 0) { return $false }
+        & $Path world-status-json > $null 2> $null
+        if ($LASTEXITCODE -ne 0) { return $false }
+        & $Path frontier-status-json > $null 2> $null
+        return $LASTEXITCODE -eq 0
+    }
+    finally {
+        $ErrorActionPreference = $oldErrorActionPreference
+    }
+}
+
 function Resolve-ReleaseCli {
     param([string]$ExplicitCliPath)
 
@@ -19,7 +37,11 @@ function Resolve-ReleaseCli {
         if (-not (Test-Path $ExplicitCliPath -PathType Leaf)) {
             throw "CLI binary not found: $ExplicitCliPath"
         }
-        return (Resolve-Path $ExplicitCliPath).Path
+        $resolved = (Resolve-Path $ExplicitCliPath).Path
+        if (-not (Test-ReleaseCliContract $resolved)) {
+            throw "CLI binary does not support core/world/frontier status contracts: $resolved"
+        }
+        return $resolved
     }
 
     $candidates = @()
@@ -35,11 +57,15 @@ function Resolve-ReleaseCli {
 
     foreach ($candidate in $candidates) {
         if (Test-Path $candidate -PathType Leaf) {
-            return (Resolve-Path $candidate).Path
+            $resolved = (Resolve-Path $candidate).Path
+            if (Test-ReleaseCliContract $resolved) {
+                return $resolved
+            }
+            Write-Host "Skipping release CLI without core/world/frontier status contracts: $resolved" -ForegroundColor Yellow
         }
     }
 
-    throw "Release CLI binary not found. Pass -CliPath or run without -SkipBuild."
+    throw "Release CLI binary with core/world/frontier status contracts not found. Pass -CliPath or run without -SkipBuild."
 }
 
 function Copy-File {
@@ -98,6 +124,9 @@ Copy-File "docs\LANGUAGE_TOUR.md" (Join-Path $packagePath "LANGUAGE_TOUR.md")
 Copy-File "docs\technical\RUST_FFI_ABI.md" (Join-Path $packagePath "docs\technical\RUST_FFI_ABI.md")
 Copy-File "docs\technical\FFI_NATIVE_SMOKE.md" (Join-Path $packagePath "docs\technical\FFI_NATIVE_SMOKE.md")
 Copy-File "schemas\ffi-validation-matrix.schema.json" (Join-Path $packagePath "schemas\ffi-validation-matrix.schema.json")
+Copy-File "schemas\core-status.schema.json" (Join-Path $packagePath "schemas\core-status.schema.json")
+Copy-File "schemas\world-status.schema.json" (Join-Path $packagePath "schemas\world-status.schema.json")
+Copy-File "schemas\frontier-status.schema.json" (Join-Path $packagePath "schemas\frontier-status.schema.json")
 
 foreach ($path in @(
     "examples\README.md",
@@ -122,11 +151,23 @@ foreach ($path in @(
 foreach ($path in @(
     "scripts\export-ffi-validation-matrix.ps1",
     "scripts\export-ffi-validation-report.ps1",
+    "scripts\export-core-status.ps1",
+    "scripts\export-world-status.ps1",
+    "scripts\export-frontier-status.ps1",
     "scripts\export-release-readiness.ps1",
     "scripts\export-release-package-manifest.ps1",
     "scripts\ffi-smoke-all.ps1",
     "scripts\test-ffi-validation-matrix-contract.ps1",
     "scripts\test-ffi-validation-report-contract.ps1",
+    "scripts\test-core-status-contract.ps1",
+    "scripts\test-world-status-contract.ps1",
+    "scripts\test-frontier-status-contract.ps1",
+    "scripts\test-status-triad-contract.ps1",
+    "scripts\test-status-triad-history-contract.ps1",
+    "scripts\export-status-triad-trend-report.ps1",
+    "scripts\export-status-triad-health.ps1",
+    "scripts\test-status-triad-health-contract.ps1",
+    "scripts\status-triad-latency-baseline.json",
     "scripts\test-release-readiness-contract.ps1",
     "scripts\test-release-package-contract.ps1",
     "scripts\test-release-install-contract.ps1",
@@ -154,6 +195,27 @@ foreach ($pattern in @("target\ffi\*.json", "target\ffi\*.md")) {
     foreach ($file in $files) {
         Copy-Item -LiteralPath $file.FullName -Destination $ffiTarget -Force
     }
+}
+
+& powershell -ExecutionPolicy Bypass -File ".\scripts\export-frontier-status.ps1" `
+    -CliPath $cliBinary `
+    -Out (Join-Path $packagePath "target\frontier\frontier-status.json")
+if ($LASTEXITCODE -ne 0) {
+    throw "Frontier status export failed with exit code $LASTEXITCODE"
+}
+
+& powershell -ExecutionPolicy Bypass -File ".\scripts\export-core-status.ps1" `
+    -CliPath $cliBinary `
+    -Out (Join-Path $packagePath "target\core\core-status.json")
+if ($LASTEXITCODE -ne 0) {
+    throw "Core status export failed with exit code $LASTEXITCODE"
+}
+
+& powershell -ExecutionPolicy Bypass -File ".\scripts\export-world-status.ps1" `
+    -CliPath $cliBinary `
+    -Out (Join-Path $packagePath "target\world\world-status.json")
+if ($LASTEXITCODE -ne 0) {
+    throw "World status export failed with exit code $LASTEXITCODE"
 }
 
 & powershell -ExecutionPolicy Bypass -File ".\scripts\export-release-package-manifest.ps1" -PackageRoot $packagePath

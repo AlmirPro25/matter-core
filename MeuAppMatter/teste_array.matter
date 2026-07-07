@@ -1,0 +1,5 @@
+let tabuleiro = []
+tabuleiro.push(0)
+tabuleiro.push(0)
+set tabuleiro[1] = 9
+print tabuleiro[1]

@@ -1,0 +1,68 @@
+print "==========================================="
+print " 🧠 REDE NEURAL PROFUNDA (MATTER CORE) "
+print "==========================================="
+
+// Função de Ativação: Elimina ruídos negativos (ReLU)
+fn ativacao_relu(x) {
+    if x > 0.0 {
+        return x
+    }
+    return 0.0
+}
+
+// Processador Genérico de Sinapses para qualquer Neurônio
+fn calcular_neuronio(entradas, pesos, bias) {
+    let tamanho = entradas.len()
+    let i = 0
+    let soma = 0.0
+    
+    while i < tamanho {
+        let x = entradas[i]
+        let w = pesos[i]
+        set soma = soma + (x * w)
+        set i = i + 1
+    }
+    
+    set soma = soma + bias
+    return ativacao_relu(soma)
+}
+
+// Propagação da Rede Neural (Forward Pass)
+// Note como estamos usando múltiplos parâmetros e arrays limpos, graças à sua última correção do compilador!
+fn forward_pass(sensor_1, sensor_2) with io {
+    let input_sinais = [sensor_1, sensor_2]
+    
+    print ">> Processando Camada Oculta (Hidden Layer)..."
+    // Neuronio 1 da Camada Oculta
+    let h1_pesos = [0.8, -0.4]
+    let h1_bias = 0.1
+    let h1_out = calcular_neuronio(input_sinais, h1_pesos, h1_bias)
+    
+    // Neuronio 2 da Camada Oculta
+    let h2_pesos = [-0.2, 0.9]
+    let h2_bias = -0.3
+    let h2_out = calcular_neuronio(input_sinais, h2_pesos, h2_bias)
+    
+    print ">> Processando Camada de Saida (Output Layer)..."
+    // Neuronio Final da Camada de Saída
+    let output_sinais = [h1_out, h2_out]
+    let output_pesos = [1.5, 0.7]
+    let output_bias = 0.2
+    
+    let decisao_final = calcular_neuronio(output_sinais, output_pesos, output_bias)
+    
+    return decisao_final
+}
+
+print " "
+print "[INICIANDO INFERENCIA DA REDE]"
+print "Entradas detectadas no ambiente: [1.0, 0.5]"
+print " "
+
+let resultado = forward_pass(1.0, 0.5)
+
+print " "
+print "==========================================="
+print " 🎯 RESULTADO DA DECISAO NEURAL:"
+print resultado
+print "==========================================="

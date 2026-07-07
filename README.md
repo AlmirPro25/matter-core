@@ -72,6 +72,7 @@ cargo build -p matter-cli --release
 - expose JSON commands for tools, agents, and CI
 - inspect source structure with `reflect-json`
 - evaluate guarded reflexive workflows with `reflexive-guard-json`
+- model distributed game/world state with the `world` backend for spatial cells, interest sets, and overload layers
 - benchmark programs and gate performance budgets
 - run a local visual AI workbench through Matter Studio
 - declare UI layouts in Matter with `visual.*` and preview them in Matter Studio

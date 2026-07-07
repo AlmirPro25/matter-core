@@ -1,0 +1,9 @@
+[package]
+name = "matter-multiscale"
+version = "0.1.0"
+edition = "2021"
+authors = ["Matter Core Team"]
+description = "Multiscale & Multiphysics Simulation - Coupled simulations across spatial/temporal scales and physical domains"
+
+[dependencies]
+matter-backend = { path = "../matter-backend" }

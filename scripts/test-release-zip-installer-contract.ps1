@@ -33,8 +33,10 @@ try {
 
     $matterExe = Join-Path $installRoot "bin\matter.exe"
     $installManifest = Join-Path $installRoot "INSTALL_MANIFEST.json"
+    $worldStatus = Join-Path $installRoot "target\world\world-status.json"
+    $frontierStatus = Join-Path $installRoot "target\frontier\frontier-status.json"
     $diagnoser = Join-Path $installRoot "scripts\diagnose-local-install.ps1"
-    foreach ($required in @($matterExe, $installManifest, $diagnoser)) {
+    foreach ($required in @($matterExe, $installManifest, $worldStatus, $frontierStatus, $diagnoser)) {
         if (-not (Test-Path $required -PathType Leaf)) {
             throw "Release zip installer missing installed file: $required"
         }
@@ -52,6 +54,24 @@ try {
     $capabilitiesJson = $capabilities | ConvertFrom-Json
     if (-not $capabilitiesJson.ok) {
         throw "Installed matter capabilities-json did not report ok=true"
+    }
+
+    $world = & $matterExe world-status-json
+    if ($LASTEXITCODE -ne 0) {
+        throw "Installed matter world-status-json failed with exit code $LASTEXITCODE"
+    }
+    $worldJson = $world | ConvertFrom-Json
+    if (-not $worldJson.ok -or $worldJson.summary.mode -ne "logical_world_partition") {
+        throw "Installed matter world-status-json failed runtime contract"
+    }
+
+    $frontier = & $matterExe frontier-status-json
+    if ($LASTEXITCODE -ne 0) {
+        throw "Installed matter frontier-status-json failed with exit code $LASTEXITCODE"
+    }
+    $frontierJson = $frontier | ConvertFrom-Json
+    if (-not $frontierJson.summary.all_non_stub -or -not $frontierJson.summary.all_simulated -or $frontierJson.summary.any_hardware) {
+        throw "Installed matter frontier-status-json failed reality contract"
     }
 
     $diagnosis = & powershell -NoProfile -ExecutionPolicy Bypass -File $diagnoser -InstallDir $installRoot -AllowMissingPath -Json
@@ -81,7 +101,11 @@ try {
             "zip checksum verified before install",
             "zip installer installed matter.exe",
             "zip installer wrote install manifest",
+            "zip installer installed world status artifact",
+            "zip installer installed frontier status artifact",
             "installed CLI capabilities-json works",
+            "installed CLI world-status-json works",
+            "installed CLI frontier-status-json works",
             "installed diagnosis passes",
             "installed uninstaller removes install root"
         )

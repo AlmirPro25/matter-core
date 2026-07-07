@@ -1,0 +1,28 @@
+# Matter Core Standard Collection Operations
+# Biblioteca de coleções funcionais em Matter puro
+
+fn map(list, f) {
+    let res = []
+    for item in list {
+        set res = list.push(res, f(item))
+    }
+    return res
+}
+
+fn filter(list, f) {
+    let res = []
+    for item in list {
+        if f(item) {
+            set res = list.push(res, item)
+        }
+    }
+    return res
+}
+
+fn reduce(list, f, initial) {
+    let accum = initial
+    for item in list {
+        set accum = f(accum, item)
+    }
+    return accum
+}

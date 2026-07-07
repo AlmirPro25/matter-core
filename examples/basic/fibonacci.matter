@@ -1,0 +1,16 @@
+// Fibonacci sequence in Matter
+
+fn fib(n) {
+    if n < 2 {
+        return n
+    }
+    let a = fib(n - 1)
+    let b = fib(n - 2)
+    return a + b
+}
+
+// Calculate first 10 Fibonacci numbers
+for i in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] {
+    let result = fib(i)
+    print(result)
+}

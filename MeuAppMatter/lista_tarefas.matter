@@ -1,0 +1,82 @@
+print "==========================================="
+print " 📝 SISTEMA GERENCIADOR DE TAREFAS "
+print "==========================================="
+
+let minhas_tarefas = []
+
+// "Registradores" Globais (Como no processador x86)
+let r_id = 0
+let r_titulo = ""
+let r_alvo = 0
+
+fn adicionar_tarefa_global() with io {
+    let t = []
+    t.push(r_id)
+    t.push(r_titulo)
+    t.push(false)
+    minhas_tarefas.push(t)
+    print "-> [+] Tarefa adicionada:"
+    print r_titulo
+}
+
+fn concluir_tarefa_global() with io {
+    let i = 0
+    let tamanho = minhas_tarefas.len()
+    
+    while i < tamanho {
+        let t = minhas_tarefas[i]
+        if t[0] == r_alvo {
+            set t[2] = true
+            print "-> [x] Tarefa concluida:"
+            print t[1]
+        }
+        set i = i + 1
+    }
+}
+
+fn relatorio_pendentes() with io {
+    print "--- TAREFAS PENDENTES ---"
+    let i = 0
+    let tamanho = minhas_tarefas.len()
+    let pendentes = 0
+    
+    while i < tamanho {
+        let t = minhas_tarefas[i]
+        if t[2] == false {
+            print t[1]
+            set pendentes = pendentes + 1
+        }
+        set i = i + 1
+    }
+    if pendentes == 0 {
+        print "Nenhuma tarefa pendente!"
+    }
+}
+
+// ================= EXECUÇÃO =================
+set r_id = 1
+set r_titulo = "Planejar arquitetura de rede"
+adicionar_tarefa_global()
+
+set r_id = 2
+set r_titulo = "Corrigir Call Stack da VM"
+adicionar_tarefa_global()
+
+set r_id = 3
+set r_titulo = "Testar estado global"
+adicionar_tarefa_global()
+
+print " "
+relatorio_pendentes()
+
+print " "
+print ">> Trabalhando nas tarefas..."
+set r_alvo = 1
+concluir_tarefa_global()
+
+set r_alvo = 2
+concluir_tarefa_global()
+
+print " "
+relatorio_pendentes()
+print "==========================================="

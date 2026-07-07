@@ -21,6 +21,17 @@ matter-relativity = { workspace = true }
 matter-chemistry = { workspace = true }
 matter-genesis = { workspace = true }
 matter-biological = { workspace = true }
+matter-biophysics = { workspace = true }
+matter-geophysics = { workspace = true }
+matter-ocean = { workspace = true }
+matter-atmosphere = { workspace = true }
+matter-materials = { workspace = true }
+matter-acoustics = { workspace = true }
+matter-electromagnetics = { workspace = true }
+matter-ml-physics = { path = "../matter-ml-physics" }
+matter-climate = { path = "../matter-climate" }
+matter-multiscale = { path = "../matter-multiscale" }
+matter-cosmology = { workspace = true }
 matter-neuromorphic = { workspace = true }
 matter-polyglot = { path = "../matter-polyglot" }
 matter-bridge-python = { path = "../matter-bridge-python" }

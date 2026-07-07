@@ -1,0 +1,15 @@
+print "============================="
+print " TESTE DE CONCATENAÇÃO"
+print "============================="
+
+let base = "Matter Core"
+let versao = 25
+let prefixo = "Rodando "
+let traco = " - v"
+
+// Aqui a mágica vai acontecer: a VM agora sabe converter 
+// inteiros e somar tudo em um único pacote de memória de texto!
+let texto_final = prefixo + base + traco + versao + " (Stable)"
+
+print texto_final
+print "============================="

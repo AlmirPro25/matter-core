@@ -1,0 +1,4 @@
+=== MATTER CORE PERFORMANCE REPORT ===
+Fibonacci(30) resultado: 832040
+Tempo de calculo: 6994 ms
+Data: 2026-05-22

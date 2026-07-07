@@ -1,0 +1,36 @@
+print "==========================================="
+print " 🎒 SISTEMA DE INVENTARIO "
+print "==========================================="
+
+let inventario = {
+    "espadas": 5,
+    "escudos": 2,
+    "pocoes": 15
+}
+
+print "[ESTADO INICIAL]"
+print inventario
+
+print "-> Aventureiro comprou 1 espada..."
+let qtd_espadas = inventario["espadas"]
+set inventario["espadas"] = qtd_espadas + 1
+
+print "-> Aventureiro usou 4 pocoes em batalha..."
+let qtd_pocoes = inventario["pocoes"]
+set inventario["pocoes"] = qtd_pocoes - 4
+
+print "-> Encontrou um novo item de Ouro!"
+set inventario["ouro"] = 500
+
+print "[ESTADO FINAL ATUALIZADO]"
+print inventario
+
+print "Categorias de itens (Chaves):"
+print inventario.keys()
+
+print "Quantidades (Valores):"
+print inventario.values()
+
+print "Possui escudo?"
+print inventario.has("escudos")
+print "==========================================="

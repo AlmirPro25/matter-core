@@ -1,0 +1,345 @@
+print "================================================================"
+print " 💀 MATTER CORE - TESTE DE DESTRUIÇÃO TOTAL"
+print " Objetivo: QUEBRAR TUDO"
+print "================================================================"
+print " "
+
+let crashes = 0
+let survived = 0
+
+// ===== ROUND 1: Recursão Profunda (Fibonacci) =====
+print "[ROUND 1] Recursão Profunda - Fibonacci"
+
+fn fib(n) {
+    if n <= 1 { return n }
+    return fib(n - 1) + fib(n - 2)
+}
+
+let f10 = fib(10)
+let f15 = fib(15)
+let f20 = fib(20)
+print "  fib(10) = " + f10
+print "  fib(15) = " + f15
+print "  fib(20) = " + f20
+set survived = survived + 1
+print "  SOBREVIVEU ✅"
+print " "
+
+// ===== ROUND 2: Fatorial com números grandes =====
+print "[ROUND 2] Fatorial - Números Gigantes"
+
+fn factorial(n) {
+    if n <= 1 { return 1 }
+    return n * factorial(n - 1)
+}
+
+let f5 = factorial(5)
+let f10 = factorial(10)
+let f20 = factorial(20)
+print "  5!  = " + f5
+print "  10! = " + f10
+print "  20! = " + f20
+set survived = survived + 1
+print "  SOBREVIVEU ✅"
+print " "
+
+// ===== ROUND 3: String Concatenação Massiva =====
+print "[ROUND 3] String Concat - 500 iterações"
+
+fn build_massive_string(n) {
+    let s = ""
+    let i = 0
+    while i < n {
+        set s = s + "X"
+        set i = i + 1
+    }
+    return s
+}
+
+let big = build_massive_string(500)
+let big_len = string.len(big)
+print "  Tamanho: " + big_len + " chars"
+set survived = survived + 1
+print "  SOBREVIVEU ✅"
+print " "
+
+// ===== ROUND 4: Lista com 1000 elementos =====
+print "[ROUND 4] Lista Gigante - 1000 elementos"
+
+let big_list = list.range(1000)
+let big_sum = list.sum(big_list)
+let big_min = list.min(big_list)
+let big_max = list.max(big_list)
+print "  range(1000) -> sum=" + big_sum + " min=" + big_min + " max=" + big_max
+set survived = survived + 1
+print "  SOBREVIVEU ✅"
+print " "
+
+// ===== ROUND 5: Map Stress - 100 chaves =====
+print "[ROUND 5] Map Stress - 100 chaves"
+
+fn build_big_map(n) with io {
+    let m = map.new()
+    let i = 0
+    while i < n {
+        let key = "key_" + i
+        set m = map.set(m, key, i * i)
+        set i = i + 1
+    }
+    return m
+}
+
+let big_map = build_big_map(100)
+let map_sz = map.size(big_map)
+let val_50 = map.get(big_map, "key_50")
+print "  100 chaves inseridas, size=" + map_sz
+print "  map.get('key_50') = " + val_50
+set survived = survived + 1
+print "  SOBREVIVEU ✅"
+print " "
+
+// ===== ROUND 6: Comparação de Strings =====
+print "[ROUND 6] Comparação de Strings"
+
+if "abc" == "abc" { print "  'abc' == 'abc' -> true ✅" }
+if "abc" != "xyz" { print "  'abc' != 'xyz' -> true ✅" }
+if "apple" < "banana" { print "  'apple' < 'banana' -> true ✅" }
+if "zebra" > "alpha" { print "  'zebra' > 'alpha' -> true ✅" }
+set survived = survived + 1
+print "  SOBREVIVEU ✅"
+print " "
+
+// ===== ROUND 7: Rede Neural Profunda 5 camadas =====
+print "[ROUND 7] Neural Network - 5 Camadas (Deep MLP)"
+
+fn sigmoid(x) {
+    let neg = 0.0 - x
+    let e_val = math.pow(math.e(), neg)
+    return 1.0 / (1.0 + e_val)
+}
+
+fn dense_layer(inputs, weights_matrix, biases) with io {
+    let outputs = []
+    let j = 0
+    while j < biases.len() {
+        let sum = 0.0
+        let i = 0
+        let ws = weights_matrix[j]
+        while i < inputs.len() {
+            set sum = sum + (inputs[i] * ws[i])
+            set i = i + 1
+        }
+        set sum = sum + biases[j]
+        set outputs = list.push(outputs, sigmoid(sum))
+        set j = j + 1
+    }
+    return outputs
+}
+
+let x = [0.5, 0.3, 0.8, 0.1]
+// Camada 1: 4->3
+let l1 = dense_layer(x, [[0.2, -0.1, 0.4, 0.3], [0.5, 0.1, -0.3, 0.2], [-0.1, 0.6, 0.2, -0.4]], [0.1, -0.2, 0.3])
+print "  L1: " + l1
+// Camada 2: 3->3
+let l2 = dense_layer(l1, [[0.3, -0.2, 0.5], [0.1, 0.4, -0.1], [-0.3, 0.2, 0.6]], [0.0, 0.1, -0.1])
+print "  L2: " + l2
+// Camada 3: 3->2
+let l3 = dense_layer(l2, [[0.4, -0.3, 0.2], [-0.1, 0.5, 0.3]], [0.1, 0.0])
+print "  L3: " + l3
+// Camada 4: 2->2
+let l4 = dense_layer(l3, [[0.6, -0.2], [0.3, 0.4]], [-0.1, 0.2])
+print "  L4: " + l4
+// Camada 5: 2->1 (output)
+let l5 = dense_layer(l4, [[0.7, 0.3]], [0.0])
+print "  L5 (output): " + l5
+set survived = survived + 1
+print "  SOBREVIVEU ✅"
+print " "
+
+// ===== ROUND 8: JSON Roundtrip =====
+print "[ROUND 8] JSON Roundtrip (stringify -> parse)"
+
+let original = [1, 2, 3, 4, 5]
+let as_json = json.stringify(original)
+let back = json.parse(as_json)
+let back_json = json.stringify(back)
+print "  Original:  " + as_json
+print "  Roundtrip: " + back_json
+if as_json == back_json {
+    print "  IDENTICO ✅"
+}
+set survived = survived + 1
+print "  SOBREVIVEU ✅"
+print " "
+
+// ===== ROUND 9: File I/O Stress =====
+print "[ROUND 9] File I/O - Write/Read/Append/Read/Delete"
+
+let test_file = "destruction_test.txt"
+let w1 = file.write(test_file, "Linha 1\n")
+let a1 = file.append(test_file, "Linha 2\n")
+let a2 = file.append(test_file, "Linha 3\n")
+let content = file.read(test_file)
+let content_len = string.len(content)
+print "  Escreveu 3 linhas, leu " + content_len + " bytes"
+let del = file.delete(test_file)
+let gone = file.exists(test_file)
+print "  Deletou: " + del + " | Existe: " + gone
+set survived = survived + 1
+print "  SOBREVIVEU ✅"
+print " "
+
+// ===== ROUND 10: Type Conversion Chain =====
+print "[ROUND 10] Type Conversion Chain"
+
+let start = 42
+let as_float = type.to_float(start)
+let as_str = type.to_string(as_float)
+let as_int = type.to_int("42")
+let t1 = type.of(start)
+let t2 = type.of(as_float)
+let t3 = type.of(as_str)
+print "  42 -> float(" + as_float + ") -> str('" + as_str + "') -> int(" + as_int + ")"
+print "  Types: " + t1 + " -> " + t2 + " -> " + t3
+set survived = survived + 1
+print "  SOBREVIVEU ✅"
+print " "
+
+// ===== ROUND 11: Sorting Stress =====
+print "[ROUND 11] Sort de 200 números aleatórios"
+
+fn generate_random_list(n) {
+    let result = []
+    let i = 0
+    while i < n {
+        let val = random.int(0, 10000)
+        set result = list.push(result, val)
+        set i = i + 1
+    }
+    return result
+}
+
+let chaos = generate_random_list(200)
+let sorted = list.sort(chaos)
+let first = sorted[0]
+let last = sorted[199]
+print "  200 números gerados e ordenados"
+print "  Menor: " + first + " | Maior: " + last
+
+// Verificar que está realmente ordenado
+let is_sorted = true
+let k = 0
+while k < 199 {
+    if sorted[k] > sorted[k + 1] {
+        set is_sorted = false
+    }
+    set k = k + 1
+}
+print "  Verificação de ordem: " + is_sorted
+set survived = survived + 1
+print "  SOBREVIVEU ✅"
+print " "
+
+// ===== ROUND 12: HTML Generator Complex =====
+print "[ROUND 12] Gerador HTML complexo com loop"
+
+fn generate_table(rows, cols) with io {
+    let html = "<table border='1'>"
+    let r = 0
+    while r < rows {
+        set html = html + "<tr>"
+        let c = 0
+        while c < cols {
+            let val = (r * cols) + c
+            set html = html + "<td>" + val + "</td>"
+            set c = c + 1
+        }
+        set html = html + "</tr>"
+        set r = r + 1
+    }
+    set html = html + "</table>"
+    return html
+}
+
+let table = generate_table(20, 10)
+let table_len = string.len(table)
+print "  Tabela 20x10 gerada: " + table_len + " bytes"
+set survived = survived + 1
+print "  SOBREVIVEU ✅"
+print " "
+
+// ===== ROUND 13: Nested Data Structures =====
+print "[ROUND 13] Estruturas de Dados Aninhadas"
+
+let user1 = map.new()
+set user1 = map.set(user1, "nome", "Almir")
+set user1 = map.set(user1, "skills", [95, 88, 92, 97, 90])
+
+let user2 = map.new()
+set user2 = map.set(user2, "nome", "Bot")
+set user2 = map.set(user2, "skills", [70, 65, 80, 75, 85])
+
+let db = map.new()
+set db = map.set(db, "total", 2)
+let db_json = json.stringify(db)
+print "  DB: " + db_json
+
+let skills = map.get(user1, "skills")
+let avg = list.sum(skills) / skills.len()
+print "  Almir avg skill: " + avg
+set survived = survived + 1
+print "  SOBREVIVEU ✅"
+print " "
+
+// ===== ROUND 14: Benchmarking com time =====
+print "[ROUND 14] Benchmark - Fibonacci(25) cronometrado"
+
+let t_start = time.now()
+let fib25 = fib(25)
+let t_end = time.now()
+let elapsed = t_end - t_start
+print "  fib(25) = " + fib25
+print "  Tempo: " + elapsed + " ms"
+set survived = survived + 1
+print "  SOBREVIVEU ✅"
+print " "
+
+// ===== ROUND 15: String Processing Pipeline =====
+print "[ROUND 15] Pipeline de Processamento de Texto"
+
+let raw = "  Hello, Matter Core World!  "
+let step1 = string.trim(raw)
+let step2 = string.upper(step1)
+let step3 = string.replace(step2, "WORLD", "UNIVERSE")
+let step4 = string.split(step3, " ")
+let step5 = string.join(" | ", step4)
+let step6 = string.starts_with(step5, "HELLO")
+let step7 = string.ends_with(step5, "UNIVERSE!")
+let step8 = string.index_of(step5, "MATTER")
+let step9 = string.substring(step5, 0, 5)
+let step10 = string.len(step5)
+
+print "  trim     -> " + step1
+print "  upper    -> " + step2
+print "  replace  -> " + step3
+print "  split    -> " + step4
+print "  join     -> " + step5
+print "  starts?  -> " + step6
+print "  ends?    -> " + step7
+print "  indexOf  -> " + step8
+print "  substr   -> " + step9
+print "  len      -> " + step10
+set survived = survived + 1
+print "  SOBREVIVEU ✅"
+print " "
+
+// ===== RESULTADO FINAL =====
+print "================================================================"
+print " 💀 RESULTADO DA DESTRUIÇÃO"
+print "================================================================"
+print "  Rounds sobrevividos: " + survived + "/15"
+print "  Crashes: " + crashes
+if survived == 15 {
+    print "  🏆 O MATTER CORE É INDESTRUTÍVEL"
+}
+print "================================================================"

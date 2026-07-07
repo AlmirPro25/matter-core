@@ -1,0 +1,220 @@
+// Matter Biophysics - Computational Biophysics Simulation
+// Sprint 69: Biophysics
+
+// ============================================================================
+// MEMBRANE BIOPHYSICS
+// ============================================================================
+
+print("=== MEMBRANE BIOPHYSICS ===")
+
+// Create membrane with typical mammalian concentrations
+let membrane = biophysics.membrane_new()
+print("Membrane created: " + membrane)
+
+// Calculate Nernst potentials for different ions
+let e_k = biophysics.nernst_potential("K")
+print("K+ Nernst potential: " + e_k + " mV")
+
+let e_na = biophysics.nernst_potential("Na")
+print("Na+ Nernst potential: " + e_na + " mV")
+
+let e_ca = biophysics.nernst_potential("Ca")
+print("Ca2+ Nernst potential: " + e_ca + " mV")
+
+let e_cl = biophysics.nernst_potential("Cl")
+print("Cl- Nernst potential: " + e_cl + " mV")
+
+// Calculate resting membrane potential (GHK equation)
+// At rest: K+ is most permeable
+let v_rest = biophysics.ghk_potential(0.04, 1.0, 0.45)
+print("Resting potential (GHK): " + v_rest + " mV")
+
+print("")
+
+// ============================================================================
+// ELECTROPHYSIOLOGY (HODGKIN-HUXLEY MODEL)
+// ============================================================================
+
+print("=== HODGKIN-HUXLEY ACTION POTENTIAL ===")
+
+// Create Hodgkin-Huxley neuron
+let neuron = biophysics.hh_new()
+print("Neuron created: " + neuron)
+
+// Simulate action potential with 10 μA/cm² stimulus
+let max_voltage = biophysics.hh_action_potential(10.0, 5.0)
+print("Max voltage during action potential: " + max_voltage + " mV")
+
+// Single step simulation
+let v_after = biophysics.hh_step(10.0, 0.01)
+print("Voltage after 0.01ms with 10μA/cm²: " + v_after + " mV")
+
+print("")
+
+// ============================================================================
+// ENZYME KINETICS
+// ============================================================================
+
+print("=== ENZYME KINETICS ===")
+
+// Create enzyme with Vmax=100 μM/s, Km=10 μM
+let enzyme = biophysics.enzyme_new(100.0, 10.0)
+print("Enzyme created: " + enzyme)
+
+// Calculate reaction rate at different substrate concentrations
+let rate_low = biophysics.enzyme_rate(100.0, 10.0, 5.0)
+print("Rate at [S]=5μM: " + rate_low + " μM/s")
+
+let rate_km = biophysics.enzyme_rate(100.0, 10.0, 10.0)
+print("Rate at [S]=Km: " + rate_km + " μM/s")
+
+let rate_high = biophysics.enzyme_rate(100.0, 10.0, 100.0)
+print("Rate at [S]=100μM: " + rate_high + " μM/s")
+
+// Calculate catalytic efficiency
+let efficiency = biophysics.enzyme_efficiency(100.0, 10.0)
+print("Catalytic efficiency: " + efficiency + " 1/(μM·s)")
+
+print("")
+
+// ============================================================================
+// PROTEIN DYNAMICS
+// ============================================================================
+
+print("=== PROTEIN FOLDING ===")
+
+// Create protein with 100 amino acids
+let protein = biophysics.protein_new(100)
+print("Protein created: " + protein)
+
+// Calculate folding probability at 37°C
+let p_fold = biophysics.protein_folding_prob(100)
+print("Folding probability: " + p_fold)
+
+// Calculate folding rate
+let k_fold = biophysics.protein_folding_rate(100)
+print("Folding rate: " + k_fold + " 1/s")
+
+// Small protein (faster folding)
+let p_fold_small = biophysics.protein_folding_prob(50)
+print("Small protein (50aa) folding prob: " + p_fold_small)
+
+let k_fold_small = biophysics.protein_folding_rate(50)
+print("Small protein folding rate: " + k_fold_small + " 1/s")
+
+print("")
+
+// ============================================================================
+// DNA MECHANICS
+// ============================================================================
+
+print("=== DNA MECHANICS ===")
+
+// Analyze DNA sequence
+let seq1 = "ATGC"
+let gc1 = biophysics.dna_gc_content(seq1)
+print("Sequence: " + seq1)
+print("GC content: " + gc1)
+
+let tm1 = biophysics.dna_melting_temp(seq1)
+print("Melting temperature: " + tm1 + "°C")
+
+let stability1 = biophysics.dna_stability(seq1)
+print("Stability: " + stability1 + " kcal/mol")
+
+print("")
+
+// GC-rich sequence (more stable)
+let seq2 = "GCGCGCGC"
+let gc2 = biophysics.dna_gc_content(seq2)
+print("GC-rich sequence: " + seq2)
+print("GC content: " + gc2)
+
+let tm2 = biophysics.dna_melting_temp(seq2)
+print("Melting temperature: " + tm2 + "°C")
+
+let stability2 = biophysics.dna_stability(seq2)
+print("Stability: " + stability2 + " kcal/mol")
+
+print("")
+
+// AT-rich sequence (less stable)
+let seq3 = "ATATATAT"
+let gc3 = biophysics.dna_gc_content(seq3)
+print("AT-rich sequence: " + seq3)
+print("GC content: " + gc3)
+
+let tm3 = biophysics.dna_melting_temp(seq3)
+print("Melting temperature: " + tm3 + "°C")
+
+let stability3 = biophysics.dna_stability(seq3)
+print("Stability: " + stability3 + " kcal/mol")
+
+print("")
+
+// ============================================================================
+// CELLULAR MECHANICS
+// ============================================================================
+
+print("=== CELLULAR MECHANICS ===")
+
+// Create cell with 10 μm radius
+let cell = biophysics.cell_new(10.0)
+print("Cell created: " + cell)
+
+// Calculate Laplace pressure
+let pressure = biophysics.cell_laplace_pressure(10.0)
+print("Laplace pressure: " + pressure + " Pa")
+
+// Calculate volume
+let volume = biophysics.cell_volume(10.0)
+print("Cell volume: " + volume + " μm³")
+
+// Calculate deformation under force
+let deformation = biophysics.cell_deformation(10.0, 1e-9)
+print("Deformation under 1nN force: " + deformation + " μm")
+
+print("")
+
+// Small cell (higher pressure)
+let cell_small = biophysics.cell_new(5.0)
+print("Small cell: " + cell_small)
+
+let pressure_small = biophysics.cell_laplace_pressure(5.0)
+print("Laplace pressure: " + pressure_small + " Pa")
+
+let volume_small = biophysics.cell_volume(5.0)
+print("Cell volume: " + volume_small + " μm³")
+
+print("")
+
+// ============================================================================
+// REAL-WORLD APPLICATIONS
+// ============================================================================
+
+print("=== REAL-WORLD APPLICATIONS ===")
+
+// 1. Drug Design: Enzyme inhibition
+print("1. Drug Design - Enzyme Inhibition")
+let drug_km = 0.1  // Strong inhibitor (low Km)
+let drug_rate = biophysics.enzyme_rate(100.0, drug_km, 10.0)
+print("   Inhibited enzyme rate: " + drug_rate + " μM/s")
+
+// 2. Neuroscience: Action potential propagation
+print("2. Neuroscience - Action Potential")
+let ap_peak = biophysics.hh_action_potential(15.0, 3.0)
+print("   Action potential peak: " + ap_peak + " mV")
+
+// 3. Genetics: PCR primer design
+print("3. Genetics - PCR Primer Design")
+let primer = "GCGCGCGCGCGCGCGC"
+let primer_tm = biophysics.dna_melting_temp(primer)
+print("   Primer Tm: " + primer_tm + "°C")
+
+// 4. Cell Biology: Osmotic pressure
+print("4. Cell Biology - Osmotic Pressure")
+let osmotic_p = biophysics.cell_laplace_pressure(8.0)
+print("   Osmotic pressure: " + osmotic_p + " Pa")
+
+print("")
+print("=== BIOPHYSICS SIMULATION COMPLETE ===")

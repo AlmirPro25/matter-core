@@ -1,0 +1,10 @@
+[package]
+name = "matter-ml-physics"
+version = "0.1.0"
+edition = "2021"
+authors = ["Matter Core Team"]
+description = "Machine Learning for Physics - Neural networks, physics-informed neural networks, symbolic regression"
+
+[dependencies]
+matter-backend = { path = "../matter-backend" }
+rand = "0.8"

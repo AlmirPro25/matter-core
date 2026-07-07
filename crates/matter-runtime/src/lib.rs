@@ -5,6 +5,17 @@ use matter_backend::{
     AgentBackend, Backend, GraphBackend, NetBackend, StoreBackend, ToolBackend, Value,
 };
 use matter_biological::backend::BiologicalBackend;
+use matter_biophysics::backend::BiophysicsBackend;
+use matter_geophysics::backend::GeophysicsBackend;
+use matter_ocean::backend::OceanBackend;
+use matter_atmosphere::backend::AtmosphereBackend;
+use matter_materials::backend::MaterialsBackend;
+use matter_acoustics::backend::AcousticsBackend;
+use matter_electromagnetics::backend::ElectromagneticsBackend;
+use matter_ml_physics::backend::MLPhysicsBackend;
+use matter_climate::backend::ClimateBackend;
+use matter_multiscale::backend::MultiscaleBackend;
+use matter_cosmology::backend::CosmologyBackend;
 use matter_bridge_go::{Bridge as GoBridgeTrait, GoBridge};
 use matter_bridge_java::{Bridge as JavaBridgeTrait, JavaBridge};
 use matter_bridge_nodejs::NodeJSBridge;
@@ -24,8 +35,9 @@ use matter_quantum::backend::QuantumBackend;
 use matter_relativity::backend::RelativityBackend;
 use matter_spintronics::backend::SpintronicsBackend;
 use matter_stdlib::{
-    AudioBackend, ConsoleBackend, FileBackend, JsonBackend, ListBackend, MapBackend, MathBackend,
-    RandomBackend, StringBackend, TimeBackend, TypeBackend,
+    AudioBackend, ConsoleBackend, FileBackend, FileIOBackend, HashMapBackend, JsonBackend, 
+    ListBackend, MapBackend, MathBackend, RandomBackend, StringBackend, TensorBackend, TimeBackend, 
+    TypeBackend, VecBackend, WorldBackend,
 };
 use matter_visual::TraceVisualBackend;
 use matter_wetware::backend::WetwareBackend;
@@ -362,6 +374,7 @@ fn register_stdlib_backends(vm: &mut Vm, include_extended: bool) {
     vm.register_backend("time".to_string(), Box::new(TimeBackend::new()));
     vm.register_backend("random".to_string(), Box::new(RandomBackend::new()));
     vm.register_backend("json".to_string(), Box::new(JsonBackend::new()));
+    vm.register_backend("world".to_string(), Box::new(WorldBackend::new()));
     vm.register_backend("wetware".to_string(), Box::new(WetwareBackend::new()));
     vm.register_backend("quantum".to_string(), Box::new(QuantumBackend::new()));
     vm.register_backend("memristive".to_string(), Box::new(MemristiveBackend::new()));
@@ -375,29 +388,55 @@ fn register_stdlib_backends(vm: &mut Vm, include_extended: bool) {
     vm.register_backend("chemistry".to_string(), Box::new(ChemistryBackend::new()));
     vm.register_backend("genesis".to_string(), Box::new(GenesisBackend::new()));
     vm.register_backend("biology".to_string(), Box::new(BiologicalBackend::new()));
+    vm.register_backend("biophysics".to_string(), Box::new(BiophysicsBackend));
+    vm.register_backend("geophysics".to_string(), Box::new(GeophysicsBackend));
+    vm.register_backend("ocean".to_string(), Box::new(OceanBackend));
+    vm.register_backend("atmosphere".to_string(), Box::new(AtmosphereBackend));
+    vm.register_backend("materials".to_string(), Box::new(MaterialsBackend));
+    vm.register_backend("acoustics".to_string(), Box::new(AcousticsBackend));
+    vm.register_backend("electromagnetics".to_string(), Box::new(ElectromagneticsBackend));
+    vm.register_backend("ml_physics".to_string(), Box::new(MLPhysicsBackend));
+    vm.register_backend("climate".to_string(), Box::new(ClimateBackend));
+    vm.register_backend("multiscale".to_string(), Box::new(MultiscaleBackend));
+    vm.register_backend("cosmology".to_string(), Box::new(CosmologyBackend));
     vm.register_backend(
         "neuromorphic".to_string(),
         Box::new(NeuromorphicBackend::new()),
     );
 
     vm.register_backend("audio".to_string(), Box::new(AudioBackend::new()));
+    
+    // Sprint 80: New stdlib backends
+    vm.register_backend("Vec".to_string(), Box::new(VecBackend::new()));
+    vm.register_backend("HashMap".to_string(), Box::new(HashMapBackend::new()));
+
+    // Tensor backend: algebra linear nativa
+    vm.register_backend("tensor".to_string(), Box::new(TensorBackend::new()));
 
     if include_extended {
         vm.register_backend("map".to_string(), Box::new(MapBackend::new()));
         vm.register_backend("type".to_string(), Box::new(TypeBackend::new()));
         vm.register_backend("console".to_string(), Box::new(ConsoleBackend::new()));
         vm.register_backend("file".to_string(), Box::new(FileBackend::new()));
+        // Sprint 80: FileIO backend (separate from legacy FileBackend)
+        vm.register_backend("fileio".to_string(), Box::new(FileIOBackend::new()));
     }
 }
 
 fn register_polyglot_backends(vm: &mut Vm) {
     vm.register_backend(
         "python".to_string(),
-        Box::new(PolyglotBackend::new("Python", Box::new(PythonBridge::new()))),
+        Box::new(PolyglotBackend::new(
+            "Python",
+            Box::new(PythonBridge::new()),
+        )),
     );
     vm.register_backend(
         "node".to_string(),
-        Box::new(PolyglotBackend::new("Node.js", Box::new(NodeJSBridge::new()))),
+        Box::new(PolyglotBackend::new(
+            "Node.js",
+            Box::new(NodeJSBridge::new()),
+        )),
     );
     vm.register_backend(
         "java".to_string(),
@@ -408,7 +447,10 @@ fn register_polyglot_backends(vm: &mut Vm) {
     );
     vm.register_backend(
         "go".to_string(),
-        Box::new(PolyglotBackend::new("Go", Box::new(GoLanguageBridge::new()))),
+        Box::new(PolyglotBackend::new(
+            "Go",
+            Box::new(GoLanguageBridge::new()),
+        )),
     );
     vm.register_backend(
         "rust".to_string(),
@@ -468,7 +510,10 @@ impl PolyglotBackend {
     fn status(&mut self) -> Value {
         let ready = self.ensure_initialized().is_ok();
         let mut map = HashMap::new();
-        map.insert("backend".to_string(), Value::new_string(self.display_name.clone()));
+        map.insert(
+            "backend".to_string(),
+            Value::new_string(self.display_name.clone()),
+        );
         map.insert("ready".to_string(), Value::Bool(ready));
         map.insert("stub".to_string(), Value::Bool(false));
         map.insert(
@@ -571,7 +616,9 @@ impl LanguageBridge for GoLanguageBridge {
     }
 
     fn import_module(&mut self, module: &str) -> Result<(), String> {
-        self.inner.load_module(module).map_err(|e| format!("{:?}", e))
+        self.inner
+            .load_module(module)
+            .map_err(|e| format!("{:?}", e))
     }
 
     fn call_function(
@@ -628,7 +675,9 @@ impl LanguageBridge for JavaLanguageBridge {
     }
 
     fn import_module(&mut self, module: &str) -> Result<(), String> {
-        self.inner.load_module(module).map_err(|e| format!("{:?}", e))
+        self.inner
+            .load_module(module)
+            .map_err(|e| format!("{:?}", e))
     }
 
     fn call_function(
@@ -1034,7 +1083,10 @@ mod tests {
 
         assert_eq!(map.get("ready"), Some(&Value::Bool(true)));
         assert_eq!(map.get("stub"), Some(&Value::Bool(false)));
-        assert_eq!(map.get("mode"), Some(&Value::new_string("real".to_string())));
+        assert_eq!(
+            map.get("mode"),
+            Some(&Value::new_string("real".to_string()))
+        );
         assert!(matches!(map.get("backend"), Some(Value::String(_))));
     }
 
@@ -1058,5 +1110,135 @@ mod tests {
             .expect("call should return string");
 
         assert_eq!(output, "math.sqrt(1)");
+    }
+
+    #[test]
+    fn frontier_backends_execute_through_runtime() {
+        let mut runtime = Runtime::new_silent(Bytecode::new());
+
+        for backend in ["quantum", "photonic", "neuromorphic", "wetware"] {
+            let status = runtime.call_backend(backend, "status", vec![]).unwrap();
+            let Value::Map(map) = status else {
+                panic!("{backend}.status should return a map");
+            };
+            assert_eq!(map.get("stub"), Some(&Value::Bool(false)));
+            assert_eq!(map.get("hardware"), Some(&Value::Bool(false)));
+            assert_eq!(map.get("simulated"), Some(&Value::Bool(true)));
+            assert!(matches!(map.get("capabilities"), Some(Value::List(_))));
+        }
+
+        let bell = runtime
+            .call_backend("quantum", "bell_state", vec![])
+            .unwrap();
+        let Value::List(bits) = bell else {
+            panic!("quantum.bell_state should return measured bits");
+        };
+        assert_eq!(bits.len(), 2);
+        assert!(bits.iter().all(|bit| matches!(bit, Value::Int(0 | 1))));
+
+        let photonic_and = runtime
+            .call_backend(
+                "photonic",
+                "and",
+                vec![Value::Float(0.9), Value::Float(0.8)],
+            )
+            .unwrap();
+        assert_eq!(photonic_and, Value::Float(1.0));
+
+        runtime
+            .call_backend(
+                "neuromorphic",
+                "init",
+                vec![Value::Int(3), Value::Float(0.1)],
+            )
+            .unwrap();
+        runtime
+            .call_backend(
+                "neuromorphic",
+                "add_synapse",
+                vec![Value::Int(0), Value::Int(1), Value::Float(0.5)],
+            )
+            .unwrap();
+        let spikes = runtime
+            .call_backend(
+                "neuromorphic",
+                "step",
+                vec![Value::new_list(vec![
+                    Value::Float(20.0),
+                    Value::Float(0.0),
+                    Value::Float(0.0),
+                ])],
+            )
+            .unwrap();
+        assert!(matches!(spikes, Value::List(_)));
+
+        let wetware_response = runtime
+            .call_backend(
+                "wetware",
+                "stimulate",
+                vec![Value::new_list(vec![
+                    Value::Bool(true),
+                    Value::Bool(false),
+                    Value::Bool(true),
+                ])],
+            )
+            .unwrap();
+        let Value::List(response) = wetware_response else {
+            panic!("wetware.stimulate should return a spike response list");
+        };
+        assert_eq!(response.len(), 3);
+    }
+
+    #[test]
+    fn world_backend_executes_through_runtime() {
+        let mut runtime = Runtime::new_silent(Bytecode::new());
+        runtime
+            .call_backend(
+                "world",
+                "configure",
+                vec![
+                    Value::Float(100.0),
+                    Value::Float(150.0),
+                    Value::Int(2),
+                    Value::Int(2),
+                ],
+            )
+            .unwrap();
+
+        for (id, x, y) in [
+            ("p1", 10.0, 10.0),
+            ("p2", 15.0, 15.0),
+            ("p3", 20.0, 20.0),
+            ("p4", 120.0, 10.0),
+        ] {
+            runtime
+                .call_backend(
+                    "world",
+                    "place",
+                    vec![
+                        Value::new_string(id.to_string()),
+                        Value::Float(x),
+                        Value::Float(y),
+                    ],
+                )
+                .unwrap();
+        }
+
+        let nearby = runtime
+            .call_backend("world", "nearby", vec![Value::new_string("p1".to_string())])
+            .unwrap();
+        let Value::Map(nearby_map) = nearby else {
+            panic!("world.nearby should return a map");
+        };
+        assert_eq!(nearby_map.get("visible_count"), Some(&Value::Int(2)));
+        assert_eq!(nearby_map.get("hidden_count"), Some(&Value::Int(1)));
+
+        let plan = runtime.call_backend("world", "plan", vec![]).unwrap();
+        let Value::Map(plan_map) = plan else {
+            panic!("world.plan should return a map");
+        };
+        assert_eq!(plan_map.get("entities"), Some(&Value::Int(4)));
+        assert_eq!(plan_map.get("hot_cells"), Some(&Value::Int(1)));
+        assert_eq!(plan_map.get("degraded"), Some(&Value::Bool(true)));
     }
 }

@@ -1,0 +1,14 @@
+[package]
+name = "matter-compiler"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+matter-lexer.workspace = true
+matter-parser.workspace = true
+matter-ast.workspace = true
+matter-bytecode.workspace = true
+matter-error.workspace = true
+matter-optimizer.workspace = true

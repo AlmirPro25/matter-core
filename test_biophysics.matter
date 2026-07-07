@@ -1,0 +1,48 @@
+// Teste rápido de Biofísica
+print("=== TESTE BIOFÍSICA ===")
+print("")
+
+// 1. Potencial de membrana (Nernst)
+print("1. POTENCIAL DE MEMBRANA")
+let e_k = biophysics.nernst_potential("K")
+print("   K+ Nernst: " + e_k + " mV")
+
+let e_na = biophysics.nernst_potential("Na")
+print("   Na+ Nernst: " + e_na + " mV")
+
+// 2. Potencial de repouso (GHK)
+let v_rest = biophysics.ghk_potential(0.04, 1.0, 0.45)
+print("   Repouso: " + v_rest + " mV")
+print("")
+
+// 3. Neurônio (Hodgkin-Huxley)
+print("2. NEURÔNIO (ACTION POTENTIAL)")
+let max_v = biophysics.hh_action_potential(10.0, 5.0)
+print("   Pico: " + max_v + " mV")
+print("")
+
+// 4. Enzima (Michaelis-Menten)
+print("3. ENZIMA")
+let rate = biophysics.enzyme_rate(100.0, 10.0, 50.0)
+print("   Taxa: " + rate + " μM/s")
+print("")
+
+// 5. DNA
+print("4. DNA")
+let gc = biophysics.dna_gc_content("ATGCGCTA")
+print("   GC content: " + gc)
+
+let tm = biophysics.dna_melting_temp("GCGCGCGC")
+print("   Tm (GC-rich): " + tm + "°C")
+print("")
+
+// 6. Célula
+print("5. CÉLULA")
+let pressure = biophysics.cell_laplace_pressure(10.0)
+print("   Pressão: " + pressure + " Pa")
+
+let volume = biophysics.cell_volume(10.0)
+print("   Volume: " + volume + " μm³")
+print("")
+
+print("✅ BIOFÍSICA FUNCIONANDO!")

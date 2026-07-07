@@ -3,6 +3,9 @@ param(
     [string]$ZipPath = "dist\matter-core-windows-x64.zip",
     [string]$ChecksumJsonPath = "dist\release-checksums.json",
     [string]$Sha256Path = "dist\SHA256SUMS.txt",
+    [string]$StatusTriadHealthPath = "target\validation\status-triad-beta-health.json",
+    [string]$StatusTriadTrendPath = "target\validation\status-triad-beta-trend-report.json",
+    [string]$StatusTriadHistoryPath = "target\validation\status-triad-beta-history.ndjson",
     [string]$Version = "0.1.0-beta",
     [string]$Channel = "beta"
 )
@@ -19,6 +22,36 @@ foreach ($path in @($ZipPath, $ChecksumJsonPath, $Sha256Path, "dist\matter-core-
     }
 }
 
+$resolvedHealthPath = $StatusTriadHealthPath
+if (-not (Test-Path $resolvedHealthPath -PathType Leaf)) {
+    if ($StatusTriadHealthPath -eq "target\validation\status-triad-beta-health.json" -and (Test-Path "target\validation\status-triad-health.json" -PathType Leaf)) {
+        $resolvedHealthPath = "target\validation\status-triad-health.json"
+    }
+    else {
+        throw "Required status triad health input not found: $StatusTriadHealthPath"
+    }
+}
+
+$resolvedTrendPath = $StatusTriadTrendPath
+if (-not (Test-Path $resolvedTrendPath -PathType Leaf)) {
+    if ($StatusTriadTrendPath -eq "target\validation\status-triad-beta-trend-report.json" -and (Test-Path "target\validation\status-triad-trend-report.json" -PathType Leaf)) {
+        $resolvedTrendPath = "target\validation\status-triad-trend-report.json"
+    }
+    else {
+        throw "Required status triad trend input not found: $StatusTriadTrendPath"
+    }
+}
+
+$resolvedHistoryPath = $StatusTriadHistoryPath
+if (-not (Test-Path $resolvedHistoryPath -PathType Leaf)) {
+    if ($StatusTriadHistoryPath -eq "target\validation\status-triad-beta-history.ndjson" -and (Test-Path "target\validation\status-triad-history.ndjson" -PathType Leaf)) {
+        $resolvedHistoryPath = "target\validation\status-triad-history.ndjson"
+    }
+    else {
+        throw "Required status triad history input not found: $StatusTriadHistoryPath"
+    }
+}
+
 $sitePath = [System.IO.Path]::GetFullPath($SiteRoot)
 $downloadsPath = Join-Path $sitePath "downloads"
 New-Item -ItemType Directory -Force $downloadsPath | Out-Null
@@ -29,12 +62,17 @@ Copy-Item -LiteralPath $ChecksumJsonPath -Destination (Join-Path $downloadsPath 
 Copy-Item -LiteralPath $Sha256Path -Destination (Join-Path $downloadsPath "SHA256SUMS.txt") -Force
 Copy-Item -LiteralPath "scripts\install-release-zip.ps1" -Destination (Join-Path $downloadsPath "install-release-zip.ps1") -Force
 Copy-Item -LiteralPath "scripts\install-matter-beta.cmd" -Destination (Join-Path $downloadsPath "install-matter-beta.cmd") -Force
+Copy-Item -LiteralPath $resolvedHealthPath -Destination (Join-Path $downloadsPath "status-triad-health.json") -Force
+Copy-Item -LiteralPath $resolvedTrendPath -Destination (Join-Path $downloadsPath "status-triad-trend-report.json") -Force
+Copy-Item -LiteralPath $resolvedHistoryPath -Destination (Join-Path $downloadsPath "status-triad-history.ndjson") -Force
 
 $checksums = Get-Content $ChecksumJsonPath -Raw | ConvertFrom-Json
 $artifact = @($checksums.artifacts) | Where-Object { $_.name -eq "matter-core-windows-x64.zip" } | Select-Object -First 1
 if (-not $artifact) {
     throw "Checksum JSON missing matter-core-windows-x64.zip"
 }
+$triadHealth = Get-Content -Path $resolvedHealthPath -Raw | ConvertFrom-Json
+$triadTrend = Get-Content -Path $resolvedTrendPath -Raw | ConvertFrom-Json
 
 $siteRelease = [ordered]@{
     generated_at = $checksums.generated_at
@@ -44,6 +82,25 @@ $siteRelease = [ordered]@{
     status = "beta-ready"
     production_ready = $false
     install_command = ".\matter-core-beta-setup.exe"
+    runtime_health_summary = [ordered]@{
+        status = [string]$triadHealth.status
+        max_p95_ms = [double]$triadHealth.summary.max_p95_ms
+        window_samples = [int]$triadHealth.summary.window_samples
+        total_samples = [int]$triadHealth.summary.total_samples
+        source = "downloads/status-triad-health.json"
+    }
+    runtime_health_thresholds = [ordered]@{
+        warn_p95_ms = [double]$triadHealth.thresholds.warn_p95_ms
+        fail_p95_ms = [double]$triadHealth.thresholds.fail_p95_ms
+    }
+    runtime_trend_summary = [ordered]@{
+        window_samples = [int]$triadTrend.window_samples
+        total_samples = [int]$triadTrend.total_samples
+        core_p95_ms = [double]$triadTrend.triad.core.p95_ms
+        world_p95_ms = [double]$triadTrend.triad.world.p95_ms
+        frontier_p95_ms = [double]$triadTrend.triad.frontier.p95_ms
+        source = "downloads/status-triad-trend-report.json"
+    }
     artifacts = @(
         [ordered]@{
             name = $artifact.name
@@ -81,6 +138,24 @@ $siteRelease = [ordered]@{
             path = "downloads/SHA256SUMS.txt"
             size_bytes = (Get-Item (Join-Path $downloadsPath "SHA256SUMS.txt")).Length
             sha256 = (Get-FileHash -LiteralPath (Join-Path $downloadsPath "SHA256SUMS.txt") -Algorithm SHA256).Hash.ToLowerInvariant()
+        },
+        [ordered]@{
+            name = "status-triad-health.json"
+            path = "downloads/status-triad-health.json"
+            size_bytes = (Get-Item (Join-Path $downloadsPath "status-triad-health.json")).Length
+            sha256 = (Get-FileHash -LiteralPath (Join-Path $downloadsPath "status-triad-health.json") -Algorithm SHA256).Hash.ToLowerInvariant()
+        },
+        [ordered]@{
+            name = "status-triad-trend-report.json"
+            path = "downloads/status-triad-trend-report.json"
+            size_bytes = (Get-Item (Join-Path $downloadsPath "status-triad-trend-report.json")).Length
+            sha256 = (Get-FileHash -LiteralPath (Join-Path $downloadsPath "status-triad-trend-report.json") -Algorithm SHA256).Hash.ToLowerInvariant()
+        },
+        [ordered]@{
+            name = "status-triad-history.ndjson"
+            path = "downloads/status-triad-history.ndjson"
+            size_bytes = (Get-Item (Join-Path $downloadsPath "status-triad-history.ndjson")).Length
+            sha256 = (Get-FileHash -LiteralPath (Join-Path $downloadsPath "status-triad-history.ndjson") -Algorithm SHA256).Hash.ToLowerInvariant()
         },
         [ordered]@{
             name = "TESTER_GUIDE.md"

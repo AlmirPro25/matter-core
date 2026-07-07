@@ -1,0 +1,14 @@
+[package]
+name = "matter-topology"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ndarray = "0.16"
+num-complex = "0.4"
+thiserror = "2.0"
+matter-error = { path = "../matter-error" }
+matter-backend = { path = "../matter-backend" }
+
+[dev-dependencies]
+approx = "0.5"

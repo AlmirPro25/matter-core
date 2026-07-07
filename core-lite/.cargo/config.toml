@@ -1,0 +1,3 @@
+[build]
+# target separado, fora de pasta com espacos (evita falha de toolchain no Windows)
+target-dir = "F:/Users/almir/Desktop/matter_core_lite_target"

@@ -1,0 +1,44 @@
+print "==========================================="
+print " ☢️ TESTE DE STRESS DE MÁQUINA (MATTER VM) "
+print "==========================================="
+
+fn fib(n) {
+    if n <= 1 {
+        return n
+    }
+    return fib(n - 1) + fib(n - 2)
+}
+
+print "[1/2] Testando Recursao Profunda e Stack Frames..."
+print "Calculando Fibonacci de 28..."
+let res = fib(28)
+print "Resultado do calculo pesado:"
+print res
+
+print "-------------------------------------------"
+
+print "[2/2] Testando Motor de Memoria (Rc Allocation)..."
+let i = 0
+let lista_gigante = []
+
+while i < 15000 {
+    lista_gigante.push(i * 3)
+    set i = i + 1
+}
+
+print "Elementos alocados com sucesso:"
+print lista_gigante.len()
+
+print "Limpando 8000 elementos da memoria dinamicamente..."
+let j = 0
+while j < 8000 {
+    lista_gigante.pop()
+    set j = j + 1
+}
+
+print "Elementos restantes apos a liberacao atomica:"
+print lista_gigante.len()
+
+print "==========================================="
+print " 🟢 MOTOR MATTER SOBREVIVEU AO TESTE! "
+print "==========================================="

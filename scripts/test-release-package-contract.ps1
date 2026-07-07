@@ -67,6 +67,9 @@ function Copy-RequiredPackageFiles {
     foreach ($dir in @(
         "docs\technical",
         "schemas",
+        "target\core",
+        "target\world",
+        "target\frontier",
         "examples",
         "scripts",
         "target\ffi",
@@ -84,6 +87,12 @@ function Copy-RequiredPackageFiles {
         @("docs\technical\RUST_FFI_ABI.md", "docs\technical\RUST_FFI_ABI.md"),
         @("docs\technical\FFI_NATIVE_SMOKE.md", "docs\technical\FFI_NATIVE_SMOKE.md"),
         @("schemas\ffi-validation-matrix.schema.json", "schemas\ffi-validation-matrix.schema.json"),
+        @("schemas\core-status.schema.json", "schemas\core-status.schema.json"),
+        @("schemas\world-status.schema.json", "schemas\world-status.schema.json"),
+        @("schemas\frontier-status.schema.json", "schemas\frontier-status.schema.json"),
+        @("target\core\core-status.json", "target\core\core-status.json"),
+        @("target\world\world-status.json", "target\world\world-status.json"),
+        @("target\frontier\frontier-status.json", "target\frontier\frontier-status.json"),
         @("examples\README.md", "examples\README.md"),
         @("examples\first_run.matter", "examples\first_run.matter"),
         @("examples\agent_policy_demo.matter", "examples\agent_policy_demo.matter"),
@@ -101,10 +110,22 @@ function Copy-RequiredPackageFiles {
         @("examples\node_native_host\README.md", "examples\node_native_host\README.md"),
         @("scripts\export-ffi-validation-matrix.ps1", "scripts\export-ffi-validation-matrix.ps1"),
         @("scripts\export-ffi-validation-report.ps1", "scripts\export-ffi-validation-report.ps1"),
+        @("scripts\export-core-status.ps1", "scripts\export-core-status.ps1"),
+        @("scripts\export-world-status.ps1", "scripts\export-world-status.ps1"),
+        @("scripts\export-frontier-status.ps1", "scripts\export-frontier-status.ps1"),
         @("scripts\export-release-readiness.ps1", "scripts\export-release-readiness.ps1"),
         @("scripts\ffi-smoke-all.ps1", "scripts\ffi-smoke-all.ps1"),
         @("scripts\test-ffi-validation-matrix-contract.ps1", "scripts\test-ffi-validation-matrix-contract.ps1"),
         @("scripts\test-ffi-validation-report-contract.ps1", "scripts\test-ffi-validation-report-contract.ps1"),
+        @("scripts\test-core-status-contract.ps1", "scripts\test-core-status-contract.ps1"),
+        @("scripts\test-world-status-contract.ps1", "scripts\test-world-status-contract.ps1"),
+        @("scripts\test-frontier-status-contract.ps1", "scripts\test-frontier-status-contract.ps1"),
+        @("scripts\test-status-triad-contract.ps1", "scripts\test-status-triad-contract.ps1"),
+        @("scripts\test-status-triad-history-contract.ps1", "scripts\test-status-triad-history-contract.ps1"),
+        @("scripts\export-status-triad-trend-report.ps1", "scripts\export-status-triad-trend-report.ps1"),
+        @("scripts\export-status-triad-health.ps1", "scripts\export-status-triad-health.ps1"),
+        @("scripts\test-status-triad-health-contract.ps1", "scripts\test-status-triad-health-contract.ps1"),
+        @("scripts\status-triad-latency-baseline.json", "scripts\status-triad-latency-baseline.json"),
         @("scripts\test-release-readiness-contract.ps1", "scripts\test-release-readiness-contract.ps1"),
         @("scripts\test-release-package-contract.ps1", "scripts\test-release-package-contract.ps1"),
         @("scripts\test-release-install-contract.ps1", "scripts\test-release-install-contract.ps1"),
@@ -146,6 +167,21 @@ foreach ($path in @($RustSummary, $NativeSummary, $MatrixPath)) {
 & powershell -ExecutionPolicy Bypass -File ".\scripts\export-release-readiness.ps1" -MatrixPath $MatrixPath -Out "target\ffi\release-readiness.json"
 if ($LASTEXITCODE -ne 0) {
     throw "Release readiness export failed with exit code $LASTEXITCODE"
+}
+
+& powershell -ExecutionPolicy Bypass -File ".\scripts\export-frontier-status.ps1" -Out "target\frontier\frontier-status.json"
+if ($LASTEXITCODE -ne 0) {
+    throw "Frontier status export failed with exit code $LASTEXITCODE"
+}
+
+& powershell -ExecutionPolicy Bypass -File ".\scripts\export-core-status.ps1" -Out "target\core\core-status.json"
+if ($LASTEXITCODE -ne 0) {
+    throw "Core status export failed with exit code $LASTEXITCODE"
+}
+
+& powershell -ExecutionPolicy Bypass -File ".\scripts\export-world-status.ps1" -Out "target\world\world-status.json"
+if ($LASTEXITCODE -ne 0) {
+    throw "World status export failed with exit code $LASTEXITCODE"
 }
 
 $workRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("matter_release_contract_" + [guid]::NewGuid().ToString("N"))
@@ -192,6 +228,14 @@ try {
     Expect-Failure "release package without schema" (Invoke-PackageVerifier @("-PackageRoot", $packageRoot))
 
     Copy-Item "schemas\ffi-validation-matrix.schema.json" (Join-Path $packageRoot "schemas\ffi-validation-matrix.schema.json") -Force
+    Remove-Item -LiteralPath (Join-Path $packageRoot "target\frontier\frontier-status.json") -Force
+    Expect-Failure "release package without frontier status" (Invoke-PackageVerifier @("-PackageRoot", $packageRoot))
+
+    Copy-Item "target\frontier\frontier-status.json" (Join-Path $packageRoot "target\frontier\frontier-status.json") -Force
+    Remove-Item -LiteralPath (Join-Path $packageRoot "target\world\world-status.json") -Force
+    Expect-Failure "release package without world status" (Invoke-PackageVerifier @("-PackageRoot", $packageRoot))
+
+    Copy-Item "target\world\world-status.json" (Join-Path $packageRoot "target\world\world-status.json") -Force
     Remove-Item -LiteralPath (Join-Path $packageRoot "target\ffi\ffi-validation-matrix.json") -Force
     Expect-Failure "release package without validation matrix" (Invoke-PackageVerifier @("-PackageRoot", $packageRoot))
 
@@ -241,6 +285,8 @@ finally {
         "release-named FFI artifacts pass",
         "missing release package manifest fails",
         "missing schema fails",
+        "missing frontier status fails",
+        "missing world status fails",
         "missing validation matrix fails",
         "missing release readiness fails",
         "stale release readiness fails",

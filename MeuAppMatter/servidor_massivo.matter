@@ -1,0 +1,9 @@
+console.write("==================================================\n")
+console.write("🚀 MATTER CORE V25: SERVIDOR DE ALTA PERFORMANCE\n")
+console.write("==================================================\n")
+console.write("Iniciando escuta na porta 8080 (Thread Pool Ativado)...\n")
+
+// Inicia um servidor HTTP assíncrono hiper-rápido que responde "OK - Matter v25"
+let conexoes = net.serve(8080, "OK - Matter v25 Processou Isso na Velocidade da Luz!")
+
+print(conexoes)

@@ -1,0 +1,21 @@
+// Hello World in Matter!
+// This is the first executable example
+
+print("Hello, World!")
+
+// Variables
+let name = "Matter"
+let version = 1
+print(name)
+
+// Functions
+fn greet(who) {
+    return "Hello, " + who + "!"
+}
+
+let message = greet("Universe")
+print(message)
+
+// Math
+let x = 10 + 20 * 3
+print(x)

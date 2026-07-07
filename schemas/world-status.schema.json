@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://matter-lang.org/schemas/world-status.schema.json",
+  "title": "Matter World Runtime Status",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schema_version",
+    "ok",
+    "kind"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "schemas/world-status.schema.json"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "kind": {
+      "const": "world_status"
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "degraded",
+        "hot_cells",
+        "cell_count",
+        "entities",
+        "sample_visible_count",
+        "sample_hidden_count"
+      ],
+      "properties": {
+        "mode": {
+          "const": "logical_world_partition"
+        },
+        "degraded": {
+          "type": "boolean"
+        },
+        "hot_cells": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cell_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "entities": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sample_visible_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sample_hidden_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "evidence": {
+      "type": "object"
+    },
+    "error": {
+      "type": "object",
+      "required": [
+        "stage",
+        "message"
+      ],
+      "properties": {
+        "stage": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

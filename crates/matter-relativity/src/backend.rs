@@ -1,12 +1,19 @@
-use crate::{GeneralRelativity, QuantumGravityBridge, SpecialRelativity};
-use matter_backend::{Backend, Value};
-use std::collections::HashMap;
+//! Matter backend integration for relativity
 
-pub struct RelativityBackend;
+use crate::*;
+use matter_backend::{Backend, Value};
+
+pub struct RelativityBackend {
+    black_holes: Vec<SchwarzschildMetric>,
+    kerr_black_holes: Vec<KerrMetric>,
+}
 
 impl RelativityBackend {
     pub fn new() -> Self {
-        Self
+        Self {
+            black_holes: Vec::new(),
+            kerr_black_holes: Vec::new(),
+        }
     }
 }
 
@@ -17,88 +24,115 @@ impl Default for RelativityBackend {
 }
 
 impl Backend for RelativityBackend {
-    fn call(&mut self, method: &str, args: Vec<Value>) -> Result<Value, String> {
+    fn call(&mut self, method: &str, args: Vec<Value>) -> std::result::Result<Value, String> {
         match method {
-            "lorentz_boost" => {
-                if args.len() < 3 {
-                    return Err("relativity.lorentz_boost: esperado v, x, t".to_string());
-                }
-                let v = args[0].as_float()?;
-                let x = args[1].as_float()?;
-                let t = args[2].as_float()?;
+            "lorentz_factor" => {
+                let velocity = args
+                    .first()
+                    .ok_or("Expected velocity")?
+                    .as_float()?;
 
-                let (x_p, t_p, gamma) = SpecialRelativity::lorentz_boost(v, x, t)?;
-                let mut map = HashMap::new();
-                map.insert("x_prime".to_string(), Value::Float(x_p));
-                map.insert("t_prime".to_string(), Value::Float(t_p));
-                map.insert("gamma".to_string(), Value::Float(gamma));
-                Ok(Value::new_map(map))
+                let gamma = special_relativity::lorentz_factor(velocity)
+                    .map_err(|e| format!("{}", e))?;
+
+                Ok(Value::Float(gamma))
             }
-            "mass_energy" => {
-                if args.len() < 2 {
-                    return Err("relativity.mass_energy: esperado mass, velocity".to_string());
-                }
-                let mass = args[0].as_float()?;
-                let velocity = args[1].as_float()?;
 
-                let map_res = SpecialRelativity::mass_energy(mass, velocity)?;
-                let mut map = HashMap::new();
-                for (k, v) in map_res {
-                    map.insert(k, Value::Float(v));
-                }
-                Ok(Value::new_map(map))
-            }
-            "gravitational_dilation" => {
-                if args.len() < 3 {
-                    return Err(
-                        "relativity.gravitational_dilation: esperado mass, radius, coordinate_time"
-                            .to_string(),
-                    );
-                }
-                let mass = args[0].as_float()?;
-                let radius = args[1].as_float()?;
-                let coord_time = args[2].as_float()?;
+            "time_dilation" => {
+                let proper_time = args
+                    .first()
+                    .ok_or("Expected proper time")?
+                    .as_float()?;
 
-                let dilated =
-                    GeneralRelativity::gravitational_time_dilation(mass, radius, coord_time)?;
+                let velocity = args
+                    .get(1)
+                    .ok_or("Expected velocity")?
+                    .as_float()?;
+
+                let dilated = special_relativity::time_dilation(proper_time, velocity)
+                    .map_err(|e| format!("{}", e))?;
+
                 Ok(Value::Float(dilated))
             }
-            "geodesic_step" => {
-                if args.len() < 6 {
-                    return Err(
-                        "relativity.geodesic_step: esperado mass, x, y, vx, vy, dt".to_string()
-                    );
-                }
-                let mass = args[0].as_float()?;
-                let x = args[1].as_float()?;
-                let y = args[2].as_float()?;
-                let vx = args[3].as_float()?;
-                let vy = args[4].as_float()?;
-                let dt = args[5].as_float()?;
 
-                let (nx, ny, nvx, nvy) = GeneralRelativity::geodesic_step(mass, x, y, vx, vy, dt)?;
-                let mut map = HashMap::new();
-                map.insert("x".to_string(), Value::Float(nx));
-                map.insert("y".to_string(), Value::Float(ny));
-                map.insert("vx".to_string(), Value::Float(nvx));
-                map.insert("vy".to_string(), Value::Float(nvy));
-                Ok(Value::new_map(map))
-            }
-            "quantum_decoherence" => {
-                if args.len() < 4 {
-                    return Err("relativity.quantum_decoherence: esperado coherence_time, mass, radius, alpha".to_string());
-                }
-                let coherence = args[0].as_float()?;
-                let mass = args[1].as_float()?;
-                let radius = args[2].as_float()?;
-                let alpha = args[3].as_float()?;
+            "create_black_hole" => {
+                let mass = args
+                    .first()
+                    .ok_or("Expected mass")?
+                    .as_float()?;
 
-                let final_coherence = QuantumGravityBridge::gravitational_decoherence(
-                    coherence, mass, radius, alpha,
-                )?;
-                Ok(Value::Float(final_coherence))
+                let bh = SchwarzschildMetric::new(mass);
+                let id = self.black_holes.len();
+                self.black_holes.push(bh);
+
+                Ok(Value::Int(id as i64))
             }
-            _ => Err(format!("Unknown relativity method: {}", method)),
+
+            "schwarzschild_radius" => {
+                let id = args
+                    .first()
+                    .ok_or("Expected black hole ID")?
+                    .as_int()? as usize;
+
+                let bh = self
+                    .black_holes
+                    .get(id)
+                    .ok_or("Black hole not found")?;
+
+                Ok(Value::Float(bh.schwarzschild_radius))
+            }
+
+            "escape_velocity" => {
+                let id = args
+                    .first()
+                    .ok_or("Expected black hole ID")?
+                    .as_int()? as usize;
+
+                let r = args
+                    .get(1)
+                    .ok_or("Expected radius")?
+                    .as_float()?;
+
+                let bh = self
+                    .black_holes
+                    .get(id)
+                    .ok_or("Black hole not found")?;
+
+                let v_esc = bh.escape_velocity(r)
+                    .map_err(|e| format!("{}", e))?;
+
+                Ok(Value::Float(v_esc))
+            }
+
+            "photon_sphere" => {
+                let id = args
+                    .first()
+                    .ok_or("Expected black hole ID")?
+                    .as_int()? as usize;
+
+                let bh = self
+                    .black_holes
+                    .get(id)
+                    .ok_or("Black hole not found")?;
+
+                Ok(Value::Float(bh.photon_sphere_radius()))
+            }
+
+            "isco" => {
+                let id = args
+                    .first()
+                    .ok_or("Expected black hole ID")?
+                    .as_int()? as usize;
+
+                let bh = self
+                    .black_holes
+                    .get(id)
+                    .ok_or("Black hole not found")?;
+
+                Ok(Value::Float(bh.isco_radius()))
+            }
+
+            _ => Err(format!("Unknown method: {}", method)),
         }
     }
 }

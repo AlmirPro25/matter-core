@@ -1,0 +1,39 @@
+print "==========================================="
+print " 🚀 MEU PRIMEIRO APP EM MATTER CORE "
+print "==========================================="
+print "Inicializando o motor neural..."
+
+fn calcular_sequencia(limite) {
+    let a = 0
+    let b = 1
+    let i = 0
+    let resultados = []
+    
+    while i < limite {
+        resultados.push(a)
+        let temp = a
+        set a = b
+        set b = temp + b
+        set i = i + 1
+    }
+    
+    return resultados
+}
+
+print "Gerando modelo preditivo (Fibonacci)..."
+let sequencia = calcular_sequencia(12)
+print "Sequencia gerada com sucesso:"
+print sequencia
+
+let sistema = {
+    "nome": "Matter App OS",
+    "versao": "v3.4.0",
+    "status": "Online",
+    "energia": 100
+}
+
+print "==========================================="
+print "Dados do Sistema de Execucao:"
+print sistema
+print "==========================================="
+print "🎉 Aplicativo executado nativamente!"

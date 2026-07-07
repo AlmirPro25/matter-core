@@ -1,0 +1,12 @@
+[package]
+name = "matter-astro"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+thiserror = "2.0"
+matter-error = { path = "../matter-error" }
+matter-backend = { path = "../matter-backend" }
+
+[dev-dependencies]
+approx = "0.5"

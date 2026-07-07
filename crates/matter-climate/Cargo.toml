@@ -1,0 +1,9 @@
+[package]
+name = "matter-climate"
+version = "0.1.0"
+edition = "2021"
+authors = ["Matter Core Team"]
+description = "Climate & Earth System Modeling - Coupled ocean-atmosphere models, radiative transfer, carbon cycle"
+
+[dependencies]
+matter-backend = { path = "../matter-backend" }

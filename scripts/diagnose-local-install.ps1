@@ -12,6 +12,12 @@ $binDir = Join-Path $installRoot "bin"
 $matterExe = Join-Path $binDir "matter.exe"
 $matterCliExe = Join-Path $binDir "matter-cli.exe"
 $firstRun = Join-Path $installRoot "examples\first_run.matter"
+$coreSchema = Join-Path $installRoot "schemas\core-status.schema.json"
+$coreStatusPath = Join-Path $installRoot "target\core\core-status.json"
+$worldSchema = Join-Path $installRoot "schemas\world-status.schema.json"
+$worldStatusPath = Join-Path $installRoot "target\world\world-status.json"
+$frontierSchema = Join-Path $installRoot "schemas\frontier-status.schema.json"
+$frontierStatusPath = Join-Path $installRoot "target\frontier\frontier-status.json"
 $manifestPath = Join-Path $installRoot "INSTALL_MANIFEST.json"
 $infoPath = Join-Path $installRoot "INFO.txt"
 $uninstaller = Join-Path $installRoot "scripts\uninstall-local.ps1"
@@ -50,6 +56,12 @@ $matterExists = Test-File "matter.exe exists" $matterExe
 $matterCliExists = Test-File "matter-cli.exe exists" $matterCliExe
 $manifestExists = Test-File "install manifest exists" $manifestPath
 $firstRunExists = Test-File "first_run example exists" $firstRun
+$coreSchemaExists = Test-File "core status schema exists" $coreSchema
+$coreStatusExists = Test-File "core status artifact exists" $coreStatusPath
+$worldSchemaExists = Test-File "world status schema exists" $worldSchema
+$worldStatusExists = Test-File "world status artifact exists" $worldStatusPath
+$frontierSchemaExists = Test-File "frontier status schema exists" $frontierSchema
+$frontierStatusExists = Test-File "frontier status artifact exists" $frontierStatusPath
 Test-File "INFO.txt exists" $infoPath | Out-Null
 Test-File "uninstaller exists" $uninstaller | Out-Null
 
@@ -97,6 +109,85 @@ if ($matterExists) {
     }
     catch {
         Add-Check "matter capabilities-json works" $false $_.Exception.Message
+    }
+}
+
+if ($matterExists) {
+    try {
+        $coreOutput = & $matterExe core-status-json
+        $coreExit = $LASTEXITCODE
+        $coreJson = $coreOutput | ConvertFrom-Json
+        Add-Check "matter core-status-json works" ($coreExit -eq 0 -and $coreJson.ok -and $coreJson.summary.claim -eq "experimental_language_runtime") "exit=$coreExit"
+    }
+    catch {
+        Add-Check "matter core-status-json works" $false $_.Exception.Message
+    }
+}
+
+if ($matterExists) {
+    try {
+        $worldOutput = & $matterExe world-status-json
+        $worldExit = $LASTEXITCODE
+        $worldJson = $worldOutput | ConvertFrom-Json
+        Add-Check "matter world-status-json works" ($worldExit -eq 0 -and $worldJson.ok -and $worldJson.summary.mode -eq "logical_world_partition") "exit=$worldExit"
+    }
+    catch {
+        Add-Check "matter world-status-json works" $false $_.Exception.Message
+    }
+}
+
+if ($matterExists) {
+    try {
+        $frontierOutput = & $matterExe frontier-status-json
+        $frontierExit = $LASTEXITCODE
+        $frontierJson = $frontierOutput | ConvertFrom-Json
+        $frontierOk = $frontierExit -eq 0 `
+            -and $frontierJson.ok `
+            -and $frontierJson.summary.all_non_stub `
+            -and $frontierJson.summary.all_simulated `
+            -and (-not $frontierJson.summary.any_hardware)
+        Add-Check "matter frontier-status-json works" $frontierOk "exit=$frontierExit"
+    }
+    catch {
+        Add-Check "matter frontier-status-json works" $false $_.Exception.Message
+    }
+}
+
+if ($coreSchemaExists -and $coreStatusExists) {
+    try {
+        $coreArtifact = Get-Content $coreStatusPath -Raw | ConvertFrom-Json
+        $schemaRef = $coreArtifact.PSObject.Properties['$schema'].Value
+        Add-Check "core status artifact schema" ($schemaRef -eq "schemas/core-status.schema.json") ([string]$schemaRef)
+        Add-Check "core status artifact claim" ($coreArtifact.summary.claim -eq "experimental_language_runtime") ([string]$coreArtifact.summary.claim)
+    }
+    catch {
+        Add-Check "core status artifact parses" $false $_.Exception.Message
+    }
+}
+
+if ($worldSchemaExists -and $worldStatusExists) {
+    try {
+        $worldArtifact = Get-Content $worldStatusPath -Raw | ConvertFrom-Json
+        $schemaRef = $worldArtifact.PSObject.Properties['$schema'].Value
+        Add-Check "world status artifact schema" ($schemaRef -eq "schemas/world-status.schema.json") ([string]$schemaRef)
+        Add-Check "world status artifact mode" ($worldArtifact.summary.mode -eq "logical_world_partition") ([string]$worldArtifact.summary.mode)
+    }
+    catch {
+        Add-Check "world status artifact parses" $false $_.Exception.Message
+    }
+}
+
+if ($frontierSchemaExists -and $frontierStatusExists) {
+    try {
+        $frontierArtifact = Get-Content $frontierStatusPath -Raw | ConvertFrom-Json
+        $schemaRef = $frontierArtifact.PSObject.Properties['$schema'].Value
+        Add-Check "frontier status artifact schema" ($schemaRef -eq "schemas/frontier-status.schema.json") ([string]$schemaRef)
+        Add-Check "frontier status artifact reality flags" `
+            ($frontierArtifact.summary.all_non_stub -and $frontierArtifact.summary.all_simulated -and (-not $frontierArtifact.summary.any_hardware)) `
+            "non_stub=$($frontierArtifact.summary.all_non_stub); simulated=$($frontierArtifact.summary.all_simulated); any_hardware=$($frontierArtifact.summary.any_hardware)"
+    }
+    catch {
+        Add-Check "frontier status artifact parses" $false $_.Exception.Message
     }
 }
 

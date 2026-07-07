@@ -118,6 +118,10 @@ Run-Step "api bridge json contract" {
     powershell -ExecutionPolicy Bypass -File .\scripts\test_api_bridge.ps1 -CliPath $releaseCliPath
 }
 
+Run-Step "status triad contract" {
+    powershell -ExecutionPolicy Bypass -File .\scripts\test-status-triad-contract.ps1 -CliPath $releaseCliPath
+}
+
 if ($RunAiCanonicalFlow) {
     Run-Step "ai app canonical flow" {
         $args = @(

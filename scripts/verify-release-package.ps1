@@ -129,7 +129,25 @@ function Assert-ManifestContract {
         "README.md",
         "matter-cli.exe",
         "schemas\ffi-validation-matrix.schema.json",
+        "schemas\core-status.schema.json",
+        "schemas\world-status.schema.json",
+        "schemas\frontier-status.schema.json",
+        "target\core\core-status.json",
+        "target\world\world-status.json",
+        "target\frontier\frontier-status.json",
         "scripts\ffi-smoke-all.ps1",
+        "scripts\export-core-status.ps1",
+        "scripts\export-world-status.ps1",
+        "scripts\export-frontier-status.ps1",
+        "scripts\test-core-status-contract.ps1",
+        "scripts\test-world-status-contract.ps1",
+        "scripts\test-frontier-status-contract.ps1",
+        "scripts\test-status-triad-contract.ps1",
+        "scripts\test-status-triad-history-contract.ps1",
+        "scripts\export-status-triad-trend-report.ps1",
+        "scripts\export-status-triad-health.ps1",
+        "scripts\test-status-triad-health-contract.ps1",
+        "scripts\status-triad-latency-baseline.json",
         "scripts\export-release-readiness.ps1",
         "scripts\test-release-readiness-contract.ps1",
         "scripts\test-release-install-contract.ps1",
@@ -197,6 +215,12 @@ $requiredFiles = @(
     "docs\technical\RUST_FFI_ABI.md",
     "docs\technical\FFI_NATIVE_SMOKE.md",
     "schemas\ffi-validation-matrix.schema.json",
+    "schemas\core-status.schema.json",
+    "schemas\world-status.schema.json",
+    "schemas\frontier-status.schema.json",
+    "target\core\core-status.json",
+    "target\world\world-status.json",
+    "target\frontier\frontier-status.json",
     "examples\README.md",
     "examples\first_run.matter",
     "examples\language_tour.matter",
@@ -213,11 +237,21 @@ $requiredFiles = @(
     "examples\node_native_host\README.md",
     "scripts\export-ffi-validation-matrix.ps1",
     "scripts\export-ffi-validation-report.ps1",
+    "scripts\export-core-status.ps1",
+    "scripts\export-world-status.ps1",
     "scripts\export-release-readiness.ps1",
     "scripts\ffi-smoke-all.ps1",
     "scripts\test-ffi-validation-matrix-contract.ps1",
     "scripts\test-ffi-validation-report-contract.ps1",
+    "scripts\test-core-status-contract.ps1",
+    "scripts\test-world-status-contract.ps1",
     "scripts\test-release-readiness-contract.ps1",
+    "scripts\test-status-triad-contract.ps1",
+    "scripts\test-status-triad-history-contract.ps1",
+    "scripts\export-status-triad-trend-report.ps1",
+    "scripts\export-status-triad-health.ps1",
+    "scripts\test-status-triad-health-contract.ps1",
+    "scripts\status-triad-latency-baseline.json",
     "scripts\test-release-package-contract.ps1",
     "scripts\test-release-install-contract.ps1",
     "scripts\test-release-artifact-checksums-contract.ps1",
@@ -255,12 +289,63 @@ try {
         "examples\node_native_host",
         "scripts",
         "schemas",
+        "target\core",
+        "target\world",
+        "target\frontier",
         "target\ffi"
     )) {
         Assert-Path $dir -Directory
     }
 
     Assert-JsonFile "schemas\ffi-validation-matrix.schema.json"
+    Assert-JsonFile "schemas\core-status.schema.json"
+    Assert-JsonFile "schemas\world-status.schema.json"
+    Assert-JsonFile "schemas\frontier-status.schema.json"
+    Assert-JsonFile "target\core\core-status.json"
+    Assert-JsonFile "target\world\world-status.json"
+    Assert-JsonFile "target\frontier\frontier-status.json"
+
+    $coreStatus = Get-Content (Join-Path $PackageRoot "target\core\core-status.json") -Raw | ConvertFrom-Json
+    if ($coreStatus.PSObject.Properties['$schema'].Value -ne "schemas/core-status.schema.json") {
+        throw "Release package core status has unexpected schema reference"
+    }
+    if ($coreStatus.schema_version -ne 1 -or -not $coreStatus.ok) {
+        throw "Release package core status contract is invalid"
+    }
+
+    $worldStatus = Get-Content (Join-Path $PackageRoot "target\world\world-status.json") -Raw | ConvertFrom-Json
+    if ($worldStatus.PSObject.Properties['$schema'].Value -ne "schemas/world-status.schema.json") {
+        throw "Release package world status has unexpected schema reference"
+    }
+    if ($worldStatus.schema_version -ne 1 -or -not $worldStatus.ok) {
+        throw "Release package world status contract is invalid"
+    }
+
+    $frontierStatus = Get-Content (Join-Path $PackageRoot "target\frontier\frontier-status.json") -Raw | ConvertFrom-Json
+    if ($frontierStatus.PSObject.Properties['$schema'].Value -ne "schemas/frontier-status.schema.json") {
+        throw "Release package frontier status has unexpected schema reference"
+    }
+    if ($frontierStatus.schema_version -ne 1) {
+        throw "Release package frontier status has unexpected schema version"
+    }
+    if (-not $frontierStatus.summary.all_non_stub) {
+        throw "Release package frontier status does not prove non-stub backends"
+    }
+    if (-not $frontierStatus.summary.all_simulated) {
+        throw "Release package frontier status does not prove simulated backends"
+    }
+    if ($frontierStatus.summary.any_hardware) {
+        throw "Release package frontier status claims hardware"
+    }
+    foreach ($backend in @("quantum", "photonic", "neuromorphic", "wetware")) {
+        $status = $frontierStatus.backends.$backend
+        if (-not $status) {
+            throw "Release package frontier status missing backend: $backend"
+        }
+        if ($status.stub -or $status.hardware -or -not $status.simulated) {
+            throw "Release package frontier backend reality flags invalid for $backend"
+        }
+    }
 
     $ffiJson = Get-ChildItem (Join-Path $PackageRoot "target\ffi") -Filter "*.json" -File
     if (@($ffiJson).Count -eq 0) {

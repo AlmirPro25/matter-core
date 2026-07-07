@@ -1,0 +1,8 @@
+print "--- CLIENTE MATTER INICIADO ---"
+print "Conectando ao Servidor Local..."
+
+let resposta = net.get("http://127.0.0.1:8080")
+
+print "Dados recebidos do servidor:"
+print resposta
+print "--- CONEXAO FINALIZADA ---"

@@ -1,0 +1,14 @@
+print "==========================================="
+print " 🌍 INICIANDO MATTER WEB SERVER "
+print "==========================================="
+
+let porta = 8080
+
+// Um JSON de resposta bruto como string para o cliente Web
+let resposta = "{ \"status\": \"sucesso\", \"linguagem\": \"Matter Core\", \"velocidade\": \"nativa\" }"
+
+print "Configurando porta TCP..."
+let resultado = net.serve(porta, resposta)
+
+print "Servidor finalizado de forma limpa."
+print "==========================================="

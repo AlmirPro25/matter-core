@@ -7,3 +7,4 @@ license.workspace = true
 
 [dependencies]
 matter-backend.workspace = true
+matter-memory.workspace = true

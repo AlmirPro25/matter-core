@@ -1,14 +1,18 @@
-use crate::{DNAStrand, MolecularMemory};
+//! Matter backend for molecular dynamics
+
+use crate::*;
 use matter_backend::{Backend, Value};
 
 pub struct MolecularBackend {
-    memory: MolecularMemory,
+    simulations: Vec<MDSimulation>,
+    folders: Vec<ProteinFolder>,
 }
 
 impl MolecularBackend {
     pub fn new() -> Self {
         Self {
-            memory: MolecularMemory::new(1024), // 1024 bytes DNA memory cell
+            simulations: Vec::new(),
+            folders: Vec::new(),
         }
     }
 }
@@ -20,56 +24,59 @@ impl Default for MolecularBackend {
 }
 
 impl Backend for MolecularBackend {
-    fn call(&mut self, method: &str, args: Vec<Value>) -> Result<Value, String> {
+    fn call(&mut self, method: &str, args: Vec<Value>) -> std::result::Result<Value, String> {
         match method {
-            "write" => {
-                if args.is_empty() {
-                    return Err("molecular.write: expected 1 argument (data: string)".to_string());
-                }
-                let data_str = args[0].as_string()?;
+            "fold_protein" => {
+                let seq = args
+                    .first()
+                    .ok_or("Expected sequence")?
+                    .as_string()?;
 
-                // Clear previous cells to allow overwrite/fresh writes
-                self.memory.cells.clear();
+                let mut folder = ProteinFolder::new(seq);
+                folder.fold().map_err(|e| format!("{}", e))?;
 
-                self.memory.write(data_str.as_bytes())?;
+                let id = self.folders.len();
+                self.folders.push(folder);
+
+                Ok(Value::Int(id as i64))
+            }
+
+            "optimize_protein" => {
+                let id = args
+                    .first()
+                    .ok_or("Expected folder ID")?
+                    .as_int()? as usize;
+
+                let steps = args
+                    .get(1)
+                    .map(|v| v.as_int().unwrap_or(1000))
+                    .unwrap_or(1000) as usize;
+
+                let folder = self.folders.get_mut(id).ok_or("Folder not found")?;
+
+                folder.optimize(steps).map_err(|e| format!("{}", e))?;
+
                 Ok(Value::Unit)
             }
-            "read" => {
-                let data = self.memory.read();
-                let result_str = String::from_utf8(data)
-                    .map_err(|e| format!("molecular.read: failed to decode UTF-8: {:?}", e))?;
-                Ok(Value::new_string(result_str))
+
+            "protein_atoms" => {
+                let id = args
+                    .first()
+                    .ok_or("Expected folder ID")?
+                    .as_int()? as usize;
+
+                let folder = self.folders.get(id).ok_or("Folder not found")?;
+
+                let n_atoms = folder
+                    .structure
+                    .as_ref()
+                    .map(|m| m.atoms.len())
+                    .unwrap_or(0);
+
+                Ok(Value::Int(n_atoms as i64))
             }
-            "hybridize" => {
-                if args.len() < 2 {
-                    return Err(
-                        "molecular.hybridize: expected 2 arguments (seq1: string, seq2: string)"
-                            .to_string(),
-                    );
-                }
-                let seq1 = args[0].as_string()?;
-                let seq2 = args[1].as_string()?;
 
-                let strand1 = DNAStrand::new(&seq1).ok_or_else(|| {
-                    format!("molecular.hybridize: invalid DNA sequence '{}'", seq1)
-                })?;
-                let strand2 = DNAStrand::new(&seq2).ok_or_else(|| {
-                    format!("molecular.hybridize: invalid DNA sequence '{}'", seq2)
-                })?;
-
-                if strand1.bases.len() != strand2.bases.len() {
-                    return Ok(Value::Bool(false));
-                }
-
-                let is_complement = strand1
-                    .bases
-                    .iter()
-                    .zip(strand2.bases.iter())
-                    .all(|(b1, b2)| b1.complement() == *b2);
-
-                Ok(Value::Bool(is_complement))
-            }
-            _ => Err(format!("Unknown molecular method: {}", method)),
+            _ => Err(format!("Unknown method: {}", method)),
         }
     }
 }

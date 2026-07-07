@@ -672,7 +672,7 @@ dependencies = [
  "itertools-num",
  "lazy_static",
  "multimap",
- "ndarray",
+ "ndarray 0.15.6",
  "newtype_derive",
  "num-integer",
  "num-traits",
@@ -3347,6 +3347,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "matter-accelerator"
+version = "0.1.0"
+dependencies = [
+ "approx",
+ "matter-backend",
+ "matter-error",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "matter-acoustics"
+version = "0.1.0"
+dependencies = [
+ "matter-backend",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "matter-agent-protocol"
 version = "0.1.0"
 
@@ -3355,8 +3374,25 @@ name = "matter-ast"
 version = "0.1.0"
 
 [[package]]
+name = "matter-astro"
+version = "0.1.0"
+dependencies = [
+ "approx",
+ "matter-backend",
+ "matter-error",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "matter-async"
 version = "0.1.0"
+
+[[package]]
+name = "matter-atmosphere"
+version = "0.1.0"
+dependencies = [
+ "matter-backend",
+]
 
 [[package]]
 name = "matter-auto-parallel"
@@ -3400,6 +3436,13 @@ dependencies = [
  "rayon",
  "serde",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "matter-biophysics"
+version = "0.1.0"
+dependencies = [
+ "matter-backend",
 ]
 
 [[package]]
@@ -3553,6 +3596,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "matter-climate"
+version = "0.1.0"
+dependencies = [
+ "matter-backend",
+]
+
+[[package]]
+name = "matter-compiler"
+version = "0.1.0"
+dependencies = [
+ "matter-ast",
+ "matter-bytecode",
+ "matter-error",
+ "matter-lexer",
+ "matter-optimizer",
+ "matter-parser",
+]
+
+[[package]]
+name = "matter-condensed"
+version = "0.1.0"
+dependencies = [
+ "approx",
+ "matter-backend",
+ "matter-error",
+ "ndarray 0.16.1",
+ "num-complex",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "matter-core"
 version = "0.1.0"
 dependencies = [
@@ -3569,6 +3643,13 @@ dependencies = [
  "matter-stdlib",
  "matter-visual",
  "matter-vm",
+]
+
+[[package]]
+name = "matter-cosmology"
+version = "0.1.0"
+dependencies = [
+ "matter-backend",
 ]
 
 [[package]]
@@ -3665,6 +3746,15 @@ name = "matter-effects"
 version = "0.1.0"
 
 [[package]]
+name = "matter-electromagnetics"
+version = "0.1.0"
+dependencies = [
+ "matter-backend",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "matter-energy"
 version = "0.1.0"
 dependencies = [
@@ -3674,6 +3764,17 @@ dependencies = [
 [[package]]
 name = "matter-error"
 version = "0.1.0"
+
+[[package]]
+name = "matter-fluid"
+version = "0.1.0"
+dependencies = [
+ "approx",
+ "matter-backend",
+ "matter-error",
+ "ndarray 0.16.1",
+ "thiserror 2.0.18",
+]
 
 [[package]]
 name = "matter-formatter"
@@ -3692,6 +3793,13 @@ dependencies = [
  "matter-backend",
  "matter-chemistry",
  "matter-relativity",
+]
+
+[[package]]
+name = "matter-geophysics"
+version = "0.1.0"
+dependencies = [
+ "matter-backend",
 ]
 
 [[package]]
@@ -3787,6 +3895,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "matter-materials"
+version = "0.1.0"
+dependencies = [
+ "matter-backend",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "matter-memory"
 version = "0.1.0"
 dependencies = [
@@ -3803,10 +3920,42 @@ dependencies = [
 ]
 
 [[package]]
-name = "matter-molecular"
+name = "matter-ml-physics"
 version = "0.1.0"
 dependencies = [
  "matter-backend",
+ "rand 0.8.6",
+]
+
+[[package]]
+name = "matter-molecular"
+version = "0.1.0"
+dependencies = [
+ "approx",
+ "matter-backend",
+ "matter-error",
+ "ndarray 0.16.1",
+ "rand 0.8.6",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "matter-multiscale"
+version = "0.1.0"
+dependencies = [
+ "matter-backend",
+]
+
+[[package]]
+name = "matter-nano"
+version = "0.1.0"
+dependencies = [
+ "approx",
+ "matter-backend",
+ "matter-error",
+ "ndarray 0.16.1",
+ "num-complex",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -3830,12 +3979,29 @@ version = "0.1.0"
 dependencies = [
  "criterion",
  "matter-backend",
- "ndarray",
+ "ndarray 0.15.6",
  "proptest",
  "rand 0.8.6",
  "rayon",
  "serde",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "matter-nuclear"
+version = "0.1.0"
+dependencies = [
+ "approx",
+ "matter-backend",
+ "matter-error",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "matter-ocean"
+version = "0.1.0"
+dependencies = [
+ "matter-backend",
 ]
 
 [[package]]
@@ -3877,6 +4043,17 @@ name = "matter-photonic-vpu"
 version = "0.1.0"
 
 [[package]]
+name = "matter-plasma"
+version = "0.1.0"
+dependencies = [
+ "approx",
+ "matter-backend",
+ "matter-error",
+ "ndarray 0.16.1",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "matter-polyglot"
 version = "0.1.0"
 dependencies = [
@@ -3912,7 +4089,7 @@ dependencies = [
  "criterion",
  "matter-backend",
  "matter-types",
- "ndarray",
+ "ndarray 0.15.6",
  "num-complex",
  "proptest",
  "rand 0.8.6",
@@ -3929,7 +4106,7 @@ dependencies = [
  "matter-core",
  "matter-quantum",
  "matter-types",
- "ndarray",
+ "ndarray 0.15.6",
  "num-complex",
  "proptest",
  "rand 0.8.6",
@@ -3942,16 +4119,23 @@ dependencies = [
 name = "matter-relativity"
 version = "0.1.0"
 dependencies = [
+ "approx",
  "matter-backend",
+ "matter-error",
+ "ndarray 0.16.1",
  "num-complex",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
 name = "matter-runtime"
 version = "0.1.0"
 dependencies = [
+ "matter-acoustics",
+ "matter-atmosphere",
  "matter-backend",
  "matter-biological",
+ "matter-biophysics",
  "matter-bridge-go",
  "matter-bridge-java",
  "matter-bridge-nodejs",
@@ -3959,12 +4143,20 @@ dependencies = [
  "matter-bridge-rust",
  "matter-bytecode",
  "matter-chemistry",
+ "matter-climate",
+ "matter-cosmology",
  "matter-device",
+ "matter-electromagnetics",
  "matter-energy",
  "matter-genesis",
+ "matter-geophysics",
+ "matter-materials",
  "matter-memristive",
+ "matter-ml-physics",
  "matter-molecular",
+ "matter-multiscale",
  "matter-neuromorphic",
+ "matter-ocean",
  "matter-photonic",
  "matter-polyglot",
  "matter-quantum",
@@ -4032,6 +4224,17 @@ name = "matter-stdlib"
 version = "0.1.0"
 dependencies = [
  "matter-backend",
+ "matter-memory",
+]
+
+[[package]]
+name = "matter-superconductor"
+version = "0.1.0"
+dependencies = [
+ "approx",
+ "matter-backend",
+ "matter-error",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -4039,6 +4242,18 @@ name = "matter-topological"
 version = "0.1.0"
 dependencies = [
  "num-complex",
+]
+
+[[package]]
+name = "matter-topology"
+version = "0.1.0"
+dependencies = [
+ "approx",
+ "matter-backend",
+ "matter-error",
+ "ndarray 0.16.1",
+ "num-complex",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -4390,6 +4605,21 @@ dependencies = [
  "num-complex",
  "num-integer",
  "num-traits",
+ "rawpointer",
+]
+
+[[package]]
+name = "ndarray"
+version = "0.16.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "882ed72dce9365842bf196bdeedf5055305f11fc8c03dee7bb0194a6cad34841"
+dependencies = [
+ "matrixmultiply",
+ "num-complex",
+ "num-integer",
+ "num-traits",
+ "portable-atomic",
+ "portable-atomic-util",
  "rawpointer",
 ]
 

@@ -61,6 +61,126 @@ Invoke-GateStep "test release package contract" {
     & powershell -ExecutionPolicy Bypass -File ".\scripts\test-release-package-contract.ps1"
 }
 
+Invoke-GateStep "test status triad contract" {
+    $args = @("-ExecutionPolicy", "Bypass", "-File", ".\scripts\test-status-triad-contract.ps1")
+    if ($CliPath) {
+        $args += @("-CliPath", $CliPath)
+    }
+    $args += @(
+        "-OutJson", "target\validation\status-triad-beta-latest.json",
+        "-HistoryJsonl", "target\validation\status-triad-beta-history.ndjson"
+    )
+    if ($env:MATTER_STATUS_TRIAD_ENFORCE -eq "1") {
+        $args += "-EnforceLatencyBudget"
+        if ($env:MATTER_STATUS_TRIAD_MAX_CORE_MS) {
+            $args += @("-MaxCoreMs", $env:MATTER_STATUS_TRIAD_MAX_CORE_MS)
+        }
+        if ($env:MATTER_STATUS_TRIAD_MAX_WORLD_MS) {
+            $args += @("-MaxWorldMs", $env:MATTER_STATUS_TRIAD_MAX_WORLD_MS)
+        }
+        if ($env:MATTER_STATUS_TRIAD_MAX_FRONTIER_MS) {
+            $args += @("-MaxFrontierMs", $env:MATTER_STATUS_TRIAD_MAX_FRONTIER_MS)
+        }
+        if ($env:MATTER_STATUS_TRIAD_DRIFT_TOLERANCE_PERCENT) {
+            $args += @("-EnforceLatencyDrift", "-DriftTolerancePercent", $env:MATTER_STATUS_TRIAD_DRIFT_TOLERANCE_PERCENT)
+        }
+    }
+    & powershell @args
+}
+
+Invoke-GateStep "test status triad history contract" {
+    $args = @(
+        "-ExecutionPolicy", "Bypass",
+        "-File", ".\scripts\test-status-triad-history-contract.ps1",
+        "-HistoryJsonl", "target\validation\status-triad-beta-history.ndjson",
+        "-MinSamples", "1"
+    )
+    if ($env:MATTER_STATUS_TRIAD_HISTORY_MAX_MEDIAN_MS) {
+        $args += @("-MaxMedianMs", $env:MATTER_STATUS_TRIAD_HISTORY_MAX_MEDIAN_MS)
+    }
+    if ($env:MATTER_STATUS_TRIAD_HISTORY_MAX_P95_MS) {
+        $args += @("-MaxP95Ms", $env:MATTER_STATUS_TRIAD_HISTORY_MAX_P95_MS)
+    }
+    if ($env:MATTER_STATUS_TRIAD_HISTORY_MAX_REGRESSION_PERCENT) {
+        $args += @("-EnforceRegression", "-MaxRegressionPercent", $env:MATTER_STATUS_TRIAD_HISTORY_MAX_REGRESSION_PERCENT)
+    }
+    & powershell @args
+}
+
+Invoke-GateStep "export status triad trend report" {
+    & powershell -ExecutionPolicy Bypass -File ".\scripts\export-status-triad-trend-report.ps1" `
+        -HistoryJsonl "target\validation\status-triad-beta-history.ndjson" `
+        -JsonOut "target\validation\status-triad-beta-trend-report.json" `
+        -MdOut "target\validation\status-triad-beta-trend-report.md"
+}
+
+Invoke-GateStep "export status triad health" {
+    $warn = if ($env:MATTER_STATUS_TRIAD_HEALTH_WARN_P95_MS) { $env:MATTER_STATUS_TRIAD_HEALTH_WARN_P95_MS } else { "30000" }
+    $fail = if ($env:MATTER_STATUS_TRIAD_HEALTH_FAIL_P95_MS) { $env:MATTER_STATUS_TRIAD_HEALTH_FAIL_P95_MS } else { "45000" }
+    & powershell -ExecutionPolicy Bypass -File ".\scripts\export-status-triad-health.ps1" `
+        -TriadLatestJson "target\validation\status-triad-beta-latest.json" `
+        -TriadTrendJson "target\validation\status-triad-beta-trend-report.json" `
+        -HealthOut "target\validation\status-triad-beta-health.json" `
+        -WarnP95Ms $warn `
+        -FailP95Ms $fail
+}
+
+Invoke-GateStep "test status triad health contract" {
+    & powershell -ExecutionPolicy Bypass -File ".\scripts\test-status-triad-health-contract.ps1" `
+        -HealthJson "target\validation\status-triad-beta-health.json"
+}
+
+Invoke-GateStep "test frontier simulation quality contract" {
+    $args = @(
+        "-ExecutionPolicy", "Bypass",
+        "-File", ".\scripts\test-frontier-simulation-quality-contract.ps1"
+    )
+    if ($CliPath) {
+        $args += @("-CliPath", $CliPath)
+    }
+    & powershell @args
+}
+
+Invoke-GateStep "run performance gate" {
+    $iterations = if ($env:MATTER_PERFORMANCE_ITERATIONS) { $env:MATTER_PERFORMANCE_ITERATIONS } else { "30" }
+    $startupIterations = if ($env:MATTER_PERFORMANCE_STARTUP_ITERATIONS) { $env:MATTER_PERFORMANCE_STARTUP_ITERATIONS } else { "5" }
+    $trendWindow = if ($env:MATTER_PERFORMANCE_TREND_WINDOW) { $env:MATTER_PERFORMANCE_TREND_WINDOW } else { "20" }
+    $warnBenchmarkP95 = if ($env:MATTER_PERFORMANCE_WARN_BENCHMARK_P95_MS) { $env:MATTER_PERFORMANCE_WARN_BENCHMARK_P95_MS } else { "75" }
+    $failBenchmarkP95 = if ($env:MATTER_PERFORMANCE_FAIL_BENCHMARK_P95_MS) { $env:MATTER_PERFORMANCE_FAIL_BENCHMARK_P95_MS } else { "150" }
+    $warnStartupP95 = if ($env:MATTER_PERFORMANCE_WARN_STARTUP_P95_MS) { $env:MATTER_PERFORMANCE_WARN_STARTUP_P95_MS } else { "150" }
+    $failStartupP95 = if ($env:MATTER_PERFORMANCE_FAIL_STARTUP_P95_MS) { $env:MATTER_PERFORMANCE_FAIL_STARTUP_P95_MS } else { "300" }
+
+    $args = @(
+        "-ExecutionPolicy", "Bypass",
+        "-File", ".\scripts\run-performance-gate.ps1",
+        "-Iterations", $iterations,
+        "-StartupIterations", $startupIterations,
+        "-OutDir", "target\performance-beta",
+        "-TrendWindow", $trendWindow,
+        "-WarnBenchmarkP95Ms", $warnBenchmarkP95,
+        "-FailBenchmarkP95Ms", $failBenchmarkP95,
+        "-WarnStartupP95Ms", $warnStartupP95,
+        "-FailStartupP95Ms", $failStartupP95
+    )
+    if ($CliPath) {
+        $args += @("-CliPath", $CliPath)
+    }
+    if ($env:MATTER_PERFORMANCE_BASELINE_JSON) {
+        $args += @("-BaselineJson", $env:MATTER_PERFORMANCE_BASELINE_JSON)
+    }
+    if ($env:MATTER_PERFORMANCE_ENFORCE_DRIFT -eq "1") {
+        $args += "-EnforceDrift"
+        if ($env:MATTER_PERFORMANCE_DRIFT_TOLERANCE_PERCENT) {
+            $args += @("-DriftTolerancePercent", $env:MATTER_PERFORMANCE_DRIFT_TOLERANCE_PERCENT)
+        }
+    }
+    & powershell @args
+}
+
+Invoke-GateStep "test performance gate contract" {
+    & powershell -ExecutionPolicy Bypass -File ".\scripts\test-performance-gate-contract.ps1"
+}
+
 Invoke-GateStep "test release checksum contract" {
     & powershell -ExecutionPolicy Bypass -File ".\scripts\test-release-artifact-checksums-contract.ps1"
 }

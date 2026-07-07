@@ -1,0 +1,3 @@
+fn hello_from_module() with io {
+    print "Ola do module_a.matter!"
+}

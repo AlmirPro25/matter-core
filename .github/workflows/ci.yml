@@ -12,6 +12,15 @@ jobs:
     runs-on: windows-latest
     env:
       CARGO_TARGET_DIR: ${{ runner.temp }}\matter_target
+      MATTER_STATUS_TRIAD_MAX_CORE_MS: "30000"
+      MATTER_STATUS_TRIAD_MAX_WORLD_MS: "30000"
+      MATTER_STATUS_TRIAD_MAX_FRONTIER_MS: "30000"
+      MATTER_STATUS_TRIAD_DRIFT_TOLERANCE_PERCENT: "50"
+      MATTER_STATUS_TRIAD_HISTORY_MAX_MEDIAN_MS: "30000"
+      MATTER_STATUS_TRIAD_HISTORY_MAX_P95_MS: "35000"
+      MATTER_STATUS_TRIAD_HISTORY_MAX_REGRESSION_PERCENT: "35"
+      MATTER_STATUS_TRIAD_HEALTH_WARN_P95_MS: "30000"
+      MATTER_STATUS_TRIAD_HEALTH_FAIL_P95_MS: "45000"
 
     steps:
       - name: Checkout
@@ -42,6 +51,53 @@ jobs:
 
       - name: Test workspace
         run: cargo test --workspace --all-targets
+
+      - name: Status triad contract (latency budget)
+        shell: pwsh
+        run: >
+          .\scripts\test-status-triad-contract.ps1
+          -EnforceLatencyBudget
+          -MaxCoreMs $env:MATTER_STATUS_TRIAD_MAX_CORE_MS
+          -MaxWorldMs $env:MATTER_STATUS_TRIAD_MAX_WORLD_MS
+          -MaxFrontierMs $env:MATTER_STATUS_TRIAD_MAX_FRONTIER_MS
+          -EnforceLatencyDrift
+          -DriftTolerancePercent $env:MATTER_STATUS_TRIAD_DRIFT_TOLERANCE_PERCENT
+          -DriftBaselineJson scripts\status-triad-latency-baseline.json
+          -OutJson target\validation\status-triad-latest.json
+          -HistoryJsonl target\validation\status-triad-history.ndjson
+
+      - name: Status triad history contract
+        shell: pwsh
+        run: >
+          .\scripts\test-status-triad-history-contract.ps1
+          -HistoryJsonl target\validation\status-triad-history.ndjson
+          -MinSamples 1
+          -MaxMedianMs $env:MATTER_STATUS_TRIAD_HISTORY_MAX_MEDIAN_MS
+          -MaxP95Ms $env:MATTER_STATUS_TRIAD_HISTORY_MAX_P95_MS
+          -EnforceRegression
+          -MaxRegressionPercent $env:MATTER_STATUS_TRIAD_HISTORY_MAX_REGRESSION_PERCENT
+
+      - name: Export status triad trend report
+        shell: pwsh
+        run: >
+          .\scripts\export-status-triad-trend-report.ps1
+          -HistoryJsonl target\validation\status-triad-history.ndjson
+          -JsonOut target\validation\status-triad-trend-report.json
+          -MdOut target\validation\status-triad-trend-report.md
+
+      - name: Export status triad health
+        shell: pwsh
+        run: >
+          .\scripts\export-status-triad-health.ps1
+          -TriadLatestJson target\validation\status-triad-latest.json
+          -TriadTrendJson target\validation\status-triad-trend-report.json
+          -HealthOut target\validation\status-triad-health.json
+          -WarnP95Ms $env:MATTER_STATUS_TRIAD_HEALTH_WARN_P95_MS
+          -FailP95Ms $env:MATTER_STATUS_TRIAD_HEALTH_FAIL_P95_MS
+
+      - name: Test status triad health contract
+        shell: pwsh
+        run: .\scripts\test-status-triad-health-contract.ps1 -HealthJson target\validation\status-triad-health.json
 
       - name: Rust FFI plugin smoke
         shell: pwsh
@@ -84,3 +140,13 @@ jobs:
         with:
           name: ffi-smoke-summaries
           path: target\ffi\*.json
+
+      - name: Upload status triad history
+        uses: actions/upload-artifact@v4
+        with:
+          name: status-triad-history
+          path: |
+            target\validation\status-triad-*
+            target\validation\status-triad-trend-report.json
+            target\validation\status-triad-trend-report.md
+            target\validation\status-triad-health.json

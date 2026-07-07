@@ -1,0 +1,48 @@
+print "==========================================="
+print " 🧠 REDE NEURAL: PERCEPTRON MATTER "
+print "==========================================="
+
+// Pesos das Sinapses (Importância de cada informação)
+let peso_1 = 0.8
+let peso_2 = -0.2
+let peso_3 = 0.5
+let bias = -0.1
+
+// Entradas do Sensor (Sinais que chegaram no neuronio)
+let entrada_1 = 1.0
+let entrada_2 = 0.0
+let entrada_3 = 1.0
+
+// Registradores Globais do Cérebro
+let soma_ponderada = 0.0
+let sinal_saida = 0.0
+
+fn calcular_neuronio() {
+    // PASO 1: Função Soma (Inputs * Pesos) + Bias
+    let calc = (entrada_1 * peso_1) + (entrada_2 * peso_2) + (entrada_3 * peso_3) + bias
+    set soma_ponderada = calc
+    
+    // PASSO 2: Função de Ativação (Usando a lógica ReLU)
+    // Se a energia for positiva, o neurônio dispara o valor. Se for negativa, ele apaga (0.0).
+    if soma_ponderada > 0.0 {
+        set sinal_saida = soma_ponderada
+    }
+    if soma_ponderada <= 0.0 {
+        set sinal_saida = 0.0
+    }
+}
+
+// ---------------- Execução ----------------
+print "Sinais Recebidos (Input):"
+print "[1.0, 0.0, 1.0]"
+
+calcular_neuronio()
+
+print " "
+print "Energia interna acumulada (Soma Ponderada):"
+print soma_ponderada
+
+print " "
+print ">> RESPOSTA DO NEURONIO (OUTPUT):"
+print sinal_saida
+print "==========================================="
