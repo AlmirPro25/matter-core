@@ -1,0 +1,2 @@
+﻿// Program-initiated write must be denied without --allow-fs-write
+file.write("secret.txt", "nope")

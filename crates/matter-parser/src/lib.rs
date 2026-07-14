@@ -221,6 +221,11 @@ impl Parser {
                 Token::Continue => self.parse_continue(),
                 Token::Return => self.parse_return(),
                 Token::Match => self.parse_match(),
+                // Semantic honesty (0.2.0): reserved but not implemented.
+                Token::Panic => Err(self.error(
+                    "'panic' is a reserved word, but the panic construct is not implemented \
+                     in Matter Core 0.2.0 (not a language feature of this version)",
+                )),
                 _ => {
                     let expr = self.parse_expression()?;
                     Ok(Statement::Expression(expr))
@@ -1440,6 +1445,7 @@ mod tests {
 
     #[test]
     fn test_parse_let_with_type() {
+        // Parsing still accepts annotations; Core 0.2.0 rejects them at semantic check.
         let mut parser = Parser::from_source("let x: int = 10");
         let program = parser.parse().unwrap();
         assert_eq!(program.statements.len(), 1);
@@ -1451,6 +1457,30 @@ mod tests {
         } else {
             panic!("Expected Let statement");
         }
+    }
+
+    #[test]
+    fn test_panic_reserved_not_implemented() {
+        let mut parser = Parser::from_source("panic");
+        let err = parser.parse().unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("reserved") || msg.contains("not implemented"),
+            "unexpected: {}",
+            msg
+        );
+    }
+
+    #[test]
+    fn test_panic_with_call_still_not_implemented() {
+        let mut parser = Parser::from_source(r#"panic("boom")"#);
+        let err = parser.parse().unwrap_err();
+        assert!(
+            err.to_string().contains("not implemented")
+                || err.to_string().contains("reserved"),
+            "{}",
+            err
+        );
     }
 
     #[test]

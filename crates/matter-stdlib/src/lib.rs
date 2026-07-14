@@ -3,6 +3,7 @@
 
 // Sprint 80: Extended stdlib modules
 pub mod file_io;
+pub mod fs_capability;
 pub mod vec;
 pub mod hashmap;
 
@@ -11,6 +12,7 @@ pub mod tensor;
 
 // Re-exports
 pub use file_io::FileBackend as FileIOBackend;
+pub use fs_capability::{FsCapabilityPolicy, FsPermission};
 pub use vec::VecBackend;
 pub use hashmap::HashMapBackend;
 pub use tensor::TensorBackend;
@@ -1040,8 +1042,13 @@ mod tests {
 
     #[test]
     fn test_file_lines_and_write_lines() {
-        let mut file_backend = FileBackend::new();
-        let temp_path = std::env::temp_dir().join("matter_test_lines.txt");
+        let root = std::env::temp_dir().join("matter_test_lines_root");
+        let _ = std::fs::create_dir_all(&root);
+        let mut policy = FsCapabilityPolicy::deny_all();
+        policy.allow_read_root(&root).unwrap();
+        policy.allow_write_root(&root).unwrap();
+        let mut file_backend = FileBackend::with_policy(policy);
+        let temp_path = root.join("matter_test_lines.txt");
         let path_str = Value::new_string(temp_path.to_string_lossy().to_string());
 
         let lines_to_write = Value::new_list(vec![
@@ -1065,7 +1072,22 @@ mod tests {
             panic!("Expected list of lines");
         }
 
-        let _ = std::fs::remove_file(temp_path);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn test_file_default_deny() {
+        let mut file_backend = FileBackend::new();
+        let err = file_backend
+            .call(
+                "write",
+                vec![
+                    Value::new_string("x.txt".into()),
+                    Value::new_string("y".into()),
+                ],
+            )
+            .unwrap_err();
+        assert!(err.contains("capability_denied"));
     }
 
     #[test]
@@ -1930,12 +1952,28 @@ impl Backend for ConsoleBackend {
     }
 }
 
-/// File backend - leitura e escrita de arquivos
-pub struct FileBackend;
+/// File backend — program-initiated I/O gated by [`FsCapabilityPolicy`] (default deny).
+pub struct FileBackend {
+    policy: FsCapabilityPolicy,
+}
 
 impl FileBackend {
+    /// Default: deny all program filesystem access until roots are granted.
     pub fn new() -> Self {
-        Self
+        Self {
+            policy: FsCapabilityPolicy::deny_all(),
+        }
+    }
+
+    pub fn with_policy(policy: FsCapabilityPolicy) -> Self {
+        Self { policy }
+    }
+
+    fn authorize(&self, method: &str, path: &str) -> Result<std::path::PathBuf, String> {
+        let perm = FsCapabilityPolicy::permission_for_method("file", method).ok_or_else(|| {
+            format!("capability_denied: unknown or multi-path file method '{}'", method)
+        })?;
+        self.policy.check_path(path, perm)
     }
 }
 
@@ -1955,8 +1993,9 @@ impl Backend for FileBackend {
                 let path = args[0]
                     .as_string()
                     .map_err(|e| format!("file.read: {}", e))?;
+                let path = self.authorize("read", &path)?;
                 let content = std::fs::read_to_string(&path)
-                    .map_err(|e| format!("file.read: failed to read '{}': {}", path, e))?;
+                    .map_err(|e| format!("file.read: failed to read: {}", e))?;
                 Ok(Value::new_string(content))
             }
 
@@ -1973,8 +2012,9 @@ impl Backend for FileBackend {
                 let content = args[1]
                     .as_string()
                     .map_err(|e| format!("file.write: {}", e))?;
+                let path = self.authorize("write", &path)?;
                 std::fs::write(&path, &content)
-                    .map_err(|e| format!("file.write: failed to write '{}': {}", path, e))?;
+                    .map_err(|e| format!("file.write: failed to write: {}", e))?;
                 Ok(Value::Bool(true))
             }
 
@@ -1988,7 +2028,8 @@ impl Backend for FileBackend {
                 let path = args[0]
                     .as_string()
                     .map_err(|e| format!("file.exists: {}", e))?;
-                Ok(Value::Bool(std::path::Path::new(&path).exists()))
+                let path = self.authorize("exists", &path)?;
+                Ok(Value::Bool(path.exists()))
             }
 
             "delete" => {
@@ -2001,8 +2042,9 @@ impl Backend for FileBackend {
                 let path = args[0]
                     .as_string()
                     .map_err(|e| format!("file.delete: {}", e))?;
+                let path = self.authorize("delete", &path)?;
                 std::fs::remove_file(&path)
-                    .map_err(|e| format!("file.delete: failed to delete '{}': {}", path, e))?;
+                    .map_err(|e| format!("file.delete: failed to delete: {}", e))?;
                 Ok(Value::Bool(true))
             }
 
@@ -2019,14 +2061,15 @@ impl Backend for FileBackend {
                 let content = args[1]
                     .as_string()
                     .map_err(|e| format!("file.append: {}", e))?;
+                let path = self.authorize("append", &path)?;
                 use std::io::Write;
                 let mut file = std::fs::OpenOptions::new()
                     .append(true)
                     .create(true)
                     .open(&path)
-                    .map_err(|e| format!("file.append: failed to open '{}': {}", path, e))?;
+                    .map_err(|e| format!("file.append: failed to open: {}", e))?;
                 file.write_all(content.as_bytes())
-                    .map_err(|e| format!("file.append: failed to append to '{}': {}", path, e))?;
+                    .map_err(|e| format!("file.append: failed to append: {}", e))?;
                 Ok(Value::Bool(true))
             }
 
@@ -2037,8 +2080,9 @@ impl Backend for FileBackend {
                 let path = args[0]
                     .as_string()
                     .map_err(|e| format!("file.lines: {}", e))?;
+                let path = self.authorize("lines", &path)?;
                 let content = std::fs::read_to_string(&path)
-                    .map_err(|e| format!("file.lines: failed to read '{}': {}", path, e))?;
+                    .map_err(|e| format!("file.lines: failed to read: {}", e))?;
                 let lines: Vec<Value> = content
                     .lines()
                     .map(|l| Value::new_string(l.to_string()))
@@ -2056,16 +2100,17 @@ impl Backend for FileBackend {
                 let path = args[0]
                     .as_string()
                     .map_err(|e| format!("file.write_lines: {}", e))?;
+                let path = self.authorize("write_lines", &path)?;
                 if let Value::List(lines) = &args[1] {
                     let mut file = std::fs::File::create(&path).map_err(|e| {
-                        format!("file.write_lines: failed to create '{}': {}", path, e)
+                        format!("file.write_lines: failed to create: {}", e)
                     })?;
                     for line_val in lines.iter() {
                         let line_str = line_val
                             .as_string()
                             .map_err(|e| format!("file.write_lines: {}", e))?;
                         writeln!(file, "{}", line_str).map_err(|e| {
-                            format!("file.write_lines: failed to write to '{}': {}", path, e)
+                            format!("file.write_lines: failed to write: {}", e)
                         })?;
                     }
                     Ok(Value::Bool(true))

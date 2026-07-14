@@ -1,0 +1,2 @@
+﻿// Delete denied by default
+file.delete("secret.txt")

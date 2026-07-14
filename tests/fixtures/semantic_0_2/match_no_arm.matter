@@ -1,0 +1,6 @@
+// No matching arm
+match 99 {
+  1 => { print "one" }
+  2 => { print "two" }
+}
+print "after-no-match"
