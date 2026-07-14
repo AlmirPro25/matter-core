@@ -1,0 +1,151 @@
+{
+  "schema_version": 1,
+  "product": "matter-core",
+  "title": "Matter Language Surface Inventory V1",
+  "generated": "2026-07-14",
+  "authority": "executable code and tests; docs subordinate when conflict",
+  "does_not_claim": ["production_ready", "release_candidate", "matter_0.2.0"],
+  "status_enum": [
+    "IMPLEMENTED_AND_TESTED",
+    "IMPLEMENTED_UNTESTED",
+    "PARTIAL",
+    "PARSER_ONLY",
+    "EXPERIMENTAL",
+    "DEPRECATED",
+    "NOT_IMPLEMENTED"
+  ],
+  "sources": {
+    "lexer": "crates/matter-lexer/src/lib.rs",
+    "parser": "crates/matter-parser/src/lib.rs",
+    "ast": "crates/matter-ast/src/lib.rs",
+    "bytecode": "crates/matter-bytecode/src/lib.rs",
+    "vm": "crates/matter-vm/src/lib.rs",
+    "runtime": "crates/matter-runtime/src/lib.rs",
+    "stdlib": "crates/matter-stdlib/src/lib.rs",
+    "file_io": "crates/matter-stdlib/src/file_io.rs",
+    "cli_core": "crates/matter-cli/src/language_main.rs"
+  },
+  "keywords": [
+    {"name": "let", "status": "IMPLEMENTED_AND_TESTED", "origin": "lexer Token::Let", "tests": ["matter-parser::test_parse_let_with_type", "suite:hello"]},
+    {"name": "set", "status": "IMPLEMENTED_AND_TESTED", "origin": "lexer Token::Set; parser parse_set", "tests": ["compiler Statement::Set path"]},
+    {"name": "fn", "status": "IMPLEMENTED_AND_TESTED", "origin": "Token::Fn", "tests": ["matter-parser::test_parse_function_with_types", "matter-vm::test_vm_recursive_fib_outputs_expected_value"]},
+    {"name": "return", "status": "IMPLEMENTED_AND_TESTED", "origin": "Token::Return", "tests": ["fib VM test"]},
+    {"name": "if", "status": "IMPLEMENTED_AND_TESTED", "origin": "Token::If", "tests": ["matter-parser::test_parse_else_if"]},
+    {"name": "else", "status": "IMPLEMENTED_AND_TESTED", "origin": "Token::Else", "tests": ["matter-parser::test_parse_else_if"]},
+    {"name": "while", "status": "IMPLEMENTED_AND_TESTED", "origin": "Token::While", "tests": ["bytecode while compile"]},
+    {"name": "for", "status": "IMPLEMENTED_AND_TESTED", "origin": "Token::For", "tests": ["bytecode compile_for_loop"]},
+    {"name": "in", "status": "IMPLEMENTED_AND_TESTED", "origin": "Token::In", "tests": ["for loop"]},
+    {"name": "loop", "status": "IMPLEMENTED_AND_TESTED", "origin": "Token::Loop", "tests": ["bytecode Loop"]},
+    {"name": "break", "status": "IMPLEMENTED_AND_TESTED", "origin": "Token::Break", "tests": ["bytecode jump patch"]},
+    {"name": "continue", "status": "IMPLEMENTED_AND_TESTED", "origin": "Token::Continue", "tests": ["bytecode jump patch"]},
+    {"name": "struct", "status": "IMPLEMENTED_AND_TESTED", "origin": "Token::Struct", "tests": ["VM field type-error tests"]},
+    {"name": "print", "status": "IMPLEMENTED_AND_TESTED", "origin": "Token::Print", "tests": ["matter-vm::test_vm_captures_print_output"]},
+    {"name": "on", "status": "IMPLEMENTED_AND_TESTED", "origin": "Token::On", "tests": ["suite:events"]},
+    {"name": "spawn", "status": "IMPLEMENTED_AND_TESTED", "origin": "Token::Spawn", "tests": ["suite:events", "core-status sample"]},
+    {"name": "match", "status": "PARTIAL", "origin": "Token::Match; equality arms only", "tests": ["bytecode Match compile"]},
+    {"name": "null", "status": "IMPLEMENTED_AND_TESTED", "origin": "Token::Null", "tests": ["constant path"]},
+    {"name": "true", "status": "IMPLEMENTED_AND_TESTED", "origin": "Token::Bool(true)", "tests": ["logical op tests"]},
+    {"name": "false", "status": "IMPLEMENTED_AND_TESTED", "origin": "Token::Bool(false)", "tests": ["logical op tests"]},
+    {"name": "and", "status": "IMPLEMENTED_AND_TESTED", "origin": "Token::And", "tests": ["matter-lexer::test_word_logical_operators", "matter-parser::test_parse_word_logical_ops"]},
+    {"name": "or", "status": "IMPLEMENTED_AND_TESTED", "origin": "Token::Or", "tests": ["same"]},
+    {"name": "not", "status": "IMPLEMENTED_AND_TESTED", "origin": "Token::Not", "tests": ["same"]},
+    {"name": "ok", "status": "IMPLEMENTED_UNTESTED", "origin": "OkExpr → result.ok", "tests": []},
+    {"name": "err", "status": "IMPLEMENTED_UNTESTED", "origin": "ErrExpr → result.err", "tests": []},
+    {"name": "some", "status": "IMPLEMENTED_UNTESTED", "origin": "SomeExpr → option.some", "tests": []},
+    {"name": "none", "status": "IMPLEMENTED_UNTESTED", "origin": "NoneExpr → option.none", "tests": []},
+    {"name": "import", "status": "PARTIAL", "origin": "parsed; bytecode no-op", "tests": ["matter-lexer::test_import_keyword"], "divergence": "no module loader in Core bytecode path"},
+    {"name": "from", "status": "PARTIAL", "origin": "ImportFrom", "tests": []},
+    {"name": "as", "status": "PARTIAL", "origin": "ImportAs / import alias", "tests": []},
+    {"name": "export", "status": "PARTIAL", "origin": "Export; bytecode no-op", "tests": []},
+    {"name": "panic", "status": "PARSER_ONLY", "origin": "Token::Panic lexed; not in parse_primary", "tests": []}
+  ],
+  "operators": {
+    "precedence_high_to_low": [
+      "postfix call/index/field",
+      "unary not/neg",
+      "* / %",
+      "+ -",
+      "== != < > <= >=",
+      "and &&",
+      "or ||"
+    ],
+    "associativity": "binary levels left-associative; unary right-associative",
+    "origin": "crates/matter-parser/src/lib.rs parse_logical_or..parse_primary",
+    "status": "IMPLEMENTED_AND_TESTED",
+    "tests": ["matter-parser::test_parse_logical_ops", "matter-vm::test_vm_division_by_zero_returns_error", "matter-vm::test_vm_string_concat_outputs_expected_value"]
+  },
+  "control_flow": [
+    {"name": "if/else", "status": "IMPLEMENTED_AND_TESTED", "tests": ["matter-parser::test_parse_else_if"]},
+    {"name": "while", "status": "IMPLEMENTED_AND_TESTED", "origin": "matter-bytecode Statement::While"},
+    {"name": "for-in", "status": "IMPLEMENTED_AND_TESTED", "origin": "compile_for_loop"},
+    {"name": "loop", "status": "IMPLEMENTED_AND_TESTED", "origin": "Statement::Loop"},
+    {"name": "break/continue", "status": "IMPLEMENTED_AND_TESTED", "origin": "jump patches"},
+    {"name": "match", "status": "PARTIAL", "note": "equality patterns only"}
+  ],
+  "data_model": [
+    {"name": "list_literal", "status": "IMPLEMENTED_AND_TESTED", "tests": ["matter-vm::test_vm_list_len_outputs_expected_value"]},
+    {"name": "map_literal", "status": "IMPLEMENTED_AND_TESTED", "tests": ["matter-vm::test_vm_map_has_type_error_uses_context_contract"]},
+    {"name": "struct_def_and_literal", "status": "IMPLEMENTED_AND_TESTED", "tests": ["matter-vm field tests"]},
+    {"name": "index_get_set", "status": "IMPLEMENTED_AND_TESTED", "tests": ["matter-vm load/store index tests"]}
+  ],
+  "events": [
+    {"name": "on", "status": "IMPLEMENTED_AND_TESTED", "tests": ["suite:events"]},
+    {"name": "spawn", "status": "IMPLEMENTED_AND_TESTED", "tests": ["suite:events"]}
+  ],
+  "functions": [
+    {"name": "named_fn", "status": "IMPLEMENTED_AND_TESTED", "tests": ["matter-vm::test_vm_recursive_fib_outputs_expected_value"]},
+    {"name": "lambda", "status": "IMPLEMENTED_UNTESTED", "origin": "Instruction::MakeClosure"},
+    {"name": "recursion", "status": "IMPLEMENTED_AND_TESTED", "tests": ["fib", "call_depth_limit"]}
+  ],
+  "core_stdlib_backends": {
+    "always": ["math", "string", "list", "time", "random", "json", "world", "audio", "Vec", "HashMap", "tensor", "result", "option"],
+    "extended_on_Runtime_new": ["map", "type", "console", "file", "fileio"],
+    "default_non_stdlib": ["graph", "store", "energy", "tool"],
+    "file_effects": {
+      "status": "IMPLEMENTED_AND_TESTED",
+      "note": "Core run allows file R/W/D via file/fileio; not a sandbox",
+      "tests": ["matter-stdlib::test_file_lines_and_write_lines"],
+      "methods_file": ["read", "write", "exists", "delete", "append", "lines", "write_lines"],
+      "methods_fileio": ["read", "write", "append", "exists", "delete", "read_lines", "write_lines", "copy", "rename", "size", "is_file", "is_dir", "create_dir", "list_dir", "remove_dir"]
+    }
+  },
+  "experimental_only": {
+    "status": "EXPERIMENTAL",
+    "feature": "experimental-full / runtime features agent|net|polyglot|visual|device|frontier",
+    "backends": ["agent", "visual", "net", "device", "python", "node", "go", "java", "rust", "frontier_*"],
+    "cli": ["agent-ui", "shell tools", "polyglot-status-json"],
+    "tests": ["scripts/test-capability-security.ps1 deny + backend-not-found"]
+  },
+  "parser_only_or_partial": [
+    {"name": "import/export", "status": "PARTIAL", "evidence": "matter-bytecode Statement::Import compile no-op"},
+    {"name": "type_annotations", "status": "PARTIAL", "evidence": "parsed; not enforced by VM"},
+    {"name": "panic_keyword", "status": "PARSER_ONLY", "evidence": "Token::Panic unused in parse_primary"},
+    {"name": "match_patterns", "status": "PARTIAL", "evidence": "Eq only"}
+  ],
+  "divergences": [
+    {
+      "topic": "import",
+      "docs_claim": "module import system",
+      "code_reality": "AST + parse exist; bytecode builder ignores import/export",
+      "authority": "code"
+    },
+    {
+      "topic": "types",
+      "docs_claim": "gradual typing",
+      "code_reality": "annotations stored on AST; VM untyped values",
+      "authority": "code"
+    },
+    {
+      "topic": "capabilities marketing",
+      "docs_claim": "polyglot/studio as default Matter powers",
+      "code_reality": "language-only Core excludes those features",
+      "authority": "Runtime::new feature cfg + language_main"
+    }
+  ],
+  "docs": [
+    "docs/MATTER_LANGUAGE_SURFACE_V1.md",
+    "docs/MATTER_STDLIB_REFERENCE_V1.md",
+    "docs/MATTER_BACKEND_MATRIX_V1.md",
+    "docs/MATTER_GRAMMAR_REFERENCE_V1.md"
+  ]
+}

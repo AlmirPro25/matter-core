@@ -13,3 +13,15 @@
 | [capability-matrix.json](capability-matrix.json) | Capability matrix |
 
 Small evidence JSON: `../evidence/releases/0.1.0/`.
+
+## Language surface inventory (code-backed)
+
+| Document | Topic |
+|----------|--------|
+| [MATTER_LANGUAGE_SURFACE_V1.md](../MATTER_LANGUAGE_SURFACE_V1.md) | Keywords, types, operators, control flow, gaps |
+| [MATTER_STDLIB_REFERENCE_V1.md](../MATTER_STDLIB_REFERENCE_V1.md) | Stdlib backends and methods |
+| [MATTER_BACKEND_MATRIX_V1.md](../MATTER_BACKEND_MATRIX_V1.md) | Core vs experimental backends |
+| [MATTER_GRAMMAR_REFERENCE_V1.md](../MATTER_GRAMMAR_REFERENCE_V1.md) | Descriptive grammar / precedence |
+| [matter-language-surface-v1.json](../../matter-language-surface-v1.json) | Machine-readable index |
+
+These documents map **what code actually implements** vs what only parses. They do not change the 0.1.0 frozen package.
