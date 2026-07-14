@@ -1,6 +1,6 @@
 //! Deserialization for Matter Bytecode (MBC1)
 
-use crate::{Bytecode, Constant, EventHandler, Function, Instruction};
+use crate::{Bytecode, BytecodeLimits, Constant, EventHandler, Function, Instruction};
 use std::collections::HashMap;
 use std::io::{Error, ErrorKind, Read, Result};
 
@@ -18,17 +18,41 @@ const SECTION_EVENTS: u8 = 0x03;
 const SECTION_MAIN: u8 = 0x04;
 const SECTION_END: u8 = 0xFF;
 
+fn invalid(msg: impl Into<String>) -> Error {
+    Error::new(ErrorKind::InvalidData, msg.into())
+}
+
+fn read_bounded_count(reader: &mut impl Read, limit: usize, label: &str) -> Result<usize> {
+    let mut count_bytes = [0u8; 4];
+    reader.read_exact(&mut count_bytes)?;
+    let count = u32::from_le_bytes(count_bytes) as usize;
+    if count > limit {
+        return Err(invalid(format!(
+            "{} count {} exceeds limit {}",
+            label, count, limit
+        )));
+    }
+    Ok(count)
+}
+
 impl Bytecode {
-    /// Deserialize bytecode from reader
+    /// Deserialize bytecode from reader (binary decode only).
+    /// Prefer [`Bytecode::load_from_file`] / [`Bytecode::load_from_bytes`] which also validate.
     pub fn deserialize<R: Read>(reader: &mut R) -> Result<Self> {
+        let limits = BytecodeLimits::from_env();
+        Self::deserialize_with_limits(reader, &limits)
+    }
+
+    /// Deserialize with explicit size bounds (still does not run full structural validate).
+    pub fn deserialize_with_limits<R: Read>(
+        reader: &mut R,
+        limits: &BytecodeLimits,
+    ) -> Result<Self> {
         // Read and verify magic
         let mut magic = [0u8; 4];
         reader.read_exact(&mut magic)?;
         if &magic != b"MBC1" {
-            return Err(Error::new(
-                ErrorKind::InvalidData,
-                "Invalid MBC1 magic number",
-            ));
+            return Err(invalid("Invalid MBC1 magic number"));
         }
 
         // Read version
@@ -39,10 +63,10 @@ impl Bytecode {
 
         // Check version compatibility
         if major != 0 {
-            return Err(Error::new(
-                ErrorKind::InvalidData,
-                format!("Unsupported MBC version: {}.{}", major, minor),
-            ));
+            return Err(invalid(format!(
+                "Unsupported MBC version: {}.{}",
+                major, minor
+            )));
         }
 
         // Read flags (reserved)
@@ -50,10 +74,16 @@ impl Bytecode {
         reader.read_exact(&mut flags_bytes)?;
         let _flags = u16::from_le_bytes(flags_bytes);
 
-        // Read total instruction count
+        // Read total instruction count (advisory header field; still bounded)
         let mut count_bytes = [0u8; 4];
         reader.read_exact(&mut count_bytes)?;
-        let _total_instructions = u32::from_le_bytes(count_bytes);
+        let total_instructions = u32::from_le_bytes(count_bytes) as usize;
+        if total_instructions > limits.max_instructions_total {
+            return Err(invalid(format!(
+                "header total_instructions {} exceeds limit {}",
+                total_instructions, limits.max_instructions_total
+            )));
+        }
 
         // Initialize bytecode
         let mut bytecode = Bytecode {
@@ -71,23 +101,23 @@ impl Bytecode {
 
             match section_tag[0] {
                 SECTION_CONSTANTS => {
-                    bytecode.constants = deserialize_constants_section(reader)?;
+                    bytecode.constants = deserialize_constants_section(reader, limits)?;
                 }
                 SECTION_FUNCTIONS => {
-                    bytecode.functions = deserialize_functions_section(reader)?;
+                    bytecode.functions = deserialize_functions_section(reader, limits)?;
                 }
                 SECTION_EVENTS => {
-                    bytecode.event_handlers = deserialize_events_section(reader)?;
+                    bytecode.event_handlers = deserialize_events_section(reader, limits)?;
                 }
                 SECTION_MAIN => {
-                    bytecode.main_instructions = deserialize_instructions(reader)?;
+                    bytecode.main_instructions = deserialize_instructions(reader, limits)?;
                 }
                 SECTION_END => break,
                 _ => {
-                    return Err(Error::new(
-                        ErrorKind::InvalidData,
-                        format!("Unknown section tag: 0x{:02X}", section_tag[0]),
-                    ));
+                    return Err(invalid(format!(
+                        "Unknown section tag: 0x{:02X}",
+                        section_tag[0]
+                    )));
                 }
             }
         }
@@ -97,21 +127,22 @@ impl Bytecode {
 }
 
 /// Deserialize constants section
-fn deserialize_constants_section<R: Read>(reader: &mut R) -> Result<Vec<Constant>> {
-    let mut count_bytes = [0u8; 4];
-    reader.read_exact(&mut count_bytes)?;
-    let count = u32::from_le_bytes(count_bytes) as usize;
+fn deserialize_constants_section<R: Read>(
+    reader: &mut R,
+    limits: &BytecodeLimits,
+) -> Result<Vec<Constant>> {
+    let count = read_bounded_count(reader, limits.max_constants, "constants")?;
 
     let mut constants = Vec::with_capacity(count);
     for _ in 0..count {
-        constants.push(deserialize_constant(reader)?);
+        constants.push(deserialize_constant(reader, limits)?);
     }
 
     Ok(constants)
 }
 
 /// Deserialize a constant
-fn deserialize_constant<R: Read>(reader: &mut R) -> Result<Constant> {
+fn deserialize_constant<R: Read>(reader: &mut R, limits: &BytecodeLimits) -> Result<Constant> {
     let mut type_tag = [0u8; 1];
     reader.read_exact(&mut type_tag)?;
 
@@ -130,17 +161,7 @@ fn deserialize_constant<R: Read>(reader: &mut R) -> Result<Constant> {
         }
         0x03 => {
             // String
-            let mut len_bytes = [0u8; 4];
-            reader.read_exact(&mut len_bytes)?;
-            let len = u32::from_le_bytes(len_bytes) as usize;
-
-            let mut bytes = vec![0u8; len];
-            reader.read_exact(&mut bytes)?;
-
-            let s = String::from_utf8(bytes)
-                .map_err(|e| Error::new(ErrorKind::InvalidData, format!("Invalid UTF-8: {}", e)))?;
-
-            Ok(Constant::String(s))
+            Ok(Constant::String(read_string(reader, limits)?))
         }
         0x04 => {
             // Unit
@@ -156,22 +177,23 @@ fn deserialize_constant<R: Read>(reader: &mut R) -> Result<Constant> {
             reader.read_exact(&mut bytes)?;
             Ok(Constant::Float(f64::from_le_bytes(bytes)))
         }
-        _ => Err(Error::new(
-            ErrorKind::InvalidData,
-            format!("Unknown constant type: 0x{:02X}", type_tag[0]),
-        )),
+        _ => Err(invalid(format!(
+            "Unknown constant type: 0x{:02X}",
+            type_tag[0]
+        ))),
     }
 }
 
 /// Deserialize functions section
-fn deserialize_functions_section<R: Read>(reader: &mut R) -> Result<HashMap<String, Function>> {
-    let mut count_bytes = [0u8; 4];
-    reader.read_exact(&mut count_bytes)?;
-    let count = u32::from_le_bytes(count_bytes) as usize;
+fn deserialize_functions_section<R: Read>(
+    reader: &mut R,
+    limits: &BytecodeLimits,
+) -> Result<HashMap<String, Function>> {
+    let count = read_bounded_count(reader, limits.max_functions, "functions")?;
 
     let mut functions = HashMap::new();
     for _ in 0..count {
-        let (name, func) = deserialize_function(reader)?;
+        let (name, func) = deserialize_function(reader, limits)?;
         functions.insert(name, func);
     }
 
@@ -179,16 +201,11 @@ fn deserialize_functions_section<R: Read>(reader: &mut R) -> Result<HashMap<Stri
 }
 
 /// Deserialize a function
-fn deserialize_function<R: Read>(reader: &mut R) -> Result<(String, Function)> {
-    // Name
-    let mut len_bytes = [0u8; 4];
-    reader.read_exact(&mut len_bytes)?;
-    let len = u32::from_le_bytes(len_bytes) as usize;
-
-    let mut name_bytes = vec![0u8; len];
-    reader.read_exact(&mut name_bytes)?;
-    let name = String::from_utf8(name_bytes)
-        .map_err(|e| Error::new(ErrorKind::InvalidData, format!("Invalid UTF-8: {}", e)))?;
+fn deserialize_function<R: Read>(
+    reader: &mut R,
+    limits: &BytecodeLimits,
+) -> Result<(String, Function)> {
+    let name = read_string(reader, limits)?;
 
     // Param count
     let mut param_bytes = [0u8; 4];
@@ -196,7 +213,7 @@ fn deserialize_function<R: Read>(reader: &mut R) -> Result<(String, Function)> {
     let param_count = u32::from_le_bytes(param_bytes) as usize;
 
     // Instructions
-    let instructions = deserialize_instructions(reader)?;
+    let instructions = deserialize_instructions(reader, limits)?;
 
     let func = Function {
         name: name.clone(),
@@ -208,14 +225,15 @@ fn deserialize_function<R: Read>(reader: &mut R) -> Result<(String, Function)> {
 }
 
 /// Deserialize event handlers section
-fn deserialize_events_section<R: Read>(reader: &mut R) -> Result<HashMap<String, EventHandler>> {
-    let mut count_bytes = [0u8; 4];
-    reader.read_exact(&mut count_bytes)?;
-    let count = u32::from_le_bytes(count_bytes) as usize;
+fn deserialize_events_section<R: Read>(
+    reader: &mut R,
+    limits: &BytecodeLimits,
+) -> Result<HashMap<String, EventHandler>> {
+    let count = read_bounded_count(reader, limits.max_event_handlers, "event_handlers")?;
 
     let mut events = HashMap::new();
     for _ in 0..count {
-        let (event, handler) = deserialize_event_handler(reader)?;
+        let (event, handler) = deserialize_event_handler(reader, limits)?;
         events.insert(event, handler);
     }
 
@@ -223,19 +241,14 @@ fn deserialize_events_section<R: Read>(reader: &mut R) -> Result<HashMap<String,
 }
 
 /// Deserialize an event handler
-fn deserialize_event_handler<R: Read>(reader: &mut R) -> Result<(String, EventHandler)> {
-    // Event name
-    let mut len_bytes = [0u8; 4];
-    reader.read_exact(&mut len_bytes)?;
-    let len = u32::from_le_bytes(len_bytes) as usize;
-
-    let mut event_bytes = vec![0u8; len];
-    reader.read_exact(&mut event_bytes)?;
-    let event = String::from_utf8(event_bytes)
-        .map_err(|e| Error::new(ErrorKind::InvalidData, format!("Invalid UTF-8: {}", e)))?;
+fn deserialize_event_handler<R: Read>(
+    reader: &mut R,
+    limits: &BytecodeLimits,
+) -> Result<(String, EventHandler)> {
+    let event = read_string(reader, limits)?;
 
     // Instructions
-    let instructions = deserialize_instructions(reader)?;
+    let instructions = deserialize_instructions(reader, limits)?;
 
     let handler = EventHandler {
         event: event.clone(),
@@ -246,21 +259,25 @@ fn deserialize_event_handler<R: Read>(reader: &mut R) -> Result<(String, EventHa
 }
 
 /// Deserialize instructions
-fn deserialize_instructions<R: Read>(reader: &mut R) -> Result<Vec<Instruction>> {
-    let mut count_bytes = [0u8; 4];
-    reader.read_exact(&mut count_bytes)?;
-    let count = u32::from_le_bytes(count_bytes) as usize;
+fn deserialize_instructions<R: Read>(
+    reader: &mut R,
+    limits: &BytecodeLimits,
+) -> Result<Vec<Instruction>> {
+    let count = read_bounded_count(reader, limits.max_instructions_per_block, "instructions")?;
 
     let mut instructions = Vec::with_capacity(count);
     for _ in 0..count {
-        instructions.push(deserialize_instruction(reader)?);
+        instructions.push(deserialize_instruction(reader, limits)?);
     }
 
     Ok(instructions)
 }
 
 /// Deserialize a single instruction
-fn deserialize_instruction<R: Read>(reader: &mut R) -> Result<Instruction> {
+fn deserialize_instruction<R: Read>(
+    reader: &mut R,
+    limits: &BytecodeLimits,
+) -> Result<Instruction> {
     let mut opcode = [0u8; 1];
     reader.read_exact(&mut opcode)?;
 
@@ -273,25 +290,25 @@ fn deserialize_instruction<R: Read>(reader: &mut R) -> Result<Instruction> {
         }
         0x02 => {
             // LoadGlobal
-            Ok(Instruction::LoadGlobal(read_string(reader)?))
+            Ok(Instruction::LoadGlobal(read_string(reader, limits)?))
         }
         0x03 => {
             // StoreGlobal
-            Ok(Instruction::StoreGlobal(read_string(reader)?))
+            Ok(Instruction::StoreGlobal(read_string(reader, limits)?))
         }
         0x04 => {
             // LoadLocal
-            Ok(Instruction::LoadLocal(read_string(reader)?))
+            Ok(Instruction::LoadLocal(read_string(reader, limits)?))
         }
         0x05 => {
             // StoreLocal
-            Ok(Instruction::StoreLocal(read_string(reader)?))
+            Ok(Instruction::StoreLocal(read_string(reader, limits)?))
         }
         0x06 => Ok(Instruction::PushScope),
         0x07 => Ok(Instruction::PopScope),
         0x08 => {
             // StoreExisting
-            Ok(Instruction::StoreExisting(read_string(reader)?))
+            Ok(Instruction::StoreExisting(read_string(reader, limits)?))
         }
         0x09 => {
             let mut bytes = [0u8; 4];
@@ -332,9 +349,9 @@ fn deserialize_instruction<R: Read>(reader: &mut R) -> Result<Instruction> {
             Ok(Instruction::Call(u32::from_le_bytes(bytes) as usize))
         }
         0x41 => Ok(Instruction::Return),
-        0x42 => Ok(Instruction::SpawnEvent(read_string(reader)?)),
+        0x42 => Ok(Instruction::SpawnEvent(read_string(reader, limits)?)),
         0x43 => {
-            let name = read_string(reader)?;
+            let name = read_string(reader, limits)?;
             let mut bytes = [0u8; 4];
             reader.read_exact(&mut bytes)?;
             Ok(Instruction::CallNamed {
@@ -345,8 +362,8 @@ fn deserialize_instruction<R: Read>(reader: &mut R) -> Result<Instruction> {
         0x50 => Ok(Instruction::Print),
         0x60 => {
             // BackendCall
-            let backend = read_string(reader)?;
-            let method = read_string(reader)?;
+            let backend = read_string(reader, limits)?;
+            let method = read_string(reader, limits)?;
 
             let mut bytes = [0u8; 4];
             reader.read_exact(&mut bytes)?;
@@ -364,60 +381,102 @@ fn deserialize_instruction<R: Read>(reader: &mut R) -> Result<Instruction> {
             // NewList
             let mut bytes = [0u8; 4];
             reader.read_exact(&mut bytes)?;
-            Ok(Instruction::NewList(u32::from_le_bytes(bytes) as usize))
+            let n = u32::from_le_bytes(bytes) as usize;
+            if n > limits.max_list_or_map_elems {
+                return Err(invalid(format!(
+                    "NewList size {} exceeds limit {}",
+                    n, limits.max_list_or_map_elems
+                )));
+            }
+            Ok(Instruction::NewList(n))
         }
         0x81 => Ok(Instruction::LoadIndex),
         0x82 => Ok(Instruction::StoreIndex),
         0x83 => Ok(Instruction::ListPush),
         0x84 => Ok(Instruction::ListPop),
         0x85 => Ok(Instruction::ListLen),
-        0x86 => Ok(Instruction::StoreIndexVar(read_string(reader)?)),
-        0x87 => Ok(Instruction::ListPushVar(read_string(reader)?)),
-        0x88 => Ok(Instruction::ListPopVar(read_string(reader)?)),
+        0x86 => Ok(Instruction::StoreIndexVar(read_string(reader, limits)?)),
+        0x87 => Ok(Instruction::ListPushVar(read_string(reader, limits)?)),
+        0x88 => Ok(Instruction::ListPopVar(read_string(reader, limits)?)),
         0x90 => {
             let mut bytes = [0u8; 4];
             reader.read_exact(&mut bytes)?;
-            Ok(Instruction::NewMap(u32::from_le_bytes(bytes) as usize))
+            let n = u32::from_le_bytes(bytes) as usize;
+            if n > limits.max_list_or_map_elems {
+                return Err(invalid(format!(
+                    "NewMap size {} exceeds limit {}",
+                    n, limits.max_list_or_map_elems
+                )));
+            }
+            Ok(Instruction::NewMap(n))
         }
         0x91 => Ok(Instruction::MapHas),
         0x92 => Ok(Instruction::MapKeys),
         0x93 => Ok(Instruction::MapValues),
         0xA0 => {
-            let type_name = read_string(reader)?;
+            let type_name = read_string(reader, limits)?;
             let mut bytes = [0u8; 4];
             reader.read_exact(&mut bytes)?;
-            Ok(Instruction::NewStruct(
-                type_name,
-                u32::from_le_bytes(bytes) as usize,
-            ))
+            let n = u32::from_le_bytes(bytes) as usize;
+            if n > limits.max_list_or_map_elems {
+                return Err(invalid(format!(
+                    "NewStruct fields {} exceeds limit {}",
+                    n, limits.max_list_or_map_elems
+                )));
+            }
+            Ok(Instruction::NewStruct(type_name, n))
         }
-        0xA1 => Ok(Instruction::LoadField(read_string(reader)?)),
+        0xA1 => Ok(Instruction::LoadField(read_string(reader, limits)?)),
         0xA2 => {
-            let target = read_string(reader)?;
-            let field = read_string(reader)?;
+            let target = read_string(reader, limits)?;
+            let field = read_string(reader, limits)?;
             Ok(Instruction::StoreFieldVar { target, field })
         }
 
         0x70 => Ok(Instruction::Pop),
+        0xB0 => {
+            let func_name = read_string(reader, limits)?;
+            let count = {
+                let mut buf = [0u8; 4];
+                reader.read_exact(&mut buf)?;
+                u32::from_le_bytes(buf) as usize
+            };
+            if count > limits.max_captures {
+                return Err(invalid(format!(
+                    "MakeClosure captures {} exceeds limit {}",
+                    count, limits.max_captures
+                )));
+            }
+            let mut capture_names = Vec::with_capacity(count);
+            for _ in 0..count {
+                capture_names.push(read_string(reader, limits)?);
+            }
+            Ok(Instruction::MakeClosure {
+                func_name,
+                capture_names,
+            })
+        }
         0xFF => Ok(Instruction::Halt),
-        _ => Err(Error::new(
-            ErrorKind::InvalidData,
-            format!("Unknown opcode: 0x{:02X}", opcode[0]),
-        )),
+        _ => Err(invalid(format!("Unknown opcode: 0x{:02X}", opcode[0]))),
     }
 }
 
-/// Helper to read a string
-fn read_string<R: Read>(reader: &mut R) -> Result<String> {
+/// Helper to read a length-prefixed UTF-8 string with size bound.
+fn read_string<R: Read>(reader: &mut R, limits: &BytecodeLimits) -> Result<String> {
     let mut len_bytes = [0u8; 4];
     reader.read_exact(&mut len_bytes)?;
     let len = u32::from_le_bytes(len_bytes) as usize;
+    if len > limits.max_string_bytes {
+        return Err(invalid(format!(
+            "string length {} exceeds limit {}",
+            len, limits.max_string_bytes
+        )));
+    }
 
     let mut bytes = vec![0u8; len];
     reader.read_exact(&mut bytes)?;
 
-    String::from_utf8(bytes)
-        .map_err(|e| Error::new(ErrorKind::InvalidData, format!("Invalid UTF-8: {}", e)))
+    String::from_utf8(bytes).map_err(|e| invalid(format!("Invalid UTF-8: {}", e)))
 }
 
 #[cfg(test)]

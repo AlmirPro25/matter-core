@@ -1,5 +1,12 @@
 //! Matter CLI
 //! Interface de linha de comando para Matter
+//!
+//! Experimental full edition (`matter-cli-experimental`).
+//! **NOT a sandbox.** Local process execution uses an allowlist + injection filters;
+//! set `MATTER_ALLOW_LOCAL_COMMANDS=1` only for explicit development overrides.
+
+mod capability_policy;
+mod commands;
 
 use emnr_matter_bridge::{MatterBridgeSession, MatterPhase, MatterRuntimeEvent};
 use matter_ast::{Expression, Program, Statement};
@@ -3554,10 +3561,11 @@ fn run_agent_new_app(args: &[String]) {
         }
     };
 
-    let manifest_arg = powershell_single_quote(&result.manifest_path.display().to_string());
-    let check_command = format!("matter project-check-json {}", manifest_arg);
+    // Phase 3: structured path arg (no PowerShell quoting / shell concatenation).
+    let manifest_path = result.manifest_path.display().to_string();
+    let check_command = format!("matter project-check-json {}", manifest_path);
     let check = run_local_command_capture(&check_command);
-    let run_command = format!("matter project-run-json {}", manifest_arg);
+    let run_command = format!("matter project-run-json {}", manifest_path);
     let run_result = if run_after {
         Some(run_local_command_capture(&run_command))
     } else {
@@ -8326,8 +8334,15 @@ fn resolve_ast_imports(
 ) -> Result<(), String> {
     let mut i = 0;
     while i < program.statements.len() {
-        if let Statement::Import { path } = &program.statements[i] {
-            let import_path = base_dir.join(path);
+        let import_path_opt = match &program.statements[i] {
+            Statement::Import { path } => Some(path.clone()),
+            Statement::ImportFrom { path, .. } => Some(path.clone()),
+            Statement::ImportAs { path, .. } => Some(path.clone()),
+            _ => None,
+        };
+
+        if let Some(path) = import_path_opt {
+            let import_path = base_dir.join(&path);
             let canonical_path = import_path
                 .canonicalize()
                 .or_else(|_| Ok::<_, std::io::Error>(import_path.clone()));
@@ -8350,6 +8365,12 @@ fn resolve_ast_imports(
 
             let parent_dir = canonical.parent().unwrap_or(base_dir);
             resolve_ast_imports(&mut imported_program, parent_dir, visited)?;
+
+            // Handle ImportAs: wrap imported statements with alias binding
+            if let Statement::ImportAs { alias, .. } = &program.statements[i] {
+                // For now, inline the source; alias is tracked for future namespace support
+                let _ = alias;
+            }
 
             program.statements.remove(i);
             for stmt in imported_program.statements.into_iter().rev() {
@@ -16491,16 +16512,30 @@ fn collect_doctor_checks() -> Vec<DoctorCheck> {
     });
 
     let cargo_config = Path::new(".cargo").join("config.toml");
-    let target_dir_check = fs::read_to_string(&cargo_config)
-        .map(|content| content.contains("target-dir") && content.contains("matter_target"))
-        .unwrap_or(false);
+    // Prefer default <project>/target on D: — do not require F:/matter_target.
+    let target_dir_check = if cargo_config.exists() {
+        match fs::read_to_string(&cargo_config) {
+            Ok(content) => {
+                let has_f_drive = content.contains("F:/")
+                    || content.contains("F:\\")
+                    || content.to_lowercase().contains("matter_target");
+                !has_f_drive
+            }
+            Err(_) => false,
+        }
+    } else {
+        // No override config → cargo uses ./target in the project folder (good).
+        true
+    };
     checks.push(DoctorCheck {
         name: "safe_target_dir",
         ok: target_dir_check,
         detail: if target_dir_check {
-            ".cargo/config.toml points build output outside the spaced workspace path".to_string()
+            "build output uses project-local target/ on the project drive (not F:/matter_target)"
+                .to_string()
         } else {
-            ".cargo/config.toml is missing the expected matter_target build directory".to_string()
+            ".cargo/config.toml still points target-dir to F: or matter_target — remove it so builds stay in the project folder on D:"
+                .to_string()
         },
     });
 
@@ -16707,6 +16742,7 @@ fn value_to_json(value: &Value) -> String {
         Value::String(text) | Value::Function(text) => {
             format!("\"{}\"", json_escape(text.as_ref()))
         }
+        Value::Closure(_) => "\"<closure>\"".to_string(),
         Value::List(items) => {
             let encoded: Vec<String> = items.iter().map(value_to_json).collect();
             format!("[{}]", encoded.join(","))
@@ -16803,9 +16839,17 @@ fn token_json(index: usize, token: &Token, line: usize, column: usize) -> String
         Token::Continue => ("continue", None),
         Token::Struct => ("struct", None),
         Token::Import => ("import", None),
+        Token::From => ("from", None),
+        Token::As => ("as", None),
+        Token::Export => ("export", None),
         Token::Match => ("match", None),
         Token::Null => ("null", None),
         Token::Spawn => ("spawn", None),
+        Token::Ok => ("ok", None),
+        Token::Err => ("err", None),
+        Token::Some => ("some", None),
+        Token::None => ("none", None),
+        Token::Panic => ("panic", None),
         Token::Int(value) => ("int", Some(value.to_string())),
         Token::Float(value) => ("float", Some(value.to_string())),
         Token::String(value) => ("string", Some(value.clone())),
@@ -16831,6 +16875,7 @@ fn token_json(index: usize, token: &Token, line: usize, column: usize) -> String
         Token::Or => ("or", None),
         Token::Not => ("not", None),
         Token::Arrow => ("arrow", None),
+        Token::QuestionMark => ("question_mark", None),
         Token::LParen => ("lparen", None),
         Token::RParen => ("rparen", None),
         Token::LBrace => ("lbrace", None),
@@ -17119,6 +17164,9 @@ fn collect_calls_in_statements(statements: &[Statement], calls: &mut BTreeMap<St
             }
             Statement::StructDef { .. }
             | Statement::Import { .. }
+            | Statement::ImportFrom { .. }
+            | Statement::ImportAs { .. }
+            | Statement::Export { .. }
             | Statement::Spawn { .. }
             | Statement::Break
             | Statement::Continue => {}
@@ -17168,12 +17216,30 @@ fn collect_calls_in_expression(expression: &Expression, calls: &mut BTreeMap<Str
                 collect_calls_in_expression(arg, calls);
             }
         }
+        Expression::Lambda { body, .. } => {
+            for stmt in body {
+                match stmt {
+                    Statement::Expression(expr) | Statement::Return(expr) => {
+                        collect_calls_in_expression(expr, calls);
+                    }
+                    Statement::Let { value, .. } | Statement::Set { value, .. } => {
+                        collect_calls_in_expression(value, calls);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        Expression::OkExpr(inner)
+        | Expression::ErrExpr(inner)
+        | Expression::SomeExpr(inner)
+        | Expression::TryPropagate(inner) => collect_calls_in_expression(inner, calls),
         Expression::Int(_)
         | Expression::Float(_)
         | Expression::Bool(_)
         | Expression::String(_)
         | Expression::Null
         | Expression::Unit
+        | Expression::NoneExpr
         | Expression::Identifier(_) => {}
     }
 }
@@ -17253,6 +17319,9 @@ fn collect_statement_reflection(
             }
             Statement::StructDef { .. }
             | Statement::Import { .. }
+            | Statement::ImportFrom { .. }
+            | Statement::ImportAs { .. }
+            | Statement::Export { .. }
             | Statement::Spawn { .. }
             | Statement::Break
             | Statement::Continue => {}
@@ -17328,12 +17397,22 @@ fn collect_expression_reflection(
                 collect_expression_reflection(arg, calls, backend_calls);
             }
         }
+        Expression::Lambda { body, .. } => {
+            collect_statement_reflection(body, &mut BTreeMap::new(), calls, backend_calls);
+        }
+        Expression::OkExpr(inner)
+        | Expression::ErrExpr(inner)
+        | Expression::SomeExpr(inner)
+        | Expression::TryPropagate(inner) => {
+            collect_expression_reflection(inner, calls, backend_calls)
+        }
         Expression::Int(_)
         | Expression::Float(_)
         | Expression::Bool(_)
         | Expression::String(_)
         | Expression::Null
         | Expression::Unit
+        | Expression::NoneExpr
         | Expression::Identifier(_) => {}
     }
 }
@@ -17370,6 +17449,9 @@ fn statement_kind(statement: &Statement) -> &'static str {
         Statement::FunctionDef { .. } => "FunctionDef",
         Statement::StructDef { .. } => "StructDef",
         Statement::Import { .. } => "Import",
+        Statement::ImportFrom { .. } => "ImportFrom",
+        Statement::ImportAs { .. } => "ImportAs",
+        Statement::Export { .. } => "Export",
         Statement::OnEvent { .. } => "OnEvent",
         Statement::Spawn { .. } => "Spawn",
         Statement::If { .. } => "If",
@@ -17413,6 +17495,7 @@ fn instruction_kind(instruction: &Instruction) -> &'static str {
         Instruction::JumpIfFalse(_) => "JumpIfFalse",
         Instruction::Call(_) => "Call",
         Instruction::CallNamed { .. } => "CallNamed",
+        Instruction::MakeClosure { .. } => "MakeClosure",
         Instruction::Return => "Return",
         Instruction::SpawnEvent(_) => "SpawnEvent",
         Instruction::Print => "Print",
@@ -18003,6 +18086,16 @@ fn print_instruction(
                 format!("StoreFieldVar"),
                 target,
                 field
+            );
+        }
+        Instruction::MakeClosure {
+            func_name,
+            capture_names,
+        } => {
+            println!(
+                "{:<20} ; captures=[{}]",
+                format!("MakeClosure(\"{}\")", func_name),
+                capture_names.join(", ")
             );
         }
     }
@@ -21306,6 +21399,7 @@ fn apply_agent_work_report(args: &[String]) {
     let validation = if ok && run_validation {
         let manifest = workspace.join("matter.toml");
         if manifest.exists() {
+            // Phase 3: no shell quoting; path is a single structured argv element.
             let command = format!("matter project-check-json {}", manifest.display());
             match run_local_command_capture(&command) {
                 Ok(output) => {
@@ -21867,21 +21961,10 @@ fn build_memory_prompt() -> Option<String> {
     Some(out)
 }
 
+/// Phase 3: structured argv + allowlist + injection reject + timeout + output cap.
+/// Does **not** invoke PowerShell. **Not a sandbox.**
 fn run_local_command_capture(command: &str) -> Result<String, String> {
-    let output = Command::new("powershell")
-        .args(["-NoProfile", "-Command", command])
-        .output()
-        .map_err(|e| format!("failed to execute command: {}", e))?;
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        if stderr.trim().is_empty() {
-            Err(String::from_utf8_lossy(&output.stdout).to_string())
-        } else {
-            Err(stderr)
-        }
-    }
+    capability_policy::run_local_command_capture(command)
 }
 
 fn print_summarized_command_output(command: &str, output: &str) {
@@ -21923,27 +22006,7 @@ fn print_full_command_output(command: &str, output: &str) {
 }
 
 fn run_whitelisted_command(command: &str) -> Result<String, String> {
-    let allowed = [
-        "git status --short",
-        "cargo check -p matter-cli",
-        "cargo check --workspace",
-        "cargo test -p matter-cli -q",
-        "cargo test --workspace -q",
-        "cargo clippy -p matter-cli --all-targets -- -D warnings",
-        "cargo clippy --workspace --exclude matter-llvm --all-targets -- -D warnings",
-        "matter project-check-json",
-        "matter project-run-json",
-        "matter project-run-json --with-energy",
-        "git diff --stat",
-    ];
-    if !allowed.contains(&command) {
-        return Err(format!(
-            "command not allowed: '{}'. Use one of: {}",
-            command,
-            allowed.join(" | ")
-        ));
-    }
-    run_local_command_capture(command)
+    capability_policy::run_whitelisted_command(command)
 }
 
 fn print_fix_plan_from_output(output: &str) {

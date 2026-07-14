@@ -1358,6 +1358,7 @@ fn value_to_json(value: &Value) -> Result<String, String> {
             Ok(format!("{{{}}}", json_entries.join(",")))
         }
         Value::Function(name) => Ok(format!("\"<function {}>\"", **name)),
+        Value::Closure(_) => Ok("\"<closure>\"".to_string()),
     }
 }
 
@@ -1745,6 +1746,7 @@ impl Backend for TypeBackend {
                     Value::Map(_) => "map",
                     Value::Struct { .. } => "struct",
                     Value::Function(_) => "function",
+                    Value::Closure(_) => "closure",
                     Value::Unit => "unit",
                     Value::Null => "null",
                 };
@@ -2727,4 +2729,223 @@ fn world_cell_key(x: i64, y: i64) -> String {
 
 fn world_error_payload(message: &str) -> Value {
     world_map(vec![("error", Value::new_string(message.to_string()))])
+}
+
+// ── Result Backend ──
+
+pub struct ResultBackend;
+
+impl ResultBackend {
+    pub fn new() -> Self { Self }
+}
+
+impl Default for ResultBackend {
+    fn default() -> Self { Self::new() }
+}
+
+impl Backend for ResultBackend {
+    fn call(&mut self, method: &str, args: Vec<Value>) -> Result<Value, String> {
+        match method {
+            "ok" => {
+                if args.len() != 1 {
+                    return Err(format!("result.ok expects 1 argument, got {}", args.len()));
+                }
+                let mut map = HashMap::new();
+                map.insert("tag".to_string(), Value::new_string("Ok".to_string()));
+                map.insert("value".to_string(), args[0].clone());
+                Ok(Value::new_map(map))
+            }
+            "err" => {
+                if args.len() != 1 {
+                    return Err(format!("result.err expects 1 argument, got {}", args.len()));
+                }
+                let mut map = HashMap::new();
+                map.insert("tag".to_string(), Value::new_string("Err".to_string()));
+                map.insert("error".to_string(), args[0].clone());
+                Ok(Value::new_map(map))
+            }
+            "is_ok" => {
+                if args.len() != 1 {
+                    return Err(format!("result.is_ok expects 1 argument, got {}", args.len()));
+                }
+                if let Value::Map(m) = &args[0] {
+                    Ok(Value::Bool(m.get("tag").map_or(false, |v| v.to_display_string() == "Ok")))
+                } else {
+                    Ok(Value::Bool(false))
+                }
+            }
+            "is_err" => {
+                if args.len() != 1 {
+                    return Err(format!("result.is_err expects 1 argument, got {}", args.len()));
+                }
+                if let Value::Map(m) = &args[0] {
+                    Ok(Value::Bool(m.get("tag").map_or(false, |v| v.to_display_string() == "Err")))
+                } else {
+                    Ok(Value::Bool(false))
+                }
+            }
+            "unwrap" => {
+                if args.len() != 1 {
+                    return Err(format!("result.unwrap expects 1 argument, got {}", args.len()));
+                }
+                if let Value::Map(m) = &args[0] {
+                    match m.get("tag").map(|v| v.to_display_string()).as_deref() {
+                        Some("Ok") => Ok(m.get("value").cloned().unwrap_or(Value::Null)),
+                        Some("Err") => {
+                            let err = m.get("error").map_or("unknown error".to_string(), |v| v.to_display_string());
+                            Err(format!("result.unwrap: called on Err({})", err))
+                        }
+                        _ => Err("result.unwrap: not a Result".to_string()),
+                    }
+                } else {
+                    Err("result.unwrap: not a Result".to_string())
+                }
+            }
+            "unwrap_or" => {
+                if args.len() != 2 {
+                    return Err(format!("result.unwrap_or expects 2 arguments, got {}", args.len()));
+                }
+                if let Value::Map(m) = &args[0] {
+                    match m.get("tag").map(|v| v.to_display_string()).as_deref() {
+                        Some("Ok") => Ok(m.get("value").cloned().unwrap_or(Value::Null)),
+                        _ => Ok(args[1].clone()),
+                    }
+                } else {
+                    Ok(args[1].clone())
+                }
+            }
+            "try_unwrap" => {
+                if args.len() != 1 {
+                    return Err(format!("result.try_unwrap expects 1 argument, got {}", args.len()));
+                }
+                if let Value::Map(m) = &args[0] {
+                    match m.get("tag").map(|v| v.to_display_string()).as_deref() {
+                        Some("Ok") => Ok(m.get("value").cloned().unwrap_or(Value::Null)),
+                        Some("Err") => {
+                            let err = m.get("error").cloned().unwrap_or(Value::Null);
+                            let mut err_map = HashMap::new();
+                            err_map.insert("tag".to_string(), Value::new_string("Err".to_string()));
+                            err_map.insert("error".to_string(), err);
+                            Ok(Value::new_map(err_map))
+                        }
+                        _ => Ok(args[0].clone()),
+                    }
+                } else {
+                    Ok(args[0].clone())
+                }
+            }
+            "map" => {
+                if args.len() != 2 {
+                    return Err(format!("result.map expects 2 arguments (result, fn), got {}", args.len()));
+                }
+                if let Value::Map(m) = &args[0] {
+                    match m.get("tag").map(|v| v.to_display_string()).as_deref() {
+                        Some("Ok") => {
+                            let val = m.get("value").cloned().unwrap_or(Value::Null);
+                            // Apply the function
+                            match &args[1] {
+                                Value::Function(_name) => {
+                                    let mut map_result = HashMap::new();
+                                    map_result.insert("tag".to_string(), Value::new_string("Ok".to_string()));
+                                    map_result.insert("value".to_string(), val);
+                                    // Caller should handle the actual function call
+                                    Ok(Value::new_map(map_result))
+                                }
+                                _ => {
+                                    let mut map_result = HashMap::new();
+                                    map_result.insert("tag".to_string(), Value::new_string("Ok".to_string()));
+                                    map_result.insert("value".to_string(), val);
+                                    Ok(Value::new_map(map_result))
+                                }
+                            }
+                        }
+                        _ => Ok(args[0].clone()),
+                    }
+                } else {
+                    Ok(args[0].clone())
+                }
+            }
+            _ => Err(format!("Unknown result method: {}", method)),
+        }
+    }
+}
+
+// ── Option Backend ──
+
+pub struct OptionBackend;
+
+impl OptionBackend {
+    pub fn new() -> Self { Self }
+}
+
+impl Default for OptionBackend {
+    fn default() -> Self { Self::new() }
+}
+
+impl Backend for OptionBackend {
+    fn call(&mut self, method: &str, args: Vec<Value>) -> Result<Value, String> {
+        match method {
+            "some" => {
+                if args.len() != 1 {
+                    return Err(format!("option.some expects 1 argument, got {}", args.len()));
+                }
+                let mut map = HashMap::new();
+                map.insert("tag".to_string(), Value::new_string("Some".to_string()));
+                map.insert("value".to_string(), args[0].clone());
+                Ok(Value::new_map(map))
+            }
+            "none" => {
+                let mut map = HashMap::new();
+                map.insert("tag".to_string(), Value::new_string("None".to_string()));
+                Ok(Value::new_map(map))
+            }
+            "is_some" => {
+                if args.len() != 1 {
+                    return Err(format!("option.is_some expects 1 argument, got {}", args.len()));
+                }
+                if let Value::Map(m) = &args[0] {
+                    Ok(Value::Bool(m.get("tag").map_or(false, |v| v.to_display_string() == "Some")))
+                } else {
+                    Ok(Value::Bool(false))
+                }
+            }
+            "is_none" => {
+                if args.len() != 1 {
+                    return Err(format!("option.is_none expects 1 argument, got {}", args.len()));
+                }
+                if let Value::Map(m) = &args[0] {
+                    Ok(Value::Bool(m.get("tag").map_or(false, |v| v.to_display_string() == "None")))
+                } else {
+                    Ok(Value::Bool(true))
+                }
+            }
+            "unwrap" => {
+                if args.len() != 1 {
+                    return Err(format!("option.unwrap expects 1 argument, got {}", args.len()));
+                }
+                if let Value::Map(m) = &args[0] {
+                    match m.get("tag").map(|v| v.to_display_string()).as_deref() {
+                        Some("Some") => Ok(m.get("value").cloned().unwrap_or(Value::Null)),
+                        _ => Err("option.unwrap: called on None".to_string()),
+                    }
+                } else {
+                    Err("option.unwrap: not an Option".to_string())
+                }
+            }
+            "unwrap_or" => {
+                if args.len() != 2 {
+                    return Err(format!("option.unwrap_or expects 2 arguments, got {}", args.len()));
+                }
+                if let Value::Map(m) = &args[0] {
+                    match m.get("tag").map(|v| v.to_display_string()).as_deref() {
+                        Some("Some") => Ok(m.get("value").cloned().unwrap_or(Value::Null)),
+                        _ => Ok(args[1].clone()),
+                    }
+                } else {
+                    Ok(args[1].clone())
+                }
+            }
+            _ => Err(format!("Unknown option method: {}", method)),
+        }
+    }
 }

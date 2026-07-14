@@ -1,0 +1,71 @@
+﻿{
+    "schema_version":  1,
+    "phase":  6,
+    "at":  "2026-07-14T19:03:42.9562030-03:00",
+    "verdict":  "BLOCKED",
+    "expected_sha256":  "0A5FEE59F07A0C09E74992A62CDE95EA4C1DCA9AE6529B12AE47E9F23E1332A2",
+    "results":  [
+                    {
+                        "id":  "windows_identity",
+                        "ok":  true,
+                        "status":  "PASS",
+                        "detail":  {
+                                       "os_caption":  "Microsoft Windows 10 Pro",
+                                       "os_version":  "10.0.19045",
+                                       "os_build":  "19045",
+                                       "os_arch":  "64 bits",
+                                       "computer_id_hash":  "e8e7407b19a9f727",
+                                       "user_id_hash":  "acb81e7e48523dde",
+                                       "is_admin":  false
+                                   }
+                    },
+                    {
+                        "id":  "non_admin_user",
+                        "ok":  true,
+                        "status":  "PASS",
+                        "detail":  {
+                                       "note":  "standard user"
+                                   }
+                    },
+                    {
+                        "id":  "environment_independence",
+                        "ok":  false,
+                        "status":  "BLOCKED",
+                        "detail":  {
+                                       "tools":  {
+                                                     "rustc":  true,
+                                                     "cargo":  true,
+                                                     "gcc":  false,
+                                                     "gpp":  false,
+                                                     "python":  true,
+                                                     "node":  true,
+                                                     "mingw_dir":  true,
+                                                     "d_matter":  true
+                                                 },
+                                       "reason":  "Host has build/dev tooling or D:\\Matter - not independent per Phase 6"
+                                   }
+                    }
+                ],
+    "host":  {
+                 "os_caption":  "Microsoft Windows 10 Pro",
+                 "os_version":  "10.0.19045",
+                 "os_build":  "19045",
+                 "os_arch":  "64 bits",
+                 "computer_id_hash":  "e8e7407b19a9f727",
+                 "user_id_hash":  "acb81e7e48523dde",
+                 "is_admin":  false
+             },
+    "tools":  {
+                  "rustc":  true,
+                  "cargo":  true,
+                  "gcc":  false,
+                  "gpp":  false,
+                  "python":  true,
+                  "node":  true,
+                  "mingw_dir":  true,
+                  "d_matter":  true
+              },
+    "independent":  false,
+    "work_root":  "D:\\Users\\almir\\.runtime-cache\\temp\\MatterExtPhase6-948959a5",
+    "note":  "Official EXTERNAL_VALIDATION_PASS requires a clean Windows without Rust/Cargo/GCC/Python/Node and without D:\\Matter"
+}

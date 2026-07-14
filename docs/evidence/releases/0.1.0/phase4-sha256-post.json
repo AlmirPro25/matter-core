@@ -1,0 +1,14 @@
+﻿{
+    "phase3_cli_sha256":  "355F7406680A3D7B662A7728B92986DE53E87431794AD886310BBCDC1B3D6F22",
+    "package_zip":  {
+                        "path":  "D:\\Users\\almir\\Desktop\\MANIFESTO DA LINGUAGEM MATTER CORE\\dist\\matter-core-0.1.0-windows-x64.zip",
+                        "sha256":  "0A5FEE59F07A0C09E74992A62CDE95EA4C1DCA9AE6529B12AE47E9F23E1332A2",
+                        "bytes":  2676017
+                    },
+    "phase4_cli":  {
+                       "bytes":  3726794,
+                       "sha256":  "355F7406680A3D7B662A7728B92986DE53E87431794AD886310BBCDC1B3D6F22"
+                   },
+    "package_dir":  "D:\\Users\\almir\\Desktop\\MANIFESTO DA LINGUAGEM MATTER CORE\\dist\\matter-core-0.1.0-windows-x64",
+    "at":  "2026-07-14T18:37:07.1907289-03:00"
+}

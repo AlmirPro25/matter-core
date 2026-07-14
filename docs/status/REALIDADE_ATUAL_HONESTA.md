@@ -37,7 +37,7 @@ runtime: event handler executed
 - Programas `.matter` simples executam via VM.
 - O pipeline `source -> parser -> bytecode -> VM -> output` funciona.
 - O crate `matter-kernel-vm` passa seus testes locais.
-- O problema antigo de espaco no caminho foi mitigado por `.cargo/config.toml`, que usa `F:/Users/almir/Desktop/matter_target` como `target-dir`.
+- O problema antigo de espaco no caminho foi resolvido buildando no `target/` local do projeto no D: com MinGW-w64 (`D:\mingw64\mingw64`), sem `target-dir` no F:.
 - A documentacao foi organizada em `docs/status`, `docs/guides`, `docs/sprints`, `docs/sessions`, `docs/vision`, `docs/technical` e `docs/archive`.
 
 ## O Que Ainda Precisa Cuidado

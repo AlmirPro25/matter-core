@@ -20,9 +20,17 @@ pub enum Token {
     Continue,
     Struct,
     Import,
+    From,
+    As,
+    Export,
     Match,
     Null,
     Spawn,
+    Ok,
+    Err,
+    Some,
+    None,
+    Panic,
 
     // Literals
     Int(i64),
@@ -54,6 +62,7 @@ pub enum Token {
     Or,    // ||
     Not,   // !
     Arrow, // ->
+    QuestionMark, // ?
 
     // Delimiters
     LParen,
@@ -70,6 +79,8 @@ pub enum Token {
     // Special
     Newline,
     Eof,
+    /// Unrecognized character (must be rejected by parser).
+    Illegal(char),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -402,6 +413,10 @@ impl Lexer {
                 self.advance();
                 Token::Semicolon
             }
+            Some('?') => {
+                self.advance();
+                Token::QuestionMark
+            }
             Some('"') => {
                 let s = self.read_string();
                 Token::String(s)
@@ -426,9 +441,17 @@ impl Lexer {
                     "continue" => Token::Continue,
                     "struct" => Token::Struct,
                     "import" => Token::Import,
+                    "from" => Token::From,
+                    "as" => Token::As,
+                    "export" => Token::Export,
                     "spawn" => Token::Spawn,
                     "match" => Token::Match,
                     "null" => Token::Null,
+                    "ok" => Token::Ok,
+                    "err" => Token::Err,
+                    "some" => Token::Some,
+                    "none" => Token::None,
+                    "panic" => Token::Panic,
                     "and" => Token::And,
                     "or" => Token::Or,
                     "not" => Token::Not,
@@ -437,9 +460,10 @@ impl Lexer {
                     _ => Token::Ident(ident),
                 }
             }
-            Some(_) => {
+            Some(ch) => {
+                // Phase 2: do not silently skip garbage characters.
                 self.advance();
-                return self.next_token_spanned();
+                Token::Illegal(ch)
             }
         };
 
@@ -587,5 +611,47 @@ mod tests {
         assert_eq!(lexer.next_token(), Token::Eq);
         assert_eq!(lexer.next_token(), Token::Int(10));
         assert_eq!(lexer.next_token(), Token::Semicolon);
+    }
+
+    #[test]
+    fn test_illegal_char_is_not_skipped() {
+        let mut lexer = Lexer::new("let x = 1 @ 2");
+        assert_eq!(lexer.next_token(), Token::Let);
+        assert_eq!(lexer.next_token(), Token::Ident("x".to_string()));
+        assert_eq!(lexer.next_token(), Token::Eq);
+        assert_eq!(lexer.next_token(), Token::Int(1));
+        assert_eq!(lexer.next_token(), Token::Illegal('@'));
+        assert_eq!(lexer.next_token(), Token::Int(2));
+        assert_eq!(lexer.next_token(), Token::Eof);
+    }
+
+    #[test]
+    fn test_illegal_backtick_and_at() {
+        // '#' starts a line comment and is intentionally not Illegal.
+        let mut lexer = Lexer::new("`@");
+        assert_eq!(lexer.next_token(), Token::Illegal('`'));
+        assert_eq!(lexer.next_token(), Token::Illegal('@'));
+        assert_eq!(lexer.next_token(), Token::Eof);
+    }
+
+    #[test]
+    fn test_empty_source_is_eof() {
+        let mut lexer = Lexer::new("");
+        assert_eq!(lexer.next_token(), Token::Eof);
+    }
+
+    #[test]
+    fn test_unicode_ident_and_valid_program_tokens() {
+        // Valid Matter still lexes identifiers that are ASCII-based;
+        // non-ASCII garbage is Illegal so the parser can reject.
+        let mut lexer = Lexer::new("let x = 1");
+        assert_eq!(lexer.next_token(), Token::Let);
+        assert_eq!(lexer.next_token(), Token::Ident("x".to_string()));
+        assert_eq!(lexer.next_token(), Token::Eq);
+        assert_eq!(lexer.next_token(), Token::Int(1));
+        assert_eq!(lexer.next_token(), Token::Eof);
+
+        let mut bad = Lexer::new("€");
+        assert!(matches!(bad.next_token(), Token::Illegal(_)));
     }
 }

@@ -12,9 +12,11 @@ use std::path::Path;
 mod deserialize;
 mod effect_check;
 mod serialize;
+mod validate;
 
 pub use effect_check::*;
 pub use serialize::*;
+pub use validate::BytecodeLimits;
 
 /// Instruções da VM Matter
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -60,6 +62,10 @@ pub enum Instruction {
     CallNamed {
         name: String,
         arg_count: usize,
+    },
+    MakeClosure {
+        func_name: String,
+        capture_names: Vec<String>,
     },
     Return,
     SpawnEvent(String),
@@ -188,11 +194,46 @@ impl Bytecode {
         self.serialize(&mut writer)
     }
 
-    /// Load bytecode from file
+    /// Load bytecode from file, then run full structural validation.
+    /// Never returns bytecode that failed validation (do not execute unvalidated MBC1).
     pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let file = File::open(path)?;
+        let path_ref = path.as_ref();
+        let meta = std::fs::metadata(path_ref)?;
+        let limits = BytecodeLimits::from_env();
+        let len = meta.len() as usize;
+        if len > limits.max_file_bytes {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!(
+                    "MBC1 file too large: {} bytes (limit {})",
+                    len, limits.max_file_bytes
+                ),
+            ));
+        }
+        let file = File::open(path_ref)?;
         let mut reader = BufReader::new(file);
-        Self::deserialize(&mut reader)
+        let bytecode = Self::deserialize(&mut reader)?;
+        bytecode.validate_with_limits(&limits)?;
+        Ok(bytecode)
+    }
+
+    /// Deserialize from an in-memory buffer and validate (preferred for untrusted input).
+    pub fn load_from_bytes(data: &[u8]) -> Result<Self> {
+        let limits = BytecodeLimits::from_env();
+        if data.len() > limits.max_file_bytes {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!(
+                    "MBC1 buffer too large: {} bytes (limit {})",
+                    data.len(),
+                    limits.max_file_bytes
+                ),
+            ));
+        }
+        let mut cursor = std::io::Cursor::new(data);
+        let bytecode = Self::deserialize(&mut cursor)?;
+        bytecode.validate_with_limits(&limits)?;
+        Ok(bytecode)
     }
 }
 
@@ -402,6 +443,9 @@ fn validate_statement(
         Statement::FunctionDef { .. } => {}
         Statement::StructDef { .. } => {}
         Statement::Import { .. } => {}
+        Statement::ImportFrom { .. } => {}
+        Statement::ImportAs { .. } => {}
+        Statement::Export { .. } => {}
         Statement::OnEvent { .. } => {}
         Statement::Spawn { .. } => {}
         Statement::If {
@@ -611,6 +655,16 @@ fn validate_expression(
                 }
             }
         }
+        Expression::Lambda { .. } => {
+            // Lambda body validation happens at compilation time
+        }
+        Expression::OkExpr(inner)
+        | Expression::ErrExpr(inner)
+        | Expression::SomeExpr(inner)
+        | Expression::TryPropagate(inner) => {
+            validate_expression(inner, structs, functions, context)?;
+        }
+        Expression::NoneExpr => {}
     }
 
     Ok(())
@@ -828,6 +882,14 @@ impl BytecodeBuilder {
             Statement::Import { .. } => {
                 // Imports are resolved before bytecode execution; keep the compiler tolerant
                 // while module loading is still being wired through the runtime.
+            }
+
+            Statement::ImportFrom { .. } | Statement::ImportAs { .. } => {
+                // Extended imports are resolved before bytecode execution.
+            }
+
+            Statement::Export { .. } => {
+                // Exports are resolved at module boundary; no bytecode needed.
             }
 
             Statement::OnEvent { event, body } => {
@@ -1720,6 +1782,88 @@ impl BytecodeBuilder {
                     instructions.push(instr);
                 }
             }
+
+            Expression::OkExpr(inner) => {
+                self.compile_expression(inner, instructions);
+                instructions.push(Instruction::BackendCall {
+                    backend: "result".to_string(),
+                    method: "ok".to_string(),
+                    arg_count: 1,
+                });
+            }
+
+            Expression::ErrExpr(inner) => {
+                self.compile_expression(inner, instructions);
+                instructions.push(Instruction::BackendCall {
+                    backend: "result".to_string(),
+                    method: "err".to_string(),
+                    arg_count: 1,
+                });
+            }
+
+            Expression::SomeExpr(inner) => {
+                self.compile_expression(inner, instructions);
+                instructions.push(Instruction::BackendCall {
+                    backend: "option".to_string(),
+                    method: "some".to_string(),
+                    arg_count: 1,
+                });
+            }
+
+            Expression::NoneExpr => {
+                instructions.push(Instruction::BackendCall {
+                    backend: "option".to_string(),
+                    method: "none".to_string(),
+                    arg_count: 0,
+                });
+            }
+
+            Expression::TryPropagate(inner) => {
+                self.compile_expression(inner, instructions);
+                instructions.push(Instruction::BackendCall {
+                    backend: "result".to_string(),
+                    method: "try_unwrap".to_string(),
+                    arg_count: 1,
+                });
+            }
+
+            Expression::Lambda { params, body } => {
+                // Generate unique name for the lambda
+                let lambda_id = self.bytecode.functions.len();
+                let func_name = format!("__lambda_{}", lambda_id);
+
+                // Collect free variables (captures) from the body
+                let mut captures = Vec::new();
+                let param_names: std::collections::HashSet<String> =
+                    params.iter().map(|p| p.name.clone()).collect();
+                for stmt in body {
+                    collect_free_variables(stmt, &param_names, &mut captures);
+                }
+                captures.sort();
+                captures.dedup();
+
+                // Compile the function body
+                let mut func_instructions = Vec::new();
+                for stmt in body {
+                    self.compile_statement_with_scope(stmt, &mut func_instructions, false);
+                }
+                func_instructions.push(Instruction::LoadConst(
+                    self.bytecode.add_constant(Constant::Unit),
+                ));
+                func_instructions.push(Instruction::Return);
+
+                self.bytecode.functions.insert(func_name.clone(), Function {
+                    name: func_name.clone(),
+                    param_count: params.len(),
+                    instructions: func_instructions,
+                });
+
+                // Emit MakeClosure instruction
+                instructions.push(Instruction::MakeClosure {
+                    func_name,
+                    capture_names: captures,
+                });
+            }
         }
     }
 }
@@ -1727,5 +1871,104 @@ impl BytecodeBuilder {
 impl Default for BytecodeBuilder {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Collect free variables referenced in a statement (for closure capture)
+fn collect_free_variables(
+    stmt: &Statement,
+    param_names: &std::collections::HashSet<String>,
+    captures: &mut Vec<String>,
+) {
+    match stmt {
+        Statement::Let { value, .. } => collect_free_variables_expr(value, param_names, captures),
+        Statement::Set { value, .. } => collect_free_variables_expr(value, param_names, captures),
+        Statement::Print(expr) => collect_free_variables_expr(expr, param_names, captures),
+        Statement::Return(expr) => collect_free_variables_expr(expr, param_names, captures),
+        Statement::Expression(expr) => collect_free_variables_expr(expr, param_names, captures),
+        Statement::If {
+            condition,
+            then_body,
+            else_body,
+        } => {
+            collect_free_variables_expr(condition, param_names, captures);
+            for s in then_body {
+                collect_free_variables(s, param_names, captures);
+            }
+            if let Some(else_body) = else_body {
+                for s in else_body {
+                    collect_free_variables(s, param_names, captures);
+                }
+            }
+        }
+        Statement::While { condition, body } => {
+            collect_free_variables_expr(condition, param_names, captures);
+            for s in body {
+                collect_free_variables(s, param_names, captures);
+            }
+        }
+        Statement::For { iterable, body, .. } => {
+            collect_free_variables_expr(iterable, param_names, captures);
+            for s in body {
+                collect_free_variables(s, param_names, captures);
+            }
+        }
+        Statement::Loop { body } => {
+            for s in body {
+                collect_free_variables(s, param_names, captures);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_free_variables_expr(
+    expr: &Expression,
+    param_names: &std::collections::HashSet<String>,
+    captures: &mut Vec<String>,
+) {
+    match expr {
+        Expression::Identifier(name) => {
+            if !param_names.contains(name) && !captures.contains(name) {
+                captures.push(name.clone());
+            }
+        }
+        Expression::Binary { left, right, .. } => {
+            collect_free_variables_expr(left, param_names, captures);
+            collect_free_variables_expr(right, param_names, captures);
+        }
+        Expression::Unary { operand, .. } => {
+            collect_free_variables_expr(operand, param_names, captures);
+        }
+        Expression::Call { callee, args } => {
+            collect_free_variables_expr(callee, param_names, captures);
+            for arg in args {
+                collect_free_variables_expr(arg, param_names, captures);
+            }
+        }
+        Expression::List(elements) => {
+            for e in elements {
+                collect_free_variables_expr(e, param_names, captures);
+            }
+        }
+        Expression::Map(entries) => {
+            for (_, v) in entries {
+                collect_free_variables_expr(v, param_names, captures);
+            }
+        }
+        Expression::Index { target, index } => {
+            collect_free_variables_expr(target, param_names, captures);
+            collect_free_variables_expr(index, param_names, captures);
+        }
+        Expression::Field { target, .. } => {
+            collect_free_variables_expr(target, param_names, captures);
+        }
+        Expression::MethodCall { target, args, .. } => {
+            collect_free_variables_expr(target, param_names, captures);
+            for arg in args {
+                collect_free_variables_expr(arg, param_names, captures);
+            }
+        }
+        _ => {}
     }
 }

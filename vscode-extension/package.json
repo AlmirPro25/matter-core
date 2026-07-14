@@ -133,7 +133,7 @@
         "matter.lsp.path": {
           "type": "string",
           "default": "matter-cli",
-          "description": "Path to matter-cli executable"
+          "description": "Path to matter-cli executable (on PATH, or absolute path). No drive letter required; empty/default uses PATH resolution."
         },
         "matter.formatter.enabled": {
           "type": "boolean",

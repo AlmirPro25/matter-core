@@ -1,0 +1,17 @@
+﻿{
+    "at":  "2026-07-14T18:54:04.7558348-03:00",
+    "verdict":  "PASS_LOGICAL",
+    "file_set_equal":  true,
+    "content_sha_equal":  true,
+    "diffs":  [
+
+              ],
+    "files_a":  16,
+    "files_b":  16,
+    "zip_note":  "ZIP central directory timestamps make byte-identical ZIPs unreliable on Windows Compress/ZipFile without fixed entry times; logical content (per-file SHA-256 excluding MANIFEST/SHA256SUMS timestamps) is the RC criterion.",
+    "last_zip_sha256":  "00C5B65B396B386C17F213480CC0C0D86C3B96111C8C3212CFEBAE555CE4AC08",
+    "dirs":  {
+                 "a":  "D:\\Users\\almir\\Desktop\\MANIFESTO DA LINGUAGEM MATTER CORE\\dist\\repro-a",
+                 "b":  "D:\\Users\\almir\\Desktop\\MANIFESTO DA LINGUAGEM MATTER CORE\\dist\\repro-b"
+             }
+}

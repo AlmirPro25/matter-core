@@ -1,45 +1,80 @@
 //! Matter Runtime
 //! Sistema de eventos, estado e scheduler
+//!
+//! Phase 1: default is language-only (stdlib + energy). Optional features:
+//! `polyglot`, `visual`, `frontier`, `device`, `experimental-full`.
 
-use matter_backend::{
-    AgentBackend, Backend, GraphBackend, NetBackend, StoreBackend, ToolBackend, Value,
-};
+use matter_backend::{Backend, GraphBackend, StoreBackend, ToolBackend, Value};
+#[cfg(feature = "agent")]
+use matter_backend::AgentBackend;
+#[cfg(feature = "net")]
+use matter_backend::NetBackend;
+#[cfg(feature = "frontier")]
 use matter_biological::backend::BiologicalBackend;
+#[cfg(feature = "frontier")]
 use matter_biophysics::backend::BiophysicsBackend;
+#[cfg(feature = "frontier")]
 use matter_geophysics::backend::GeophysicsBackend;
+#[cfg(feature = "frontier")]
 use matter_ocean::backend::OceanBackend;
+#[cfg(feature = "frontier")]
 use matter_atmosphere::backend::AtmosphereBackend;
+#[cfg(feature = "frontier")]
 use matter_materials::backend::MaterialsBackend;
+#[cfg(feature = "frontier")]
 use matter_acoustics::backend::AcousticsBackend;
+#[cfg(feature = "frontier")]
 use matter_electromagnetics::backend::ElectromagneticsBackend;
+#[cfg(feature = "frontier")]
 use matter_ml_physics::backend::MLPhysicsBackend;
+#[cfg(feature = "frontier")]
 use matter_climate::backend::ClimateBackend;
+#[cfg(feature = "frontier")]
 use matter_multiscale::backend::MultiscaleBackend;
+#[cfg(feature = "frontier")]
 use matter_cosmology::backend::CosmologyBackend;
+#[cfg(feature = "polyglot")]
 use matter_bridge_go::{Bridge as GoBridgeTrait, GoBridge};
+#[cfg(feature = "polyglot")]
 use matter_bridge_java::{Bridge as JavaBridgeTrait, JavaBridge};
+#[cfg(feature = "polyglot")]
 use matter_bridge_nodejs::NodeJSBridge;
+#[cfg(feature = "polyglot")]
 use matter_bridge_python::PythonBridge;
+#[cfg(feature = "polyglot")]
 use matter_bridge_rust::RustBridge;
 use matter_bytecode::Bytecode;
+#[cfg(feature = "frontier")]
 use matter_chemistry::backend::ChemistryBackend;
+#[cfg(feature = "device")]
 use matter_device::DeviceBackend;
 use matter_energy::{EnergyBackend, EnergyRuntime};
+#[cfg(feature = "frontier")]
 use matter_genesis::backend::GenesisBackend;
+#[cfg(feature = "frontier")]
 use matter_memristive::backend::MemristiveBackend;
+#[cfg(feature = "frontier")]
 use matter_molecular::backend::MolecularBackend;
+#[cfg(feature = "frontier")]
 use matter_neuromorphic::backend::NeuromorphicBackend;
+#[cfg(feature = "frontier")]
 use matter_photonic::backend::PhotonicBackend;
+#[cfg(feature = "polyglot")]
 use matter_polyglot::{bridge::LanguageBridge, LanguageTarget};
+#[cfg(feature = "frontier")]
 use matter_quantum::backend::QuantumBackend;
+#[cfg(feature = "frontier")]
 use matter_relativity::backend::RelativityBackend;
+#[cfg(feature = "frontier")]
 use matter_spintronics::backend::SpintronicsBackend;
 use matter_stdlib::{
-    AudioBackend, ConsoleBackend, FileBackend, FileIOBackend, HashMapBackend, JsonBackend, 
-    ListBackend, MapBackend, MathBackend, RandomBackend, StringBackend, TensorBackend, TimeBackend, 
-    TypeBackend, VecBackend, WorldBackend,
+    AudioBackend, ConsoleBackend, FileBackend, FileIOBackend, HashMapBackend, JsonBackend,
+    ListBackend, MapBackend, MathBackend, OptionBackend, RandomBackend, ResultBackend,
+    StringBackend, TensorBackend, TimeBackend, TypeBackend, VecBackend, WorldBackend,
 };
+#[cfg(feature = "visual")]
 use matter_visual::TraceVisualBackend;
+#[cfg(feature = "frontier")]
 use matter_wetware::backend::WetwareBackend;
 
 use matter_vm::Vm;
@@ -56,6 +91,7 @@ impl Runtime {
 
         register_default_backends(&mut vm, false);
         register_stdlib_backends(&mut vm, true);
+        #[cfg(feature = "polyglot")]
         register_polyglot_backends(&mut vm);
 
         Self {
@@ -69,6 +105,7 @@ impl Runtime {
 
         register_default_backends(&mut vm, true);
         register_stdlib_backends(&mut vm, false);
+        #[cfg(feature = "polyglot")]
         register_polyglot_backends(&mut vm);
 
         Self {
@@ -348,26 +385,38 @@ impl Runtime {
 }
 
 fn register_default_backends(vm: &mut Vm, silent: bool) {
+    // Agent/visual/net are experimental surfaces (shell/UI/network). Language-only
+    // builds omit them so the default binary does not depend on those stacks.
+    #[cfg(feature = "agent")]
     if silent {
         vm.register_backend("agent".to_string(), Box::new(SilentAgentBackend));
+    } else {
+        vm.register_backend("agent".to_string(), Box::new(AgentBackend::new()));
+    }
+
+    #[cfg(feature = "visual")]
+    if silent {
         vm.register_backend(
             "visual".to_string(),
             Box::new(TraceVisualBackend::new_silent()),
         );
     } else {
-        vm.register_backend("agent".to_string(), Box::new(AgentBackend::new()));
         vm.register_backend("visual".to_string(), Box::new(TraceVisualBackend::new()));
     }
 
     vm.register_backend("graph".to_string(), Box::new(GraphBackend::new()));
     vm.register_backend("store".to_string(), Box::new(StoreBackend::new()));
+    #[cfg(feature = "net")]
     vm.register_backend("net".to_string(), Box::new(NetBackend::new()));
     vm.register_backend("energy".to_string(), Box::new(EnergyBackend::new()));
+    #[cfg(feature = "device")]
     vm.register_backend("device".to_string(), Box::new(DeviceBackend::new()));
     vm.register_backend("tool".to_string(), Box::new(ToolBackend::new()));
+    let _ = silent;
 }
 
 fn register_stdlib_backends(vm: &mut Vm, include_extended: bool) {
+    // Language-core stdlib (no optional crates).
     vm.register_backend("math".to_string(), Box::new(MathBackend::new()));
     vm.register_backend("string".to_string(), Box::new(StringBackend::new()));
     vm.register_backend("list".to_string(), Box::new(ListBackend::new()));
@@ -375,54 +424,58 @@ fn register_stdlib_backends(vm: &mut Vm, include_extended: bool) {
     vm.register_backend("random".to_string(), Box::new(RandomBackend::new()));
     vm.register_backend("json".to_string(), Box::new(JsonBackend::new()));
     vm.register_backend("world".to_string(), Box::new(WorldBackend::new()));
-    vm.register_backend("wetware".to_string(), Box::new(WetwareBackend::new()));
-    vm.register_backend("quantum".to_string(), Box::new(QuantumBackend::new()));
-    vm.register_backend("memristive".to_string(), Box::new(MemristiveBackend::new()));
-    vm.register_backend("photonic".to_string(), Box::new(PhotonicBackend::new()));
-    vm.register_backend(
-        "spintronics".to_string(),
-        Box::new(SpintronicsBackend::new()),
-    );
-    vm.register_backend("molecular".to_string(), Box::new(MolecularBackend::new()));
-    vm.register_backend("relativity".to_string(), Box::new(RelativityBackend::new()));
-    vm.register_backend("chemistry".to_string(), Box::new(ChemistryBackend::new()));
-    vm.register_backend("genesis".to_string(), Box::new(GenesisBackend::new()));
-    vm.register_backend("biology".to_string(), Box::new(BiologicalBackend::new()));
-    vm.register_backend("biophysics".to_string(), Box::new(BiophysicsBackend));
-    vm.register_backend("geophysics".to_string(), Box::new(GeophysicsBackend));
-    vm.register_backend("ocean".to_string(), Box::new(OceanBackend));
-    vm.register_backend("atmosphere".to_string(), Box::new(AtmosphereBackend));
-    vm.register_backend("materials".to_string(), Box::new(MaterialsBackend));
-    vm.register_backend("acoustics".to_string(), Box::new(AcousticsBackend));
-    vm.register_backend("electromagnetics".to_string(), Box::new(ElectromagneticsBackend));
-    vm.register_backend("ml_physics".to_string(), Box::new(MLPhysicsBackend));
-    vm.register_backend("climate".to_string(), Box::new(ClimateBackend));
-    vm.register_backend("multiscale".to_string(), Box::new(MultiscaleBackend));
-    vm.register_backend("cosmology".to_string(), Box::new(CosmologyBackend));
-    vm.register_backend(
-        "neuromorphic".to_string(),
-        Box::new(NeuromorphicBackend::new()),
-    );
-
     vm.register_backend("audio".to_string(), Box::new(AudioBackend::new()));
-    
-    // Sprint 80: New stdlib backends
     vm.register_backend("Vec".to_string(), Box::new(VecBackend::new()));
     vm.register_backend("HashMap".to_string(), Box::new(HashMapBackend::new()));
-
-    // Tensor backend: algebra linear nativa
     vm.register_backend("tensor".to_string(), Box::new(TensorBackend::new()));
+    vm.register_backend("result".to_string(), Box::new(ResultBackend::new()));
+    vm.register_backend("option".to_string(), Box::new(OptionBackend::new()));
 
     if include_extended {
         vm.register_backend("map".to_string(), Box::new(MapBackend::new()));
         vm.register_backend("type".to_string(), Box::new(TypeBackend::new()));
         vm.register_backend("console".to_string(), Box::new(ConsoleBackend::new()));
         vm.register_backend("file".to_string(), Box::new(FileBackend::new()));
-        // Sprint 80: FileIO backend (separate from legacy FileBackend)
         vm.register_backend("fileio".to_string(), Box::new(FileIOBackend::new()));
+    }
+
+    #[cfg(feature = "frontier")]
+    {
+        vm.register_backend("wetware".to_string(), Box::new(WetwareBackend::new()));
+        vm.register_backend("quantum".to_string(), Box::new(QuantumBackend::new()));
+        vm.register_backend("memristive".to_string(), Box::new(MemristiveBackend::new()));
+        vm.register_backend("photonic".to_string(), Box::new(PhotonicBackend::new()));
+        vm.register_backend(
+            "spintronics".to_string(),
+            Box::new(SpintronicsBackend::new()),
+        );
+        vm.register_backend("molecular".to_string(), Box::new(MolecularBackend::new()));
+        vm.register_backend("relativity".to_string(), Box::new(RelativityBackend::new()));
+        vm.register_backend("chemistry".to_string(), Box::new(ChemistryBackend::new()));
+        vm.register_backend("genesis".to_string(), Box::new(GenesisBackend::new()));
+        vm.register_backend("biology".to_string(), Box::new(BiologicalBackend::new()));
+        vm.register_backend("biophysics".to_string(), Box::new(BiophysicsBackend));
+        vm.register_backend("geophysics".to_string(), Box::new(GeophysicsBackend));
+        vm.register_backend("ocean".to_string(), Box::new(OceanBackend));
+        vm.register_backend("atmosphere".to_string(), Box::new(AtmosphereBackend));
+        vm.register_backend("materials".to_string(), Box::new(MaterialsBackend));
+        vm.register_backend("acoustics".to_string(), Box::new(AcousticsBackend));
+        vm.register_backend(
+            "electromagnetics".to_string(),
+            Box::new(ElectromagneticsBackend),
+        );
+        vm.register_backend("ml_physics".to_string(), Box::new(MLPhysicsBackend));
+        vm.register_backend("climate".to_string(), Box::new(ClimateBackend));
+        vm.register_backend("multiscale".to_string(), Box::new(MultiscaleBackend));
+        vm.register_backend("cosmology".to_string(), Box::new(CosmologyBackend));
+        vm.register_backend(
+            "neuromorphic".to_string(),
+            Box::new(NeuromorphicBackend::new()),
+        );
     }
 }
 
+#[cfg(feature = "polyglot")]
 fn register_polyglot_backends(vm: &mut Vm) {
     vm.register_backend(
         "python".to_string(),
@@ -458,8 +511,10 @@ fn register_polyglot_backends(vm: &mut Vm) {
     );
 }
 
+#[cfg(feature = "agent")]
 struct SilentAgentBackend;
 
+#[cfg(feature = "agent")]
 impl Backend for SilentAgentBackend {
     fn call(&mut self, method: &str, _args: Vec<Value>) -> Result<Value, String> {
         match method {
@@ -472,6 +527,7 @@ impl Backend for SilentAgentBackend {
     }
 }
 
+#[cfg(feature = "polyglot")]
 pub struct PolyglotBackend {
     display_name: String,
     bridge: Box<dyn LanguageBridge>,
@@ -479,6 +535,7 @@ pub struct PolyglotBackend {
     init_error: Option<String>,
 }
 
+#[cfg(feature = "polyglot")]
 impl PolyglotBackend {
     pub fn new(display_name: impl Into<String>, bridge: Box<dyn LanguageBridge>) -> Self {
         Self {
@@ -559,6 +616,7 @@ impl PolyglotBackend {
     }
 }
 
+#[cfg(feature = "polyglot")]
 impl Backend for PolyglotBackend {
     fn call(&mut self, method: &str, args: Vec<Value>) -> Result<Value, String> {
         if method == "status" || method == "info" || method == "capabilities" {
@@ -577,6 +635,7 @@ impl Backend for PolyglotBackend {
     }
 }
 
+#[cfg(feature = "polyglot")]
 fn arg_string(args: &[Value], index: usize, name: &str) -> Result<String, String> {
     args.get(index)
         .ok_or_else(|| format!("missing {}", name))?
@@ -584,10 +643,12 @@ fn arg_string(args: &[Value], index: usize, name: &str) -> Result<String, String
         .map_err(|e| format!("{} must be a string: {}", name, e))
 }
 
+#[cfg(feature = "polyglot")]
 struct GoLanguageBridge {
     inner: GoBridge,
 }
 
+#[cfg(feature = "polyglot")]
 impl GoLanguageBridge {
     fn new() -> Self {
         Self {
@@ -596,6 +657,7 @@ impl GoLanguageBridge {
     }
 }
 
+#[cfg(feature = "polyglot")]
 impl LanguageBridge for GoLanguageBridge {
     fn language(&self) -> LanguageTarget {
         LanguageTarget::Go
@@ -643,10 +705,12 @@ impl LanguageBridge for GoLanguageBridge {
     }
 }
 
+#[cfg(feature = "polyglot")]
 struct JavaLanguageBridge {
     inner: JavaBridge,
 }
 
+#[cfg(feature = "polyglot")]
 impl JavaLanguageBridge {
     fn new() -> Self {
         Self {
@@ -655,6 +719,7 @@ impl JavaLanguageBridge {
     }
 }
 
+#[cfg(feature = "polyglot")]
 impl LanguageBridge for JavaLanguageBridge {
     fn language(&self) -> LanguageTarget {
         LanguageTarget::Java
@@ -743,6 +808,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "visual")]
     fn bridge_visual_events_dispatches_and_emits_into_vm() {
         let path = std::env::temp_dir().join("matter_runtime_bridge_events_test.json");
         fs::write(
@@ -780,6 +846,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "visual")]
     fn visual_app_step_advances_loop_and_emits_events_into_vm() {
         let path = std::env::temp_dir().join("matter_runtime_visual_app_step_test.json");
         fs::write(
@@ -817,6 +884,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "agent")]
     fn silent_agent_backend_unknown_method_uses_context_contract() {
         let mut backend = SilentAgentBackend;
         let err = backend
@@ -1018,11 +1086,13 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "polyglot")]
     struct TestLanguageBridge {
         initialized: bool,
         imported: Vec<String>,
     }
 
+    #[cfg(feature = "polyglot")]
     impl TestLanguageBridge {
         fn new() -> Self {
             Self {
@@ -1032,6 +1102,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "polyglot")]
     impl LanguageBridge for TestLanguageBridge {
         fn language(&self) -> LanguageTarget {
             LanguageTarget::Python
@@ -1072,6 +1143,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "polyglot")]
     fn polyglot_backend_status_reports_real_mode() {
         let mut backend = PolyglotBackend::new("Python", Box::new(TestLanguageBridge::new()));
         let status = backend.call("status", vec![]).unwrap();
@@ -1091,6 +1163,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "polyglot")]
     fn polyglot_backend_import_and_call_dispatch_to_bridge() {
         let mut backend = PolyglotBackend::new("Python", Box::new(TestLanguageBridge::new()));
         backend
@@ -1113,6 +1186,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "frontier")]
     fn frontier_backends_execute_through_runtime() {
         let mut runtime = Runtime::new_silent(Bytecode::new());
 

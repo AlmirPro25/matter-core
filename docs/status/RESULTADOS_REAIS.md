@@ -12,7 +12,7 @@ cargo check -p matter-cli
 
 Resultado: sucesso.
 
-Observacao: o workspace usa `.cargo/config.toml` para enviar a saida de build para `F:/Users/almir/Desktop/matter_target`, evitando problemas com espacos no caminho do workspace.
+Observacao: a saida de build fica em `target/x86_64-pc-windows-gnu/` dentro do projeto no D: (sem F:).
 
 ## Execucao
 

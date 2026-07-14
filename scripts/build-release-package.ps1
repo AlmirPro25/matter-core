@@ -49,10 +49,11 @@ function Resolve-ReleaseCli {
         $candidates += (Join-Path $env:CARGO_TARGET_DIR "release\matter-cli.exe")
     }
     $candidates += @(
+        "target\x86_64-pc-windows-gnu\release\matter-cli.exe",
         "target\release\matter-cli.exe",
         "target_matter\release\matter-cli.exe",
-        "..\matter_target\release\matter-cli.exe",
-        "F:\Users\almir\Desktop\matter_target\release\matter-cli.exe"
+        "..\target\x86_64-pc-windows-gnu\release\matter-cli.exe",
+        "..\target\release\matter-cli.exe"
     )
 
     foreach ($candidate in $candidates) {

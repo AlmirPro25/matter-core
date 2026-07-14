@@ -1,0 +1,330 @@
+﻿{
+    "at":  "2026-07-14T18:41:54.1547183-03:00",
+    "total_hits_scanned":  244,
+    "core_path_hits":  149,
+    "by_kind":  {
+                    "panic":  10,
+                    "expect":  62,
+                    "unwrap":  67,
+                    "unsafe":  10
+                },
+    "residual_justified":  [
+                               {
+                                   "reason":  "ParseResult helper, not Result::expect panic",
+                                   "id":  "J1",
+                                   "item":  "matter-parser::expect method"
+                               },
+                               {
+                                   "reason":  "soft fallback on digit buffer, not panic",
+                                   "id":  "J2",
+                                   "item":  "lexer num.parse().unwrap_or(0)"
+                               },
+                               {
+                                   "reason":  "test harness only",
+                                   "id":  "J3",
+                                   "item":  "VM #[cfg(test)] unwraps"
+                               },
+                               {
+                                   "reason":  "test harness only",
+                                   "id":  "J4",
+                                   "item":  "bytecode test module unwraps"
+                               },
+                               {
+                                   "reason":  "encoding self-built JSON values; low risk",
+                                   "id":  "J5",
+                                   "item":  "CLI serde_json encode unwrap (partial)"
+                               },
+                               {
+                                   "reason":  "pre-existing design; validation reduces OOB indices",
+                                   "id":  "J6",
+                                   "item":  "VM unsafe instruction slice pointers"
+                               },
+                               {
+                                   "reason":  "not in language-only binary",
+                                   "id":  "J7",
+                                   "item":  "experimental main.rs unwrap volume"
+                               }
+                           ],
+    "samples":  [
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  254,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::LBrace)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  264,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::Colon)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  273,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::RBrace)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  295,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::Gt)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  305,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::RBracket)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  311,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::LParen)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  321,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::RParen)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  322,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::Arrow)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  380,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::Eq)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  405,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::RBracket)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  427,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::Eq)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  465,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::Eq)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  496,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::Eq)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  518,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::LParen)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  547,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::RParen)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  577,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::LBrace)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  579,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::RBrace)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  599,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::LBrace)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  609,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::Colon)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  626,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::RBrace)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  670,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::RBrace)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  671,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::From)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  732,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::RBrace)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  748,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::LBrace)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  752,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::RBrace)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  774,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::LBrace)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  776,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::RBrace)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  784,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::LBrace)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  786,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::RBrace)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  811,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::LBrace)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  813,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::RBrace)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  827,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::In)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  833,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::LBrace)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  835,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::RBrace)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  847,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::LBrace)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  849,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::RBrace)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  869,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::LBrace)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  884,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::Eq)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  885,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::Gt)?;"
+                    },
+                    {
+                        "crate":  "matter-parser",
+                        "file":  "crates\\matter-parser\\src\\lib.rs",
+                        "line":  888,
+                        "kind":  "expect",
+                        "text":  "self.expect(Token::LBrace)?;"
+                    }
+                ]
+}

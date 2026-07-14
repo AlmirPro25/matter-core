@@ -13,7 +13,29 @@ pub struct Parser {
     recursion_depth: usize,
 }
 
-const MAX_RECURSION_DEPTH: usize = 256;
+/// Cap AST recursion so controlled input cannot blow the host OS stack
+/// before a structured `ParseError` is returned (debug frames are heavy).
+const MAX_RECURSION_DEPTH: usize = 64;
+/// Default maximum source length in bytes (configurable via MATTER_MAX_SOURCE_BYTES).
+const DEFAULT_MAX_SOURCE_BYTES: usize = 1_048_576; // 1 MiB
+/// Default maximum token count after lexing (configurable via MATTER_MAX_TOKENS).
+const DEFAULT_MAX_TOKENS: usize = 250_000;
+
+fn max_source_bytes() -> usize {
+    std::env::var("MATTER_MAX_SOURCE_BYTES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .filter(|n| *n > 0)
+        .unwrap_or(DEFAULT_MAX_SOURCE_BYTES)
+}
+
+fn max_tokens() -> usize {
+    std::env::var("MATTER_MAX_TOKENS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .filter(|n| *n > 0)
+        .unwrap_or(DEFAULT_MAX_TOKENS)
+}
 
 #[derive(Debug)]
 pub struct ParseError {
@@ -73,6 +95,32 @@ impl Parser {
         }
     }
 
+    /// Build a parser and enforce source-size / token-count limits.
+    pub fn from_source_checked(source: &str) -> ParseResult<Self> {
+        if source.len() > max_source_bytes() {
+            return Err(ParseError::new(
+                format!(
+                    "source too large: {} bytes (limit {})",
+                    source.len(),
+                    max_source_bytes()
+                ),
+                Span { line: 1, column: 1 },
+            ));
+        }
+        let parser = Self::from_source(source);
+        if parser.tokens.len() > max_tokens() {
+            return Err(ParseError::new(
+                format!(
+                    "too many tokens: {} (limit {})",
+                    parser.tokens.len(),
+                    max_tokens()
+                ),
+                Span { line: 1, column: 1 },
+            ));
+        }
+        Ok(parser)
+    }
+
     fn current(&self) -> &Token {
         self.tokens.get(self.position).unwrap_or(&Token::Eof)
     }
@@ -115,6 +163,14 @@ impl Parser {
         let mut statements = Vec::new();
 
         while self.current() != &Token::Eof {
+            // Phase 2: reject illegal/garbage tokens instead of treating as expressions.
+            if let Token::Illegal(ch) = *self.current() {
+                return Err(self.error(format!(
+                    "illegal character {:?} (input must be valid Matter source)",
+                    ch
+                )));
+            }
+
             // Skip extra newlines or semicolons between statements
             if matches!(self.current(), Token::Newline | Token::Semicolon) {
                 self.advance();
@@ -127,6 +183,14 @@ impl Parser {
             if self.current() == &Token::Semicolon {
                 self.advance();
             }
+        }
+
+        // Full input must be consumed (only Eof remaining).
+        if self.current() != &Token::Eof {
+            return Err(self.error(format!(
+                "unexpected trailing token {:?} after complete program",
+                self.current()
+            )));
         }
 
         Ok(Program::new(statements))
@@ -146,6 +210,7 @@ impl Parser {
                 Token::Fn => self.parse_function(),
                 Token::Struct => self.parse_struct_def(),
                 Token::Import => self.parse_import(),
+                Token::Export => self.parse_export(),
                 Token::On => self.parse_on_event(),
                 Token::Spawn => self.parse_spawn(),
                 Token::If => self.parse_if(),
@@ -566,14 +631,109 @@ impl Parser {
     fn parse_import(&mut self) -> ParseResult<Statement> {
         self.advance(); // skip 'import'
 
-        let path = match self.current() {
-            Token::String(p) => p.clone(),
-            Token::Ident(p) => p.clone(),
-            _ => return Err(self.error("Expected import path")),
-        };
-        self.advance();
+        match self.current() {
+            // import { a, b } from "path"
+            Token::LBrace => {
+                self.advance();
+                let mut names = Vec::new();
 
-        Ok(Statement::Import { path })
+                while self.current() != &Token::RBrace {
+                    let name = match self.current() {
+                        Token::Ident(n) => n.clone(),
+                        _ => return Err(self.error("Expected import name")),
+                    };
+                    self.advance();
+
+                    let alias = if self.current() == &Token::As {
+                        self.advance();
+                        match self.current() {
+                            Token::Ident(a) => {
+                                let alias = a.clone();
+                                self.advance();
+                                Some(alias)
+                            }
+                            _ => return Err(self.error("Expected alias name")),
+                        }
+                    } else {
+                        None
+                    };
+
+                    names.push(ImportName { name, alias });
+
+                    if self.current() == &Token::Comma {
+                        self.advance();
+                    } else {
+                        break;
+                    }
+                }
+
+                self.expect(Token::RBrace)?;
+                self.expect(Token::From)?;
+
+                let path = match self.current() {
+                    Token::String(p) => p.clone(),
+                    Token::Ident(p) => p.clone(),
+                    _ => return Err(self.error("Expected import path")),
+                };
+                self.advance();
+
+                Ok(Statement::ImportFrom { path, names })
+            }
+            // import "path" as alias
+            Token::String(p) => {
+                let path = p.clone();
+                self.advance();
+
+                if self.current() == &Token::As {
+                    self.advance();
+                    let alias = match self.current() {
+                        Token::Ident(a) => a.clone(),
+                        _ => return Err(self.error("Expected alias name")),
+                    };
+                    self.advance();
+                    Ok(Statement::ImportAs { path, alias })
+                } else {
+                    Ok(Statement::Import { path })
+                }
+            }
+            // import ident (legacy path)
+            Token::Ident(p) => {
+                let path = p.clone();
+                self.advance();
+                Ok(Statement::Import { path })
+            }
+            _ => Err(self.error("Expected import path")),
+        }
+    }
+
+    fn parse_export(&mut self) -> ParseResult<Statement> {
+        self.advance(); // skip 'export'
+
+        // export { a, b, c }
+        if self.current() == &Token::LBrace {
+            self.advance();
+            let mut names = Vec::new();
+
+            while self.current() != &Token::RBrace {
+                let name = match self.current() {
+                    Token::Ident(n) => n.clone(),
+                    _ => return Err(self.error("Expected export name")),
+                };
+                self.advance();
+                names.push(name);
+
+                if self.current() == &Token::Comma {
+                    self.advance();
+                } else {
+                    break;
+                }
+            }
+
+            self.expect(Token::RBrace)?;
+            return Ok(Statement::Export { names });
+        }
+
+        Err(self.error("Expected 'export {{ ... }}'"))
     }
 
     fn parse_on_event(&mut self) -> ParseResult<Statement> {
@@ -954,6 +1114,9 @@ impl Parser {
                         Token::Continue => "continue".to_string(),
                         Token::Struct => "struct".to_string(),
                         Token::Import => "import".to_string(),
+                        Token::From => "from".to_string(),
+                        Token::As => "as".to_string(),
+                        Token::Export => "export".to_string(),
                         Token::Match => "match".to_string(),
                         Token::Null => "null".to_string(),
                         Token::Spawn => "spawn".to_string(),
@@ -986,6 +1149,10 @@ impl Parser {
                         break;
                     }
                 }
+                Token::QuestionMark => {
+                    self.advance();
+                    expr = Expression::TryPropagate(Box::new(expr));
+                }
                 _ => break,
             }
         }
@@ -1010,6 +1177,9 @@ impl Parser {
     }
 
     fn parse_primary(&mut self) -> ParseResult<Expression> {
+        // Guard nested forms early (parens/calls) so depth is enforced before
+        // descending the full precedence chain again.
+        self.check_recursion()?;
         match self.current().clone() {
             Token::Int(n) => {
                 self.advance();
@@ -1039,6 +1209,31 @@ impl Parser {
                 self.advance();
                 Ok(Expression::Null)
             }
+            Token::Ok => {
+                self.advance();
+                self.expect(Token::LParen)?;
+                let expr = self.parse_expression()?;
+                self.expect(Token::RParen)?;
+                Ok(Expression::OkExpr(Box::new(expr)))
+            }
+            Token::Err => {
+                self.advance();
+                self.expect(Token::LParen)?;
+                let expr = self.parse_expression()?;
+                self.expect(Token::RParen)?;
+                Ok(Expression::ErrExpr(Box::new(expr)))
+            }
+            Token::Some => {
+                self.advance();
+                self.expect(Token::LParen)?;
+                let expr = self.parse_expression()?;
+                self.expect(Token::RParen)?;
+                Ok(Expression::SomeExpr(Box::new(expr)))
+            }
+            Token::None => {
+                self.advance();
+                Ok(Expression::NoneExpr)
+            }
             Token::LParen => {
                 self.advance();
                 let expr = self.parse_expression()?;
@@ -1064,8 +1259,42 @@ impl Parser {
                 Ok(Expression::List(elements))
             }
             Token::LBrace => self.parse_map_literal(),
+            Token::Fn => self.parse_lambda(),
             _ => Err(self.error(format!("Unexpected token: {:?}", self.current()))),
         }
+    }
+
+    fn parse_lambda(&mut self) -> ParseResult<Expression> {
+        self.advance(); // skip 'fn'
+
+        self.expect(Token::LParen)?;
+        let mut params = Vec::new();
+        while self.current() != &Token::RParen {
+            if let Token::Ident(param_name) = self.current().clone() {
+                self.advance();
+                let type_annotation = if self.current() == &Token::Colon {
+                    self.advance();
+                    Some(self.parse_type_annotation()?)
+                } else {
+                    None
+                };
+                params.push(Param { name: param_name, type_annotation });
+                if self.current() == &Token::Comma {
+                    self.advance();
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        self.expect(Token::RParen)?;
+
+        self.expect(Token::LBrace)?;
+        let body = self.parse_block()?;
+        self.expect(Token::RBrace)?;
+
+        Ok(Expression::Lambda { params, body })
     }
 
     fn parse_map_literal(&mut self) -> ParseResult<Expression> {
@@ -1273,5 +1502,83 @@ mod tests {
         let mut parser = Parser::from_source("if a { b } else if c { d } else { e }");
         let program = parser.parse().unwrap();
         assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_reject_illegal_character() {
+        let mut parser = Parser::from_source("let x = 1 @ 2");
+        let err = parser.parse().expect_err("illegal @ must fail");
+        assert!(
+            err.message.contains("illegal") || err.message.contains('@'),
+            "unexpected message: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn test_reject_garbage_suffix() {
+        let mut parser = Parser::from_source("print 1 ` junk");
+        assert!(parser.parse().is_err());
+    }
+
+    #[test]
+    fn test_empty_source_ok() {
+        let mut parser = Parser::from_source("");
+        let program = parser.parse().unwrap();
+        assert!(program.statements.is_empty());
+    }
+
+    #[test]
+    fn test_truncated_if_rejected() {
+        let mut parser = Parser::from_source("if true {");
+        assert!(parser.parse().is_err());
+    }
+
+    #[test]
+    fn test_from_source_checked_respects_source_limit() {
+        std::env::set_var("MATTER_MAX_SOURCE_BYTES", "8");
+        let result = Parser::from_source_checked("print 12345");
+        std::env::remove_var("MATTER_MAX_SOURCE_BYTES");
+        match result {
+            Ok(_) => panic!("expected source limit error"),
+            Err(err) => {
+                assert!(err.message.contains("source too large"), "{}", err.message);
+            }
+        }
+    }
+
+    #[test]
+    fn test_valid_core_program_still_parses() {
+        let src = r#"
+fn add(a, b) {
+    return a + b
+}
+print add(2, 3)
+"#;
+        let mut parser = Parser::from_source_checked(src).unwrap();
+        let program = parser.parse().unwrap();
+        assert!(program.statements.len() >= 2);
+    }
+
+    #[test]
+    fn test_deep_nesting_hits_recursion_limit() {
+        // Nested parens beyond MAX_RECURSION_DEPTH (64) must yield ParseError,
+        // not an OS stack overflow / panic.
+        let mut src = String::from("print ");
+        for _ in 0..120 {
+            src.push('(');
+        }
+        src.push('1');
+        for _ in 0..120 {
+            src.push(')');
+        }
+        let mut parser = Parser::from_source(&src);
+        let err = parser.parse().expect_err("deep nest must fail");
+        assert!(
+            err.message.to_lowercase().contains("recursion")
+                || err.message.to_lowercase().contains("depth"),
+            "unexpected: {}",
+            err.message
+        );
     }
 }

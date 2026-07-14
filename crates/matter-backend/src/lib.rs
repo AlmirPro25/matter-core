@@ -33,12 +33,20 @@ pub enum Value {
     // Heap values - use Rc for shared ownership
     String(Rc<String>),
     Function(Rc<String>),
+    Closure(Rc<ClosureData>),
     List(Rc<Vec<Value>>),
     Map(Rc<HashMap<String, Value>>),
     Struct {
         type_name: Rc<String>,
         fields: Rc<HashMap<String, Value>>,
     },
+}
+
+/// Data for a closure value: function name + captured variables
+#[derive(Debug, Clone, PartialEq)]
+pub struct ClosureData {
+    pub func_name: String,
+    pub captures: HashMap<String, Value>,
 }
 
 impl Value {
@@ -50,6 +58,14 @@ impl Value {
     /// Create a new Function value
     pub fn new_function(name: String) -> Self {
         Value::Function(Rc::new(name))
+    }
+
+    /// Create a new Closure value
+    pub fn new_closure(func_name: String, captures: HashMap<String, Value>) -> Self {
+        Value::Closure(Rc::new(ClosureData {
+            func_name,
+            captures,
+        }))
     }
 
     /// Create a new List value
@@ -116,6 +132,7 @@ impl Value {
             Value::Unit => "()".to_string(),
             Value::Null => "null".to_string(),
             Value::Function(name) => format!("<fn {}>", **name),
+            Value::Closure(data) => format!("<closure {}>", data.func_name),
             Value::List(elements) => {
                 let items: Vec<String> = elements.iter().map(|v| v.to_display_string()).collect();
                 format!("[{}]", items.join(", "))
@@ -149,6 +166,7 @@ pub fn value_type_name(value: &Value) -> &'static str {
         Value::Null => "null",
         Value::String(_) => "string",
         Value::Function(_) => "function",
+        Value::Closure(_) => "closure",
         Value::List(_) => "list",
         Value::Map(_) => "map",
         Value::Struct { .. } => "struct",
@@ -1725,6 +1743,16 @@ fn encode_value(value: &Value) -> serde_json::Value {
             object.insert(
                 "type".to_string(),
                 serde_json::Value::String("null".to_string()),
+            );
+        }
+        Value::Closure(data) => {
+            object.insert(
+                "type".to_string(),
+                serde_json::Value::String("closure".to_string()),
+            );
+            object.insert(
+                "value".to_string(),
+                serde_json::Value::String(data.func_name.clone()),
             );
         }
     }

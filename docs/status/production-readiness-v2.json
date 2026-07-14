@@ -1,0 +1,237 @@
+﻿{
+    "schema_version":  2,
+    "at":  "2026-07-14T19:39:51.6705383-03:00",
+    "product":  "matter-core",
+    "version":  "0.1.0",
+    "edition":  "language-only",
+    "cli":  "D:\\Users\\almir\\Desktop\\MANIFESTO DA LINGUAGEM MATTER CORE\\target\\x86_64-pc-windows-gnu\\release\\matter-cli.exe",
+    "cli_sha256":  "355F7406680A3D7B662A7728B92986DE53E87431794AD886310BBCDC1B3D6F22",
+    "verdict":  "BLOCKED_EXTERNAL_VALIDATION",
+    "production_ready":  false,
+    "gates":  [
+                  {
+                      "id":  "core_suite",
+                      "mandatory":  true,
+                      "ok":  true,
+                      "status":  "PASS",
+                      "detail":  {
+                                     "ms":  1281,
+                                     "exit":  0
+                                 }
+                  },
+                  {
+                      "id":  "security_suite",
+                      "mandatory":  true,
+                      "ok":  true,
+                      "status":  "PASS",
+                      "detail":  {
+                                     "ms":  2193,
+                                     "exit":  0
+                                 }
+                  },
+                  {
+                      "id":  "portable_suite",
+                      "mandatory":  true,
+                      "ok":  true,
+                      "status":  "PASS",
+                      "detail":  {
+                                     "ms":  5962,
+                                     "exit":  0
+                                 }
+                  },
+                  {
+                      "id":  "cargo_core_tests",
+                      "mandatory":  true,
+                      "ok":  true,
+                      "status":  "PASS",
+                      "detail":  {
+                                     "matter-runtime":  0,
+                                     "matter-vm":  0,
+                                     "matter-bytecode":  0,
+                                     "matter-stdlib":  0,
+                                     "matter-backend":  0,
+                                     "matter-ast":  0,
+                                     "matter-lexer":  0,
+                                     "matter-parser":  0,
+                                     "matter-energy":  0,
+                                     "matter-cli_capability_policy":  0
+                                 }
+                  },
+                  {
+                      "id":  "cargo_fmt_check",
+                      "mandatory":  false,
+                      "ok":  false,
+                      "status":  "WARN",
+                      "detail":  {
+                                     "ms":  2732,
+                                     "exit":  1
+                                 }
+                  },
+                  {
+                      "id":  "cargo_clippy_core",
+                      "mandatory":  false,
+                      "ok":  true,
+                      "status":  "WARN",
+                      "detail":  {
+                                     "deny_exit":  101,
+                                     "allow_exit":  0
+                                 }
+                  },
+                  {
+                      "id":  "fuzz_stress",
+                      "mandatory":  true,
+                      "ok":  true,
+                      "status":  "PASS",
+                      "detail":  {
+                                     "ms":  133709,
+                                     "exit":  0
+                                 }
+                  },
+                  {
+                      "id":  "package_integrity",
+                      "mandatory":  true,
+                      "ok":  true,
+                      "status":  "PASS",
+                      "detail":  {
+                                     "zip_sha256":  "0A5FEE59F07A0C09E74992A62CDE95EA4C1DCA9AE6529B12AE47E9F23E1332A2"
+                                 }
+                  },
+                  {
+                      "id":  "package_repro",
+                      "mandatory":  true,
+                      "ok":  true,
+                      "status":  "PASS_LOGICAL",
+                      "detail":  {
+                                     "at":  "2026-07-14T19:39:41.0496641-03:00",
+                                     "verdict":  "PASS_LOGICAL",
+                                     "file_set_equal":  true,
+                                     "content_sha_equal":  true,
+                                     "diffs":  [
+
+                                               ],
+                                     "files_a":  16,
+                                     "files_b":  16,
+                                     "zip_note":  "ZIP central directory timestamps make byte-identical ZIPs unreliable on Windows Compress/ZipFile without fixed entry times; logical content (per-file SHA-256 excluding MANIFEST/SHA256SUMS timestamps) is the RC criterion.",
+                                     "last_zip_sha256":  "4F9059C6D2788C21849ABA67797F35961436A74136EF7CFDBE3F02110B2EA2A6",
+                                     "dirs":  {
+                                                  "a":  "D:\\Users\\almir\\Desktop\\MANIFESTO DA LINGUAGEM MATTER CORE\\dist\\repro-a",
+                                                  "b":  "D:\\Users\\almir\\Desktop\\MANIFESTO DA LINGUAGEM MATTER CORE\\dist\\repro-b"
+                                              }
+                                 }
+                  },
+                  {
+                      "id":  "independent_windows",
+                      "mandatory":  true,
+                      "ok":  false,
+                      "status":  "BLOCKED",
+                      "detail":  {
+                                     "host":  "DESKTOP-K90PBV1",
+                                     "reason":  "No clean Windows VM available; host has Rust/MinGW/dev tools"
+                                 }
+                  },
+                  {
+                      "id":  "dependency_audit",
+                      "mandatory":  true,
+                      "ok":  true,
+                      "status":  "PASS",
+                      "detail":  {
+                                     "at":  "2026-07-14T19:39:51.5904327-03:00",
+                                     "tool_available":  true,
+                                     "tool":  "cargo-audit",
+                                     "package_count":  32,
+                                     "critical_or_high":  0,
+                                     "language_only_vuln_count":  0,
+                                     "workspace_vuln_count":  7,
+                                     "vulnerabilities_language_only":  [
+
+                                                                       ],
+                                     "vulnerabilities_workspace_all":  [
+                                                                           {
+                                                                               "id":  "RUSTSEC-2026-0204",
+                                                                               "package":  "crossbeam-epoch",
+                                                                               "severity":  null,
+                                                                               "title":  "Invalid pointer dereference in `fmt::Pointer` impl for `Atomic` and `Shared` when the underlying pointer is invalid",
+                                                                               "in_language_only_tree":  false
+                                                                           },
+                                                                           {
+                                                                               "id":  "RUSTSEC-2025-0020",
+                                                                               "package":  "pyo3",
+                                                                               "severity":  null,
+                                                                               "title":  "Risk of buffer overflow in `PyString::from_object`",
+                                                                               "in_language_only_tree":  false
+                                                                           },
+                                                                           {
+                                                                               "id":  "RUSTSEC-2026-0177",
+                                                                               "package":  "pyo3",
+                                                                               "severity":  null,
+                                                                               "title":  "Missing `Sync` bound on `PyCFunction::new_closure` closures",
+                                                                               "in_language_only_tree":  false
+                                                                           },
+                                                                           {
+                                                                               "id":  "RUSTSEC-2026-0194",
+                                                                               "package":  "quick-xml",
+                                                                               "severity":  null,
+                                                                               "title":  "Quadratic run time when checking a start tag for duplicate attribute names",
+                                                                               "in_language_only_tree":  false
+                                                                           },
+                                                                           {
+                                                                               "id":  "RUSTSEC-2026-0195",
+                                                                               "package":  "quick-xml",
+                                                                               "severity":  null,
+                                                                               "title":  "Unbounded namespace-declaration allocation in `NsReader` enables memory-exhaustion denial of service",
+                                                                               "in_language_only_tree":  false
+                                                                           },
+                                                                           {
+                                                                               "id":  "RUSTSEC-2026-0194",
+                                                                               "package":  "quick-xml",
+                                                                               "severity":  null,
+                                                                               "title":  "Quadratic run time when checking a start tag for duplicate attribute names",
+                                                                               "in_language_only_tree":  false
+                                                                           },
+                                                                           {
+                                                                               "id":  "RUSTSEC-2026-0195",
+                                                                               "package":  "quick-xml",
+                                                                               "severity":  null,
+                                                                               "title":  "Unbounded namespace-declaration allocation in `NsReader` enables memory-exhaustion denial of service",
+                                                                               "in_language_only_tree":  false
+                                                                           }
+                                                                       ],
+                                     "licenses":  [
+                                                      {
+                                                          "license":  "see LICENSE",
+                                                          "redistributed":  true,
+                                                          "component":  "matter-core (this project)"
+                                                      },
+                                                      {
+                                                          "license":  "system",
+                                                          "redistributed":  false,
+                                                          "component":  "Rust std / CRT (Windows)"
+                                                      },
+                                                      {
+                                                          "license":  "see cargo tree / crates.io metadata",
+                                                          "redistributed":  true,
+                                                          "component":  "crates.io dependencies",
+                                                          "note":  "static-linked into matter-cli where applicable"
+                                                      }
+                                                  ],
+                                     "tree_file":  "D:\\Users\\almir\\Desktop\\MANIFESTO DA LINGUAGEM MATTER CORE\\target\\validation\\production_readiness_v2\\cargo-tree-matter-cli.txt",
+                                     "sbom_file":  "D:\\Users\\almir\\Desktop\\MANIFESTO DA LINGUAGEM MATTER CORE\\target\\validation\\production_readiness_v2\\sbom-packages.json",
+                                     "policy":  "critical/high in language-only tree \u003e 0 =\u003e FAIL; tool missing =\u003e BLOCKED; workspace-only deps (e.g. pyo3) noted but not blocking language-only RC",
+                                     "note":  "cargo-audit scans full workspace lockfile; language-only binary uses matter-cli default features only"
+                                 }
+                  },
+                  {
+                      "id":  "dangerous_caps_denied",
+                      "mandatory":  true,
+                      "ok":  true,
+                      "status":  "PASS",
+                      "detail":  {
+                                     "exit":  2
+                                 }
+                  }
+              ],
+    "notes":  [
+                  "PRODUCTION_READY not used without independent clean Windows validation",
+                  "core-status-json remains production_ready:false"
+              ]
+}

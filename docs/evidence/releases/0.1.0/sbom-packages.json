@@ -1,0 +1,130 @@
+﻿[
+    {
+        "name":  "itoa",
+        "version":  "1.0.18"
+    },
+    {
+        "name":  "matter-agent-protocol",
+        "version":  "0.1.0"
+    },
+    {
+        "name":  "matter-ast",
+        "version":  "0.1.0"
+    },
+    {
+        "name":  "matter-backend",
+        "version":  "0.1.0"
+    },
+    {
+        "name":  "matter-bytecode",
+        "version":  "0.1.0"
+    },
+    {
+        "name":  "matter-cli",
+        "version":  "0.1.0"
+    },
+    {
+        "name":  "matter-energy",
+        "version":  "0.1.0"
+    },
+    {
+        "name":  "matter-jit",
+        "version":  "0.1.0"
+    },
+    {
+        "name":  "matter-kernel-vm",
+        "version":  "0.1.0"
+    },
+    {
+        "name":  "matter-lexer",
+        "version":  "0.1.0"
+    },
+    {
+        "name":  "matter-memory",
+        "version":  "0.1.0"
+    },
+    {
+        "name":  "matter-native",
+        "version":  "0.1.0"
+    },
+    {
+        "name":  "matter-optimizer",
+        "version":  "0.1.0"
+    },
+    {
+        "name":  "matter-parser",
+        "version":  "0.1.0"
+    },
+    {
+        "name":  "matter-runtime",
+        "version":  "0.1.0"
+    },
+    {
+        "name":  "matter-sentinel-abi",
+        "version":  "0.1.0"
+    },
+    {
+        "name":  "matter-stdlib",
+        "version":  "0.1.0"
+    },
+    {
+        "name":  "matter-vcpu",
+        "version":  "0.1.0"
+    },
+    {
+        "name":  "matter-vm",
+        "version":  "0.1.0"
+    },
+    {
+        "name":  "memchr",
+        "version":  "2.8.0"
+    },
+    {
+        "name":  "proc-macro2",
+        "version":  "1.0.106"
+    },
+    {
+        "name":  "quote",
+        "version":  "1.0.45"
+    },
+    {
+        "name":  "serde",
+        "version":  "1.0.228"
+    },
+    {
+        "name":  "serde_core",
+        "version":  "1.0.228"
+    },
+    {
+        "name":  "serde_derive",
+        "version":  "1.0.228"
+    },
+    {
+        "name":  "serde_json",
+        "version":  "1.0.149"
+    },
+    {
+        "name":  "syn",
+        "version":  "2.0.117"
+    },
+    {
+        "name":  "unicode-ident",
+        "version":  "1.0.24"
+    },
+    {
+        "name":  "windows_x86_64_gnu",
+        "version":  "0.52.6"
+    },
+    {
+        "name":  "windows-sys",
+        "version":  "0.59.0"
+    },
+    {
+        "name":  "windows-targets",
+        "version":  "0.52.6"
+    },
+    {
+        "name":  "zmij",
+        "version":  "1.0.21"
+    }
+]

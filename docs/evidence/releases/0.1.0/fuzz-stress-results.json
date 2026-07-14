@@ -1,0 +1,89 @@
+﻿{
+    "at":  "2026-07-14T18:54:01.5748060-03:00",
+    "seed":  "0xC0FFEE42",
+    "panic_count":  0,
+    "hang_count":  0,
+    "max_check_ms":  1038,
+    "soak_ok":  40,
+    "soak_fail":  0,
+    "mem_samples_mb":  [
+                           67.59,
+                           70.09,
+                           69.84,
+                           70.79
+                       ],
+    "results":  [
+                    {
+                        "name":  "fuzz-smoke-128",
+                        "ok":  true,
+                        "detail":  "panic=0 hang=0 max_ms=1038 seed=0xC0FFEE42"
+                    },
+                    {
+                        "name":  "adv-div_zero",
+                        "ok":  true,
+                        "detail":  "check=0 run=1 ms=18"
+                    },
+                    {
+                        "name":  "adv-garbage",
+                        "ok":  true,
+                        "detail":  "check=1 run=1 ms=17"
+                    },
+                    {
+                        "name":  "adv-deep_nest",
+                        "ok":  true,
+                        "detail":  "check=1 run=1 ms=18"
+                    },
+                    {
+                        "name":  "adv-illegal_at",
+                        "ok":  true,
+                        "detail":  "check=1 run=1 ms=17"
+                    },
+                    {
+                        "name":  "adv-huge_ident",
+                        "ok":  true,
+                        "detail":  "check=0 run=0 ms=27"
+                    },
+                    {
+                        "name":  "adv-empty",
+                        "ok":  true,
+                        "detail":  "check=0 run=0 ms=18"
+                    },
+                    {
+                        "name":  "adv-truncated",
+                        "ok":  true,
+                        "detail":  "check=1 run=1 ms=17"
+                    },
+                    {
+                        "name":  "mbc-reject-bad.mbc",
+                        "ok":  true,
+                        "detail":  "exit=1"
+                    },
+                    {
+                        "name":  "mbc-reject-empty.mbc",
+                        "ok":  true,
+                        "detail":  "exit=1"
+                    },
+                    {
+                        "name":  "mbc-reject-rand.mbc",
+                        "ok":  true,
+                        "detail":  "exit=1"
+                    },
+                    {
+                        "name":  "vm-instruction-limit",
+                        "ok":  true,
+                        "detail":  "exit=1 ms=10"
+                    },
+                    {
+                        "name":  "soak-compile-run-40",
+                        "ok":  true,
+                        "detail":  "ok=40 fail=0 total_ms=667 mem_mb=67,59,70,09,69,84,70,79"
+                    },
+                    {
+                        "name":  "repeat-core-programs",
+                        "ok":  true,
+                        "detail":  "successes=15"
+                    }
+                ],
+    "passed":  14,
+    "failed":  0
+}

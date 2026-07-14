@@ -1,0 +1,129 @@
+﻿{
+    "at":  "2026-07-14T18:51:21.0195055-03:00",
+    "package":  "D:\\Users\\almir\\Desktop\\MANIFESTO DA LINGUAGEM MATTER CORE\\dist\\matter-core-0.1.0-windows-x64",
+    "passed":  20,
+    "failed":  0,
+    "total":  20,
+    "results":  [
+                    {
+                        "name":  "package-present",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  "D:\\Users\\almir\\Desktop\\MANIFESTO DA LINGUAGEM MATTER CORE\\dist\\matter-core-0.1.0-windows-x64"
+                    },
+                    {
+                        "name":  "package-clean",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  "forbidden_hits=0"
+                    },
+                    {
+                        "name":  "zip-extract-version",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  ""
+                    },
+                    {
+                        "name":  "zip-extract-help",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  ""
+                    },
+                    {
+                        "name":  "zip-extract-core-status",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  ""
+                    },
+                    {
+                        "name":  "zip-extract-run",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  ""
+                    },
+                    {
+                        "name":  "zip-extract-compile",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  ""
+                    },
+                    {
+                        "name":  "zip-extract-run-bytecode",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  ""
+                    },
+                    {
+                        "name":  "install-A",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  "D:\\Users\\almir\\.runtime-cache\\temp\\MatterPortA"
+                    },
+                    {
+                        "name":  "verify-install-A",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  ""
+                    },
+                    {
+                        "name":  "install-B-unicode",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  "D:\\Users\\almir\\.runtime-cache\\temp\\Matter Core portavel 185115"
+                    },
+                    {
+                        "name":  "verify-install-B-unicode",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  ""
+                    },
+                    {
+                        "name":  "update-preserves-projects",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  ""
+                    },
+                    {
+                        "name":  "uninstall-keeps-projects",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  "bin_gone=True proj_kept=True"
+                    },
+                    {
+                        "name":  "uninstall-B",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  "cli_gone=True proj_gone=True"
+                    },
+                    {
+                        "name":  "isolated-copy-run",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  "D:\\Users\\almir\\.runtime-cache\\temp\\matter-iso-c9d847d9330b4daca762d3057628664f"
+                    },
+                    {
+                        "name":  "manifest-present",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  ""
+                    },
+                    {
+                        "name":  "sha256sums-present",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  ""
+                    },
+                    {
+                        "name":  "zip-present",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  "D:\\Users\\almir\\Desktop\\MANIFESTO DA LINGUAGEM MATTER CORE\\dist\\matter-core-0.1.0-repro-windows-x64.zip"
+                    },
+                    {
+                        "name":  "lsp-no-drive-hardcode",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  ""
+                    }
+                ]
+}

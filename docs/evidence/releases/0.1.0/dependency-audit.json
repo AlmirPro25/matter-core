@@ -1,0 +1,85 @@
+﻿{
+    "at":  "2026-07-14T18:54:12.7251756-03:00",
+    "tool_available":  true,
+    "tool":  "cargo-audit",
+    "package_count":  32,
+    "critical_or_high":  0,
+    "language_only_vuln_count":  0,
+    "workspace_vuln_count":  7,
+    "vulnerabilities_language_only":  [
+
+                                      ],
+    "vulnerabilities_workspace_all":  [
+                                          {
+                                              "id":  "RUSTSEC-2026-0204",
+                                              "package":  "crossbeam-epoch",
+                                              "severity":  null,
+                                              "title":  "Invalid pointer dereference in `fmt::Pointer` impl for `Atomic` and `Shared` when the underlying pointer is invalid",
+                                              "in_language_only_tree":  false
+                                          },
+                                          {
+                                              "id":  "RUSTSEC-2025-0020",
+                                              "package":  "pyo3",
+                                              "severity":  null,
+                                              "title":  "Risk of buffer overflow in `PyString::from_object`",
+                                              "in_language_only_tree":  false
+                                          },
+                                          {
+                                              "id":  "RUSTSEC-2026-0177",
+                                              "package":  "pyo3",
+                                              "severity":  null,
+                                              "title":  "Missing `Sync` bound on `PyCFunction::new_closure` closures",
+                                              "in_language_only_tree":  false
+                                          },
+                                          {
+                                              "id":  "RUSTSEC-2026-0194",
+                                              "package":  "quick-xml",
+                                              "severity":  null,
+                                              "title":  "Quadratic run time when checking a start tag for duplicate attribute names",
+                                              "in_language_only_tree":  false
+                                          },
+                                          {
+                                              "id":  "RUSTSEC-2026-0195",
+                                              "package":  "quick-xml",
+                                              "severity":  null,
+                                              "title":  "Unbounded namespace-declaration allocation in `NsReader` enables memory-exhaustion denial of service",
+                                              "in_language_only_tree":  false
+                                          },
+                                          {
+                                              "id":  "RUSTSEC-2026-0194",
+                                              "package":  "quick-xml",
+                                              "severity":  null,
+                                              "title":  "Quadratic run time when checking a start tag for duplicate attribute names",
+                                              "in_language_only_tree":  false
+                                          },
+                                          {
+                                              "id":  "RUSTSEC-2026-0195",
+                                              "package":  "quick-xml",
+                                              "severity":  null,
+                                              "title":  "Unbounded namespace-declaration allocation in `NsReader` enables memory-exhaustion denial of service",
+                                              "in_language_only_tree":  false
+                                          }
+                                      ],
+    "licenses":  [
+                     {
+                         "license":  "see LICENSE",
+                         "redistributed":  true,
+                         "component":  "matter-core (this project)"
+                     },
+                     {
+                         "license":  "system",
+                         "redistributed":  false,
+                         "component":  "Rust std / CRT (Windows)"
+                     },
+                     {
+                         "license":  "see cargo tree / crates.io metadata",
+                         "redistributed":  true,
+                         "component":  "crates.io dependencies",
+                         "note":  "static-linked into matter-cli where applicable"
+                     }
+                 ],
+    "tree_file":  "D:\\Users\\almir\\Desktop\\MANIFESTO DA LINGUAGEM MATTER CORE\\target\\validation\\production_readiness_v2\\cargo-tree-matter-cli.txt",
+    "sbom_file":  "D:\\Users\\almir\\Desktop\\MANIFESTO DA LINGUAGEM MATTER CORE\\target\\validation\\production_readiness_v2\\sbom-packages.json",
+    "policy":  "critical/high in language-only tree \u003e 0 =\u003e FAIL; tool missing =\u003e BLOCKED; workspace-only deps (e.g. pyo3) noted but not blocking language-only RC",
+    "note":  "cargo-audit scans full workspace lockfile; language-only binary uses matter-cli default features only"
+}

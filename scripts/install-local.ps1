@@ -1,117 +1,211 @@
-# Matter Language Local Installer (Sem Admin)
-# Instala Matter na pasta do usuário
+# Matter Language Local Installer (no admin)
+# Prefers D: install root when C: is low on space.
+# Uses project-local GNU release binary (no F:).
+
+param(
+    [string]$CliPath = "",
+    [string]$InstallRoot = "",
+    [switch]$SkipBuild,
+    [switch]$SkipPath,
+    [switch]$FullDocs
+)
+
+$ErrorActionPreference = "Stop"
 
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "   Matter Language Installer v0.1.5    " -ForegroundColor Cyan
-Write-Host "   (Instalacao Local - Sem Admin)      " -ForegroundColor Cyan
+Write-Host "   Matter Language Installer v0.1.7    " -ForegroundColor Cyan
+Write-Host "   (Local install - no admin)          " -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
-# Diretório de instalação (pasta do usuário)
-$installDir = "$env:LOCALAPPDATA\Matter"
-$binDir = "$installDir\bin"
+$repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
+Set-Location $repoRoot
 
-Write-Host "Instalando Matter em: $installDir" -ForegroundColor Green
-Write-Host ""
-
-# Criar diretórios
-Write-Host "[1/5] Criando diretorios..." -ForegroundColor Yellow
-if (Test-Path $installDir) {
-    Write-Host "  - Removendo instalacao anterior..." -ForegroundColor Gray
-    Remove-Item -Path $installDir -Recurse -Force
+function Get-FreeBytes([string]$PathRoot) {
+    try {
+        $drive = (Get-Item $PathRoot).PSDrive
+        if ($drive) { return [int64]$drive.Free }
+    } catch {}
+    # fallback: parse root like D:\
+    $root = [System.IO.Path]::GetPathRoot($PathRoot)
+    $vol = Get-PSDrive -Name $root.TrimEnd('\').TrimEnd(':') -ErrorAction SilentlyContinue
+    if ($vol) { return [int64]$vol.Free }
+    return [int64]0
 }
-New-Item -ItemType Directory -Path $installDir -Force | Out-Null
+
+function Resolve-InstallRoot {
+    param([string]$Explicit)
+    if ($Explicit) { return $Explicit }
+    # Phase 4: portable default — no required C:/D:/F: drive letters.
+    if ($env:MATTER_HOME -and $env:MATTER_HOME.Trim()) {
+        return $env:MATTER_HOME.Trim()
+    }
+    return (Join-Path $env:LOCALAPPDATA "Matter")
+}
+
+function Resolve-ReleaseCli {
+    param([string]$Explicit)
+
+    if ($Explicit) {
+        if (-not (Test-Path $Explicit -PathType Leaf)) {
+            throw "CLI not found: $Explicit"
+        }
+        return (Resolve-Path $Explicit).Path
+    }
+
+    $candidates = @(
+        "target\x86_64-pc-windows-gnu\release\matter-cli.exe",
+        "target\release\matter-cli.exe"
+    )
+    foreach ($c in $candidates) {
+        $p = Join-Path $repoRoot $c
+        if (Test-Path $p -PathType Leaf) {
+            return (Resolve-Path $p).Path
+        }
+    }
+    return $null
+}
+
+# Build-host MinGW only (optional). Runtime install does not need it if -SkipBuild / CliPath set.
+$mingwBin = $env:MATTER_MINGW_BIN
+if (-not $mingwBin) {
+    foreach ($c in @("D:\mingw64\mingw64\bin", "C:\mingw64\mingw64\bin")) {
+        if (Test-Path (Join-Path $c "gcc.exe")) { $mingwBin = $c; break }
+    }
+}
+if ($mingwBin -and (Test-Path (Join-Path $mingwBin "gcc.exe"))) {
+    $env:PATH = "$mingwBin;" + $env:PATH
+    $env:CC = Join-Path $mingwBin "gcc.exe"
+    $env:CXX = Join-Path $mingwBin "g++.exe"
+    $dt = Join-Path $mingwBin "dlltool.exe"
+    if (Test-Path $dt) { $env:DLLTOOL = $dt }
+    $env:CC_x86_64_pc_windows_gnu = $env:CC
+    $env:CXX_x86_64_pc_windows_gnu = $env:CXX
+}
+Remove-Item Env:CARGO_TARGET_DIR -ErrorAction SilentlyContinue
+
+$installDir = Resolve-InstallRoot -Explicit $InstallRoot
+$binDir = Join-Path $installDir "bin"
+
+Write-Host "Install dir: $installDir" -ForegroundColor Green
+Write-Host ""
+
+Write-Host "[1/5] Preparing directories..." -ForegroundColor Yellow
+if (Test-Path $installDir) {
+    Write-Host "  - Removing previous install..." -ForegroundColor Gray
+    Remove-Item -Path $installDir -Recurse -Force -ErrorAction SilentlyContinue
+}
 New-Item -ItemType Directory -Path $binDir -Force | Out-Null
 Write-Host "  OK" -ForegroundColor Green
 
-# Compilar em release
-Write-Host "[2/5] Compilando Matter..." -ForegroundColor Yellow
-Write-Host "  - Isso pode levar 1-2 minutos..." -ForegroundColor Gray
-$buildOutput = cargo build --release 2>&1
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "  ERRO ao compilar!" -ForegroundColor Red
-    Write-Host $buildOutput
-    pause
-    exit 1
+Write-Host "[2/5] Resolving matter-cli release binary..." -ForegroundColor Yellow
+$cli = Resolve-ReleaseCli -Explicit $CliPath
+if (-not $cli -and -not $SkipBuild) {
+    Write-Host "  - Building release (x86_64-pc-windows-gnu)..." -ForegroundColor Gray
+    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "build-matter-cli.ps1") -Release
+    if ($LASTEXITCODE -ne 0) { throw "Build failed" }
+    $cli = Resolve-ReleaseCli -Explicit ""
 }
+if (-not $cli) {
+    throw "Release matter-cli.exe not found. Run scripts\build-matter-cli.ps1 -Release first."
+}
+Write-Host "  - Using: $cli" -ForegroundColor Gray
 Write-Host "  OK" -ForegroundColor Green
 
-# Copiar executável
-Write-Host "[3/5] Copiando arquivos..." -ForegroundColor Yellow
-Copy-Item "target\release\matter-cli.exe" "$binDir\matter.exe" -Force
-Write-Host "  - matter.exe copiado" -ForegroundColor Gray
+Write-Host "[3/5] Copying runtime files (slim)..." -ForegroundColor Yellow
+Copy-Item -LiteralPath $cli -Destination (Join-Path $binDir "matter.exe") -Force
+Copy-Item -LiteralPath $cli -Destination (Join-Path $binDir "matter-cli.exe") -Force
 
-# Copiar exemplos
-$examplesDir = "$installDir\examples"
+# Essential examples only (not entire tree of huge assets)
+$examplesDir = Join-Path $installDir "examples"
 New-Item -ItemType Directory -Path $examplesDir -Force | Out-Null
-Copy-Item "examples\*" $examplesDir -Recurse -Force
-Write-Host "  - Exemplos copiados" -ForegroundColor Gray
-
-# Copiar documentação
-$docsDir = "$installDir\docs"
-New-Item -ItemType Directory -Path $docsDir -Force | Out-Null
-Copy-Item "docs\*" $docsDir -Recurse -Force
-Copy-Item "README.md" $installDir -Force
-Write-Host "  - Documentacao copiada" -ForegroundColor Gray
-Write-Host "  OK" -ForegroundColor Green
-
-# Adicionar ao PATH do usuário
-Write-Host "[4/5] Adicionando ao PATH do usuario..." -ForegroundColor Yellow
-$currentPath = [Environment]::GetEnvironmentVariable("Path", "User")
-if ($currentPath -notlike "*$binDir*") {
-    if ($currentPath) {
-        [Environment]::SetEnvironmentVariable("Path", "$currentPath;$binDir", "User")
-    } else {
-        [Environment]::SetEnvironmentVariable("Path", "$binDir", "User")
+$essentialExamples = @(
+    "hello.matter", "first_run.matter", "fibonacci.matter", "simple.matter",
+    "functions.matter", "events.matter", "language_tour.matter", "README.md"
+)
+foreach ($name in $essentialExamples) {
+    $src = Join-Path $repoRoot "examples\$name"
+    if (Test-Path $src) {
+        Copy-Item $src (Join-Path $examplesDir $name) -Force
     }
-    Write-Host "  - PATH atualizado" -ForegroundColor Gray
+}
+
+# Essential docs only unless -FullDocs
+$docsDir = Join-Path $installDir "docs"
+New-Item -ItemType Directory -Path $docsDir -Force | Out-Null
+if ($FullDocs -and (Test-Path (Join-Path $repoRoot "docs"))) {
+    Copy-Item (Join-Path $repoRoot "docs\*") $docsDir -Recurse -Force
 } else {
-    Write-Host "  - PATH ja configurado" -ForegroundColor Gray
+    $docPicks = @(
+        "guides\LEIA_PRIMEIRO.md",
+        "status\REALIDADE_ATUAL_HONESTA.md",
+        "INDEX.md",
+        "BUILD_STATUS.md"
+    )
+    foreach ($rel in $docPicks) {
+        $src = Join-Path $repoRoot "docs\$rel"
+        if (Test-Path $src) {
+            $dest = Join-Path $docsDir $rel
+            $parent = Split-Path -Parent $dest
+            New-Item -ItemType Directory -Path $parent -Force | Out-Null
+            Copy-Item $src $dest -Force
+        }
+    }
+}
+
+if (Test-Path (Join-Path $repoRoot "README.md")) {
+    Copy-Item (Join-Path $repoRoot "README.md") $installDir -Force
+}
+if (Test-Path (Join-Path $repoRoot "schemas")) {
+    Copy-Item (Join-Path $repoRoot "schemas") (Join-Path $installDir "schemas") -Recurse -Force
 }
 Write-Host "  OK" -ForegroundColor Green
 
-# Criar arquivo de informações
-Write-Host "[5/5] Criando arquivos de informacao..." -ForegroundColor Yellow
-$infoContent = @"
-Matter Language v0.1.5
-Instalado em: $installDir
+if (-not $SkipPath) {
+    Write-Host "[4/5] Updating user PATH..." -ForegroundColor Yellow
+    $currentPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    if ($currentPath -notlike "*$binDir*") {
+        if ($currentPath) {
+            [Environment]::SetEnvironmentVariable("Path", "$currentPath;$binDir", "User")
+        } else {
+            [Environment]::SetEnvironmentVariable("Path", "$binDir", "User")
+        }
+        Write-Host "  - PATH updated (new shells will see 'matter')" -ForegroundColor Gray
+    } else {
+        Write-Host "  - PATH already configured" -ForegroundColor Gray
+    }
+    if ($env:PATH -notlike "*$binDir*") {
+        $env:PATH = "$binDir;" + $env:PATH
+    }
+    Write-Host "  OK" -ForegroundColor Green
+} else {
+    Write-Host "[4/5] Skipping PATH update (-SkipPath)" -ForegroundColor Yellow
+}
 
-Para usar:
+Write-Host "[5/5] Writing install info + smoke..." -ForegroundColor Yellow
+$info = @"
+Matter Language v0.1.7
+Installed: $installDir
+CLI source: $cli
+Target: x86_64-pc-windows-gnu (project-local on D:)
+
+Usage:
   matter --help
-  matter run programa.matter
+  matter core-status-json
+  matter run `"$installDir\examples\hello.matter`"
 
-Exemplos em: $examplesDir
-Documentacao em: $docsDir
-
-Para desinstalar, execute: uninstall-local.ps1
+Uninstall:
+  Remove-Item -Recurse -Force `"$installDir`"
+  (and remove $binDir from User PATH if desired)
 "@
-$infoContent | Out-File "$installDir\INFO.txt" -Encoding UTF8
-Write-Host "  OK" -ForegroundColor Green
+Set-Content -Path (Join-Path $installDir "INSTALL.txt") -Value $info -Encoding UTF8
+
+$matter = Join-Path $binDir "matter.exe"
+& $matter core-status-json | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "Installed matter.exe failed core-status-json" }
+Write-Host "  OK smoke core-status-json" -ForegroundColor Green
 
 Write-Host ""
-Write-Host "========================================" -ForegroundColor Green
-Write-Host "   Instalacao concluida com sucesso!   " -ForegroundColor Green
-Write-Host "========================================" -ForegroundColor Green
-Write-Host ""
-Write-Host "Matter foi instalado em:" -ForegroundColor Cyan
-Write-Host "  $installDir" -ForegroundColor White
-Write-Host ""
-Write-Host "Para usar, abra um NOVO terminal e digite:" -ForegroundColor Yellow
-Write-Host "  matter --help" -ForegroundColor White
-Write-Host ""
-Write-Host "Testar agora? (s/n)" -ForegroundColor Yellow
-$test = Read-Host
-if ($test -eq "s" -or $test -eq "S") {
-    Write-Host ""
-    Write-Host "Testando instalacao..." -ForegroundColor Cyan
-    & "$binDir\matter.exe" --help
-    Write-Host ""
-    Write-Host "Teste concluido!" -ForegroundColor Green
-}
-Write-Host ""
-Write-Host "IMPORTANTE: Feche e abra um novo terminal para o PATH funcionar!" -ForegroundColor Red
-Write-Host ""
-Write-Host "Exemplos disponiveis em:" -ForegroundColor Yellow
-Write-Host "  $examplesDir" -ForegroundColor White
-Write-Host ""
-pause
+Write-Host "Matter installed." -ForegroundColor Green
+Write-Host "  $matter" -ForegroundColor Gray
+Write-Host "Open a new terminal and run: matter --help" -ForegroundColor Cyan

@@ -3,39 +3,90 @@ name = "matter-runtime"
 version.workspace = true
 edition.workspace = true
 
+# Phase 1 feature split:
+# - default: language-only core (stdlib + energy; no polyglot/visual/frontier/device)
+# - experimental-full: previous kitchen-sink runtime
+
+[features]
+default = []
+# Domain / science backends (still pure-ish Rust crates, not required for language core)
+frontier = [
+    "dep:matter-wetware",
+    "dep:matter-quantum",
+    "dep:matter-memristive",
+    "dep:matter-photonic",
+    "dep:matter-spintronics",
+    "dep:matter-molecular",
+    "dep:matter-relativity",
+    "dep:matter-chemistry",
+    "dep:matter-genesis",
+    "dep:matter-biological",
+    "dep:matter-biophysics",
+    "dep:matter-geophysics",
+    "dep:matter-ocean",
+    "dep:matter-atmosphere",
+    "dep:matter-materials",
+    "dep:matter-acoustics",
+    "dep:matter-electromagnetics",
+    "dep:matter-ml-physics",
+    "dep:matter-climate",
+    "dep:matter-multiscale",
+    "dep:matter-cosmology",
+    "dep:matter-neuromorphic",
+]
+# Camera/audio device backends (pulls cpal/nokhwa → non-system DLLs)
+device = ["dep:matter-device"]
+# GUI / trace visual (eframe/reqwest → OpenGL/network stack)
+visual = ["dep:matter-visual"]
+# Polyglot language bridges (Python pulls python3.dll at link time)
+polyglot = [
+    "dep:matter-polyglot",
+    "dep:matter-bridge-python",
+    "dep:matter-bridge-nodejs",
+    "dep:matter-bridge-rust",
+    "dep:matter-bridge-go",
+    "dep:matter-bridge-java",
+]
+# Agent/net backends live in matter-backend (no extra crates); gated for language-only defaults.
+agent = []
+net = []
+# Convenience: previous full experimental surface
+experimental-full = ["frontier", "device", "visual", "polyglot", "agent", "net"]
+
 [dependencies]
 matter-vm = { workspace = true }
 matter-bytecode = { workspace = true }
 matter-backend = { workspace = true }
-matter-visual = { workspace = true }
 matter-stdlib = { workspace = true }
 matter-energy = { workspace = true }
-matter-device = { workspace = true }
-matter-wetware = { workspace = true }
-matter-quantum = { workspace = true }
-matter-memristive = { workspace = true }
-matter-photonic = { workspace = true }
-matter-spintronics = { workspace = true }
-matter-molecular = { workspace = true }
-matter-relativity = { workspace = true }
-matter-chemistry = { workspace = true }
-matter-genesis = { workspace = true }
-matter-biological = { workspace = true }
-matter-biophysics = { workspace = true }
-matter-geophysics = { workspace = true }
-matter-ocean = { workspace = true }
-matter-atmosphere = { workspace = true }
-matter-materials = { workspace = true }
-matter-acoustics = { workspace = true }
-matter-electromagnetics = { workspace = true }
-matter-ml-physics = { path = "../matter-ml-physics" }
-matter-climate = { path = "../matter-climate" }
-matter-multiscale = { path = "../matter-multiscale" }
-matter-cosmology = { workspace = true }
-matter-neuromorphic = { workspace = true }
-matter-polyglot = { path = "../matter-polyglot" }
-matter-bridge-python = { path = "../matter-bridge-python" }
-matter-bridge-nodejs = { path = "../matter-bridge-nodejs" }
-matter-bridge-rust = { path = "../matter-bridge-rust" }
-matter-bridge-go = { path = "../matter-bridge-go" }
-matter-bridge-java = { path = "../matter-bridge-java" }
+
+matter-visual = { workspace = true, optional = true }
+matter-device = { workspace = true, optional = true }
+matter-wetware = { workspace = true, optional = true }
+matter-quantum = { workspace = true, optional = true }
+matter-memristive = { workspace = true, optional = true }
+matter-photonic = { workspace = true, optional = true }
+matter-spintronics = { workspace = true, optional = true }
+matter-molecular = { workspace = true, optional = true }
+matter-relativity = { workspace = true, optional = true }
+matter-chemistry = { workspace = true, optional = true }
+matter-genesis = { workspace = true, optional = true }
+matter-biological = { workspace = true, optional = true }
+matter-biophysics = { workspace = true, optional = true }
+matter-geophysics = { workspace = true, optional = true }
+matter-ocean = { workspace = true, optional = true }
+matter-atmosphere = { workspace = true, optional = true }
+matter-materials = { workspace = true, optional = true }
+matter-acoustics = { workspace = true, optional = true }
+matter-electromagnetics = { workspace = true, optional = true }
+matter-ml-physics = { path = "../matter-ml-physics", optional = true }
+matter-climate = { path = "../matter-climate", optional = true }
+matter-multiscale = { path = "../matter-multiscale", optional = true }
+matter-cosmology = { workspace = true, optional = true }
+matter-neuromorphic = { workspace = true, optional = true }
+matter-polyglot = { path = "../matter-polyglot", optional = true }
+matter-bridge-python = { path = "../matter-bridge-python", optional = true }
+matter-bridge-nodejs = { path = "../matter-bridge-nodejs", optional = true }
+matter-bridge-rust = { path = "../matter-bridge-rust", optional = true }
+matter-bridge-go = { path = "../matter-bridge-go", optional = true }
+matter-bridge-java = { path = "../matter-bridge-java", optional = true }

@@ -1,0 +1,145 @@
+{
+  "phase": 3,
+  "title": "Matter Core capability matrix",
+  "generated": "2026-07-14",
+  "editions": {
+    "language-only": {
+      "binary": "matter-cli",
+      "entry": "crates/matter-cli/src/language_main.rs",
+      "features": ["language-only", "jit-exec"],
+      "is_sandbox": false,
+      "note": "Dangerous capabilities absent from compile graph or denied at CLI gate. Not a sandbox."
+    },
+    "experimental-full": {
+      "binary": "matter-cli-experimental",
+      "entry": "crates/matter-cli/src/main.rs",
+      "features": ["experimental-full"],
+      "is_sandbox": false,
+      "note": "Explicit opt-in build. Local commands allowlisted + injection-filtered + timeout; MATTER_ALLOW_LOCAL_COMMANDS=1 for non-allowlist. NOT a sandbox."
+    }
+  },
+  "capabilities": [
+    {
+      "id": "process_spawn",
+      "capability": "OS process spawn (Command)",
+      "crates_functions": [
+        "matter-cli/main.rs:run_local_command_capture → capability_policy::run_local_command_capture",
+        "matter-cli/main.rs:Command::new (web serve self-reexec, native tools)",
+        "matter-bridge-go: Command::new(\"go\")",
+        "matter-bridge-java: Command::new(\"java\"/\"javac\")",
+        "matter-bridge-go-native/build.rs: Command::new(\"go\")",
+        "matter-visual: Command::new(cli_path) / where"
+      ],
+      "language_only": "absent — language_main has no Command spawn; capability_policy spawn paths unused",
+      "experimental": "present — allowlist + reject_injection + timeout + max output; structured argv (no PowerShell -Command)",
+      "reach_via": "experimental: agent-ui /run, agent tools, project scaffold validation",
+      "risk": "critical if unrestricted",
+      "phase3_status": "eliminated_from_default; mitigated_in_experimental"
+    },
+    {
+      "id": "powershell_cmd",
+      "capability": "PowerShell / cmd.exe shell",
+      "crates_functions": [
+        "matter-cli/main.rs (pre-phase3): Command::new(\"powershell\").args([\"-Command\", command]) — REMOVED",
+        "capability_policy: no powershell/cmd invocation"
+      ],
+      "language_only": "absent",
+      "experimental": "removed raw PowerShell -Command path; structured argv only",
+      "reach_via": "n/a on language-only; experimental allowlist only",
+      "risk": "critical (injection)",
+      "phase3_status": "eliminated"
+    },
+    {
+      "id": "filesystem_write",
+      "capability": "Filesystem write",
+      "crates_functions": [
+        "matter-stdlib file / fileio backends: fs::write, File::create",
+        "matter-cli compile: Bytecode::save_to_file",
+        "matter-backend StoreBackend",
+        "experimental agent tools: create/replace files in workspace"
+      ],
+      "language_only": "present for language features (compile output, stdlib file) — intentional residual",
+      "experimental": "present + agent workspace file tools",
+      "reach_via": "file.write / compile -o / store",
+      "risk": "medium (local data integrity)",
+      "phase3_status": "accepted_residual_language_core"
+    },
+    {
+      "id": "network_http",
+      "capability": "Sockets / HTTP",
+      "crates_functions": [
+        "matter-backend NetBackend: TcpStream, TcpListener, http_request",
+        "matter-cli/main.rs: TcpListener web server (experimental)",
+        "matter-visual: reqwest client",
+        "matter-cli/main.rs: Command::new(\"curl\") (experimental agent helpers)"
+      ],
+      "language_only": "absent — net feature off; backend not registered; CLI net-* denied",
+      "experimental": "present with feature net + agent curl helpers",
+      "reach_via": "net.get/post/serve; experimental web; curl helpers",
+      "risk": "high",
+      "phase3_status": "eliminated_from_default; present_experimental"
+    },
+    {
+      "id": "package_install",
+      "capability": "pip/npm/go/mvn package install",
+      "crates_functions": [
+        "matter-bridge-go: go get",
+        "bridges may invoke language package tools when polyglot enabled"
+      ],
+      "language_only": "absent — polyglot feature off; package-install CLI denied",
+      "experimental": "possible via polyglot bridges when experimental-full",
+      "reach_via": "polyglot import/install paths",
+      "risk": "high",
+      "phase3_status": "eliminated_from_default"
+    },
+    {
+      "id": "python_node_bridges",
+      "capability": "Python / Node / Go / Java bridges",
+      "crates_functions": [
+        "matter-runtime register_polyglot_backends (cfg polyglot)",
+        "matter-bridge-python / nodejs / go / java / rust"
+      ],
+      "language_only": "absent — not linked; python3.dll not present",
+      "experimental": "present with experimental-full",
+      "reach_via": "python.*/node.*/go.*/java.* backend calls",
+      "risk": "high (native runtime + side effects)",
+      "phase3_status": "eliminated_from_default"
+    },
+    {
+      "id": "agent_tool_execution",
+      "capability": "Agent / tool execution UI",
+      "crates_functions": [
+        "matter-cli/main.rs: agent-ui, /run, agent tool apply",
+        "matter-backend AgentBackend (print mock)",
+        "matter-backend ToolBackend (metadata stub — no OS spawn)"
+      ],
+      "language_only": "CLI denied; agent backend not registered; ToolBackend is in-memory stub only",
+      "experimental": "present; /run uses whitelist; arbitrary needs MATTER_ALLOW_LOCAL_COMMANDS=1",
+      "reach_via": "agent-ui, agent tools, tool.call (stub)",
+      "risk": "critical if shell-backed",
+      "phase3_status": "eliminated_from_default; mitigated_in_experimental"
+    },
+    {
+      "id": "run_local_command_capture",
+      "capability": "run_local_command_capture",
+      "crates_functions": [
+        "matter-cli/src/capability_policy.rs::run_local_command_capture",
+        "callers in main.rs: agent-ui /run, terminal-snapshot, agent tools run, project scaffold check/run, git/cargo fix helpers"
+      ],
+      "language_only": "not reachable — no callers in language_main; no PowerShell",
+      "experimental": "hardened: allowlist, injection reject, timeout, output cap, structured argv",
+      "reach_via": "experimental agent surfaces only",
+      "risk": "critical historically",
+      "phase3_status": "eliminated_from_default; mitigated_in_experimental_not_sandbox"
+    }
+  ],
+  "callers_run_local_command_capture": [
+    {"file": "crates/matter-cli/src/main.rs", "approx_lines": [3561, 3564, 19851, 19864, 19871, 19880, 19887, 19894, 19914, 20461, 20944, 20946, 21398, 22205, 22291, 22330], "notes": "experimental-only binary"},
+    {"file": "crates/matter-cli/src/language_main.rs", "approx_lines": [], "notes": "zero callers"}
+  ],
+  "env_controls_experimental": {
+    "MATTER_ALLOW_LOCAL_COMMANDS": "1/true to allow non-allowlist commands that still pass injection filters",
+    "MATTER_LOCAL_COMMAND_TIMEOUT_SECS": "default 60",
+    "MATTER_LOCAL_COMMAND_MAX_OUTPUT": "default 262144 bytes"
+  }
+}

@@ -1,96 +1,107 @@
-# Rust
-/target
+# === Rust / build ===
+/target/
+target/
 target_*/
 tmp_*/
+temp/
+.tmp/
 .build-artifacts/
 **/*.rs.bk
 *.pdb
-*.exe
 *.obj
-*.dll
 *.lib
 *.exp
+# Built binaries (use package/release process, not git)
+*.exe
+*.dll
+*.so
+*.dylib
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Matter bytecode
-*.mbc
-.matter_store.json
-.matter_live_events.json
-
-# Local tools and generated metadata
-.kiro/
-.tools/
-.rustup_local/
-
-# Local app secrets
-.env
-*.local.env
-env/*.env
-apps/matter-studio/.env
-apps/matter-studio/.matter-studio-events.json
-
-# Release builds, local cargo/rustup, and temporary metadata
+# === Package outputs (local frozen ZIPs stay local) ===
+/dist/
 dist/
-.rustup_home/
-.tmp_crates.txt
-.tmp_metadata.json
-.tmp_metadata_full.json
 
-# --- backup desktop auto-ignore ---
-node_modules/
-.venv/
-venv/
-env/
-__pycache__/
-*.py[cod]
+# === Caches ===
+.cache/
+**/.cache/
+.cargo_home/
+.rustup_home/
+.rustup_local/
+.npm-cache/
+.parcel-cache/
+.turbo/
+.vite/
+.next/
+coverage/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-.cache/
-.vite/
-.next/
-dist/
-build/
-out/
-coverage/
-.turbo/
-.parcel-cache/
-tmp/
-temp/
-*.log
-*.tmp
-*.temp
-.DS_Store
-Thumbs.db
-desktop.ini
-.env
-.env.*
-!.env.example
-*.swp
-*.swo
+__pycache__/
+*.py[cod]
+node_modules/
+.venv/
+venv/
+
+# === IDE / OS ===
 .idea/
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json
-# large logs / dumps
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# === Matter runtime local state ===
+*.mbc
+.matter_store.json
+.matter_live_events.json
+**/.matter-install-manifest.json
+
+# === Secrets / env ===
+.env
+.env.*
+!.env.example
+*.local.env
+env/*.env
+**/*secret*
+**/*credentials*
+**/id_rsa
+**/id_ed25519
+**/*.pem
+apps/matter-studio/.env
+apps/matter-studio/.matter-studio-events.json
+
+# === Local tools / toolchains (never commit MinGW/LLVM installs) ===
+.tools/
+.kiro/
+.emnr/
+mingw64/
+**/mingw64/
+.llvm/
+llvm-mingw/
+
+# === Logs / temp metadata ===
+*.log
 *.log.*
+*.tmp
+*.temp
+.tmp_crates.txt
+.tmp_metadata.json
+.tmp_metadata_full.json
+
+# === Local installs / user projects ===
+MeuAppMatter/target/
+my_app/target/
+**/projects/user-owned.txt
+
+# === Large / non-source dumps ===
+*.zip
+!docs/**/*.zip
 backend-dev.log
 frontend-dev.log
-nexus-dev.log
-nexus-dev-live.log
 
-# auto-ignore large non-model files
-.tools/llvm-mingw.zip
-.tools/winlibs.zip
-matter-core/.tools/llvm-mingw.zip
-matter-core/.tools/winlibs.zip
+# Keep documentation evidence (small JSON only under docs/evidence)
+# target/validation is NEVER committed

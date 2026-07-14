@@ -1,0 +1,165 @@
+﻿{
+    "at":  "2026-07-14T18:51:15.2388647-03:00",
+    "cli":  "D:\\Users\\almir\\Desktop\\MANIFESTO DA LINGUAGEM MATTER CORE\\target\\x86_64-pc-windows-gnu\\release\\matter-cli.exe",
+    "passed":  26,
+    "failed":  0,
+    "total":  26,
+    "results":  [
+                    {
+                        "name":  "deny-agent-ui",
+                        "exit":  2,
+                        "ok":  true,
+                        "detail":  "not_executed=True no_ok_true=True"
+                    },
+                    {
+                        "name":  "deny-polyglot-status-json",
+                        "exit":  2,
+                        "ok":  true,
+                        "detail":  "not_executed=True no_ok_true=True"
+                    },
+                    {
+                        "name":  "deny-shell",
+                        "exit":  2,
+                        "ok":  true,
+                        "detail":  "not_executed=True no_ok_true=True"
+                    },
+                    {
+                        "name":  "deny-exec",
+                        "exit":  2,
+                        "ok":  true,
+                        "detail":  "not_executed=True no_ok_true=True"
+                    },
+                    {
+                        "name":  "deny-package-install",
+                        "exit":  2,
+                        "ok":  true,
+                        "detail":  "not_executed=True no_ok_true=True"
+                    },
+                    {
+                        "name":  "deny-curl",
+                        "exit":  2,
+                        "ok":  true,
+                        "detail":  "not_executed=True no_ok_true=True"
+                    },
+                    {
+                        "name":  "deny-powershell",
+                        "exit":  2,
+                        "ok":  true,
+                        "detail":  "not_executed=True no_ok_true=True"
+                    },
+                    {
+                        "name":  "deny-cmd",
+                        "exit":  2,
+                        "ok":  true,
+                        "detail":  "not_executed=True no_ok_true=True"
+                    },
+                    {
+                        "name":  "deny-net-serve",
+                        "exit":  2,
+                        "ok":  true,
+                        "detail":  "not_executed=True no_ok_true=True"
+                    },
+                    {
+                        "name":  "deny-bridge-python",
+                        "exit":  2,
+                        "ok":  true,
+                        "detail":  "not_executed=True no_ok_true=True"
+                    },
+                    {
+                        "name":  "deny-run-shell",
+                        "exit":  2,
+                        "ok":  true,
+                        "detail":  "not_executed=True no_ok_true=True"
+                    },
+                    {
+                        "name":  "deny-tool-pipeline-demo-json",
+                        "exit":  2,
+                        "ok":  true,
+                        "detail":  "not_executed=True no_ok_true=True"
+                    },
+                    {
+                        "name":  "matter-block-try_agent.matter",
+                        "exit":  1,
+                        "ok":  true,
+                        "detail":  "Runtime error: backend error: Backend call failed [context:backend=agent,method=say]: backend not fo"
+                    },
+                    {
+                        "name":  "matter-block-try_net.matter",
+                        "exit":  1,
+                        "ok":  true,
+                        "detail":  "Runtime error: backend error: Backend call failed [context:backend=net,method=get]: backend not foun"
+                    },
+                    {
+                        "name":  "matter-block-try_python.matter",
+                        "exit":  1,
+                        "ok":  true,
+                        "detail":  "Runtime error: backend error: Backend call failed [context:backend=python,method=call]: backend not"
+                    },
+                    {
+                        "name":  "matter-valid-intact",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  ""
+                    },
+                    {
+                        "name":  "cli-injection-run;calc",
+                        "exit":  1,
+                        "ok":  true,
+                        "detail":  ""
+                    },
+                    {
+                        "name":  "cli-injection-eval|whoami",
+                        "exit":  1,
+                        "ok":  true,
+                        "detail":  ""
+                    },
+                    {
+                        "name":  "cli-injection-check\u0026dir",
+                        "exit":  1,
+                        "ok":  true,
+                        "detail":  ""
+                    },
+                    {
+                        "name":  "capabilities-security-json",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  "has security block"
+                    },
+                    {
+                        "name":  "minimal-path",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  ""
+                    },
+                    {
+                        "name":  "minimal-path-eval",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  ""
+                    },
+                    {
+                        "name":  "no-secrets-on-deny",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  ""
+                    },
+                    {
+                        "name":  "size-near-baseline",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  "bytes=3726794 delta=1381"
+                    },
+                    {
+                        "name":  "dll-no-python",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  ""
+                    },
+                    {
+                        "name":  "dll-no-opengl-mf",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  ""
+                    }
+                ]
+}

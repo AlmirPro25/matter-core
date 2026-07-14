@@ -13,6 +13,10 @@ use std::ptr;
 #[derive(Debug)]
 pub enum VmError {
     StackUnderflow,
+    StackOverflow,
+    CallStackOverflow,
+    InstructionLimitExceeded,
+    LimitExceeded(String),
     TypeError(String),
     UndefinedVariable(String),
     UndefinedFunction(String),
@@ -25,12 +29,77 @@ impl fmt::Display for VmError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             VmError::StackUnderflow => write!(f, "stack underflow"),
+            VmError::StackOverflow => write!(f, "stack overflow"),
+            VmError::CallStackOverflow => write!(f, "call stack overflow (recursion/call depth)"),
+            VmError::InstructionLimitExceeded => write!(f, "instruction execution limit exceeded"),
+            VmError::LimitExceeded(message) => write!(f, "limit exceeded: {}", message),
             VmError::TypeError(message) => write!(f, "type error: {}", message),
             VmError::UndefinedVariable(name) => write!(f, "undefined variable '{}'", name),
             VmError::UndefinedFunction(name) => write!(f, "undefined function '{}'", name),
             VmError::InvalidInstruction => write!(f, "invalid instruction"),
             VmError::BackendError(message) => write!(f, "backend error: {}", message),
             VmError::DivisionByZero => write!(f, "division by zero"),
+        }
+    }
+}
+
+/// Configurable runtime limits (safe defaults; overridable via env).
+#[derive(Debug, Clone)]
+pub struct VmLimits {
+    pub max_stack: usize,
+    pub max_call_depth: usize,
+    pub max_instructions: u64,
+    pub max_event_queue_drains: usize,
+    pub max_scope_depth: usize,
+}
+
+impl Default for VmLimits {
+    fn default() -> Self {
+        Self {
+            max_stack: 1_000_000,
+            max_call_depth: 10_000,
+            max_instructions: 100_000_000,
+            max_event_queue_drains: 10_000,
+            max_scope_depth: 50_000,
+        }
+    }
+}
+
+impl VmLimits {
+    /// Environment overrides (positive integers only):
+    /// `MATTER_VM_MAX_STACK`, `MATTER_VM_MAX_CALL_DEPTH`,
+    /// `MATTER_VM_MAX_INSTRUCTIONS`, `MATTER_VM_MAX_EVENT_DRAINS`,
+    /// `MATTER_VM_MAX_SCOPE_DEPTH`.
+    pub fn from_env() -> Self {
+        let mut limits = Self::default();
+        apply_env_usize("MATTER_VM_MAX_STACK", &mut limits.max_stack);
+        apply_env_usize("MATTER_VM_MAX_CALL_DEPTH", &mut limits.max_call_depth);
+        apply_env_u64("MATTER_VM_MAX_INSTRUCTIONS", &mut limits.max_instructions);
+        apply_env_usize(
+            "MATTER_VM_MAX_EVENT_DRAINS",
+            &mut limits.max_event_queue_drains,
+        );
+        apply_env_usize("MATTER_VM_MAX_SCOPE_DEPTH", &mut limits.max_scope_depth);
+        limits
+    }
+}
+
+fn apply_env_usize(key: &str, target: &mut usize) {
+    if let Ok(v) = std::env::var(key) {
+        if let Ok(n) = v.parse::<usize>() {
+            if n > 0 {
+                *target = n;
+            }
+        }
+    }
+}
+
+fn apply_env_u64(key: &str, target: &mut u64) {
+    if let Ok(v) = std::env::var(key) {
+        if let Ok(n) = v.parse::<u64>() {
+            if n > 0 {
+                *target = n;
+            }
         }
     }
 }
@@ -86,6 +155,8 @@ pub struct Vm {
     stdout_enabled: bool,
     output: Vec<String>,
     event_queue: VecDeque<String>,
+    limits: VmLimits,
+    instructions_executed: u64,
 
     // Sprint 24 Phase 2: Memory Pool Integration
     memory_pool: MemoryPool,
@@ -156,6 +227,10 @@ impl Vm {
     }
 
     pub fn new(bytecode: Bytecode) -> Self {
+        Self::with_limits(bytecode, VmLimits::from_env())
+    }
+
+    pub fn with_limits(bytecode: Bytecode, limits: VmLimits) -> Self {
         let superinstructions_enabled = std::env::var("MATTER_VM_SUPERINSTR")
             .map(|v| v != "0")
             .unwrap_or(true);
@@ -175,6 +250,8 @@ impl Vm {
             stdout_enabled: true,
             output: Vec::new(),
             event_queue: VecDeque::new(),
+            limits,
+            instructions_executed: 0,
             memory_pool: MemoryPool::new(),
             cycle_detector: CycleDetector::with_threshold(1000),
             gc_threshold: 1000,
@@ -198,6 +275,46 @@ impl Vm {
             loop_jit_threshold: 1000,
             #[cfg(feature = "jit-exec")]
             loop_jit_attempted: HashSet::new(),
+        }
+    }
+
+    /// Replace runtime limits (e.g. tests / host policy).
+    pub fn set_limits(&mut self, limits: VmLimits) {
+        self.limits = limits;
+    }
+
+    pub fn limits(&self) -> &VmLimits {
+        &self.limits
+    }
+
+    fn check_stack_room(&self) -> Result<(), VmError> {
+        if self.stack.len() >= self.limits.max_stack {
+            Err(VmError::StackOverflow)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn push_stack(&mut self, value: Value) -> Result<(), VmError> {
+        self.check_stack_room()?;
+        self.stack.push(value);
+        Ok(())
+    }
+
+    fn check_call_depth(&self) -> Result<(), VmError> {
+        if self.call_stack.len() >= self.limits.max_call_depth {
+            Err(VmError::CallStackOverflow)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn tick_instruction(&mut self) -> Result<(), VmError> {
+        self.instructions_executed = self.instructions_executed.saturating_add(1);
+        if self.instructions_executed > self.limits.max_instructions {
+            Err(VmError::InstructionLimitExceeded)
+        } else {
+            Ok(())
         }
     }
 
@@ -308,12 +425,28 @@ impl Vm {
     }
 
     /// Push novo escopo
-    fn push_scope(&mut self, scope_type: ScopeType) {
+    fn push_scope(&mut self, scope_type: ScopeType) -> Result<(), VmError> {
+        if self.scope_stack.len() >= self.limits.max_scope_depth {
+            return Err(VmError::LimitExceeded(format!(
+                "scope depth {} exceeds limit {}",
+                self.scope_stack.len() + 1,
+                self.limits.max_scope_depth
+            )));
+        }
         self.scope_stack.push(ScopeFrame::new(scope_type));
+        Ok(())
     }
 
-    fn push_function_scope(&mut self, args: Vec<Value>) {
+    fn push_function_scope(&mut self, args: Vec<Value>) -> Result<(), VmError> {
+        if self.scope_stack.len() >= self.limits.max_scope_depth {
+            return Err(VmError::LimitExceeded(format!(
+                "scope depth {} exceeds limit {}",
+                self.scope_stack.len() + 1,
+                self.limits.max_scope_depth
+            )));
+        }
         self.scope_stack.push(ScopeFrame::function(args));
+        Ok(())
     }
 
     /// Pop escopo (cleanup automÃ¡tico)
@@ -372,6 +505,7 @@ impl Vm {
             self.loop_backedge_counts.clear();
             self.loop_jit_attempted.clear();
         }
+        self.instructions_executed = 0;
         let instructions = self.bytecode.main_instructions.as_slice() as *const [Instruction];
         self.execute(unsafe { &*instructions })?;
         self.drain_event_queue()
@@ -387,7 +521,7 @@ impl Vm {
             let instructions = handler.instructions.as_slice() as *const [Instruction];
 
             // Event scope
-            self.push_scope(ScopeType::Event);
+            self.push_scope(ScopeType::Event)?;
             let result = self.execute(unsafe { &*instructions });
             self.pop_scope();
 
@@ -400,11 +534,11 @@ impl Vm {
         let mut executed = 0usize;
         while let Some(event) = self.event_queue.pop_front() {
             executed += 1;
-            if executed > 10_000 {
-                return Err(vm_exec_type_error(
-                    "spawn_event_queue",
-                    "exceeded 10000 events",
-                ));
+            if executed > self.limits.max_event_queue_drains {
+                return Err(VmError::LimitExceeded(format!(
+                    "event queue drains {} exceeds limit {}",
+                    executed, self.limits.max_event_queue_drains
+                )));
             }
             self.emit_event_now(&event)?;
         }
@@ -430,13 +564,15 @@ impl Vm {
             // Execute native code
             unsafe {
                 let result_val = native_func.execute(&mut self.native_runtime);
-                self.stack.push(Value::Int(result_val));
+                self.push_stack(Value::Int(result_val))?;
             }
 
             return Ok(None);
         }
 
-        // Fallback to Bytecode
+        // Fallback to Bytecode — enforce call depth before mutating stack/scopes.
+        self.check_call_depth()?;
+
         let function = self
             .bytecode
             .functions
@@ -501,7 +637,7 @@ impl Vm {
 
         // Push function scope with positional parameters. This keeps hot calls off
         // the string/hashmap path used by normal locals.
-        self.push_function_scope(args);
+        self.push_function_scope(args)?;
 
         Ok(Some(func_instructions))
     }
@@ -534,6 +670,10 @@ impl Vm {
 
             let instr = &instructions_slice[ip];
             ip += 1;
+            self.tick_instruction()?;
+            if self.stack.len() > self.limits.max_stack {
+                return Err(VmError::StackOverflow);
+            }
 
             // Superinstruction fast path for tight integer loops on globals:
             // LoadGlobal(acc), LoadGlobal(src), Add, StoreExisting(acc)
@@ -1004,26 +1144,55 @@ impl Vm {
                     self.track_instruction_cost("call");
                     let func_value = self.stack.pop().ok_or(VmError::StackUnderflow)?;
 
-                    if let Value::Function(func_name) = func_value {
-                        if let Some(new_instructions) =
-                            self.setup_function_call(func_name.as_ref(), *arg_count)?
-                        {
-                            self.call_stack.push(CallFrame {
-                                instructions: current_instructions,
-                                ip,
-                                scope_depth: self.scope_stack.len() - 1,
-                            });
-                            current_instructions = new_instructions;
-                            ip = 0;
+                    match func_value {
+                        Value::Function(func_name) => {
+                            if let Some(new_instructions) =
+                                self.setup_function_call(func_name.as_ref(), *arg_count)?
+                            {
+                                self.check_call_depth()?;
+                                self.call_stack.push(CallFrame {
+                                    instructions: current_instructions,
+                                    ip,
+                                    scope_depth: self.scope_stack.len() - 1,
+                                });
+                                current_instructions = new_instructions;
+                                ip = 0;
+                            }
                         }
-                    } else {
-                        return Err(vm_exec_type_error("call", "expected function"));
+                        Value::Closure(data) => {
+                            // Push captured variables into scope
+                            self.push_scope(ScopeType::Block)?;
+                            if let Some(scope) = self.scope_stack.last_mut() {
+                                for (name, value) in &data.captures {
+                                    scope.variables.insert(name.clone(), value.clone());
+                                }
+                            } else {
+                                return Err(VmError::InvalidInstruction);
+                            }
+
+                            if let Some(new_instructions) =
+                                self.setup_function_call(&data.func_name, *arg_count)?
+                            {
+                                self.check_call_depth()?;
+                                self.call_stack.push(CallFrame {
+                                    instructions: current_instructions,
+                                    ip,
+                                    scope_depth: self.scope_stack.len() - 1,
+                                });
+                                current_instructions = new_instructions;
+                                ip = 0;
+                            }
+                        }
+                        _ => {
+                            return Err(vm_exec_type_error("call", "expected function or closure"));
+                        }
                     }
                 }
 
                 Instruction::CallNamed { name, arg_count } => {
                     self.track_instruction_cost("call");
                     if let Some(new_instructions) = self.setup_function_call(name, *arg_count)? {
+                        self.check_call_depth()?;
                         self.call_stack.push(CallFrame {
                             instructions: current_instructions,
                             ip,
@@ -1081,7 +1250,7 @@ impl Vm {
                 }
 
                 Instruction::PushScope => {
-                    self.push_scope(ScopeType::Block);
+                    self.push_scope(ScopeType::Block)?;
                 }
 
                 Instruction::PopScope => {
@@ -1396,6 +1565,21 @@ impl Vm {
 
                 Instruction::Halt => {
                     break;
+                }
+
+                Instruction::MakeClosure {
+                    func_name,
+                    capture_names,
+                } => {
+                    // Capture variables from current scope
+                    let mut captures = std::collections::HashMap::new();
+                    for name in capture_names {
+                        if let Ok(value) = self.load_existing_variable(name) {
+                            captures.insert(name.clone(), value);
+                        }
+                    }
+                    let closure = Value::new_closure(func_name.clone(), captures);
+                    self.stack.push(closure);
                 }
             }
         }
@@ -2169,6 +2353,70 @@ mod tests {
         assert!(vm.estimated_backend_cost() > 0.0);
         assert!(vm.estimated_instruction_cost() > 0.0);
         assert!(vm.estimated_backend_cost() > 1.0);
+    }
+
+    #[test]
+    fn test_instruction_limit_returns_error_not_panic() {
+        let mut bytecode = Bytecode::new();
+        let c = bytecode.add_constant(Constant::Int(1));
+        // Tight loop: LoadConst, Jump back
+        bytecode.main_instructions = vec![
+            Instruction::LoadConst(c),
+            Instruction::Pop,
+            Instruction::Jump(0),
+        ];
+        let limits = VmLimits {
+            max_instructions: 50,
+            ..VmLimits::default()
+        };
+        let mut vm = Vm::with_limits(bytecode, limits);
+        let err = vm.run().expect_err("must hit instruction limit");
+        assert!(
+            matches!(err, VmError::InstructionLimitExceeded),
+            "got {:?}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_call_depth_limit_returns_error_not_panic() {
+        let mut bytecode = Bytecode::new();
+        bytecode.functions.insert(
+            "rec".to_string(),
+            Function {
+                name: "rec".to_string(),
+                param_count: 0,
+                instructions: vec![Instruction::CallNamed {
+                    name: "rec".to_string(),
+                    arg_count: 0,
+                }],
+            },
+        );
+        bytecode.main_instructions = vec![Instruction::CallNamed {
+            name: "rec".to_string(),
+            arg_count: 0,
+        }];
+        let limits = VmLimits {
+            max_call_depth: 8,
+            max_instructions: 10_000,
+            ..VmLimits::default()
+        };
+        let mut vm = Vm::with_limits(bytecode, limits);
+        let err = vm.run().expect_err("must hit call depth");
+        assert!(
+            matches!(err, VmError::CallStackOverflow),
+            "got {:?}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_stack_underflow_returns_error_not_panic() {
+        let mut bytecode = Bytecode::new();
+        bytecode.main_instructions = vec![Instruction::Add, Instruction::Halt];
+        let mut vm = Vm::new(bytecode);
+        let err = vm.run().expect_err("underflow");
+        assert!(matches!(err, VmError::StackUnderflow));
     }
 
     #[test]

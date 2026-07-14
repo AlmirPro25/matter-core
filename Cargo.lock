@@ -3885,6 +3885,7 @@ name = "matter-lsp"
 version = "0.5.0"
 dependencies = [
  "matter-ast",
+ "matter-bytecode",
  "matter-error",
  "matter-lexer",
  "matter-parser",

@@ -1,0 +1,105 @@
+﻿{
+    "name":  "matter-core",
+    "version":  "0.1.0",
+    "edition":  "language-only",
+    "target":  "x86_64-pc-windows-gnu",
+    "created_at":  "2026-07-14T18:36:20.9387151-03:00",
+    "package_root":  "matter-core-0.1.0-windows-x64",
+    "file_count":  16,
+    "total_bytes":  7476655,
+    "files":  [
+                  {
+                      "path":  "bin/matter.exe",
+                      "bytes":  3726794,
+                      "sha256":  "355f7406680a3d7b662a7728b92986de53e87431794ad886310bbcdc1b3d6f22"
+                  },
+                  {
+                      "path":  "bin/matter-cli.exe",
+                      "bytes":  3726794,
+                      "sha256":  "355f7406680a3d7b662a7728b92986de53e87431794ad886310bbcdc1b3d6f22"
+                  },
+                  {
+                      "path":  "examples/agent_policy_demo.matter",
+                      "bytes":  1193,
+                      "sha256":  "a4aaf32f8e8582a5d96fbe0ea8bffa530447bcdfbf648093d23344c45fc5541d"
+                  },
+                  {
+                      "path":  "examples/events.matter",
+                      "bytes":  151,
+                      "sha256":  "0ce120e56943c202ce9a09204510824828f9829050a15bde0f97f72da2271c46"
+                  },
+                  {
+                      "path":  "examples/fibonacci.matter",
+                      "bytes":  294,
+                      "sha256":  "21d6d35439e07962c167e34dab78ebb659f3626d9de57017ba7e923c0f819469"
+                  },
+                  {
+                      "path":  "examples/first_run.matter",
+                      "bytes":  640,
+                      "sha256":  "69bd3650a3dfe686ffb86b48b64923f00df240dbb982c74695f22d3eac48d715"
+                  },
+                  {
+                      "path":  "examples/hello.matter",
+                      "bytes":  156,
+                      "sha256":  "e3b952bd4915edeb19e5d9eca0f8a4f42afbf11888111b618febd9034b1ba289"
+                  },
+                  {
+                      "path":  "examples/language_tour.matter",
+                      "bytes":  1163,
+                      "sha256":  "4c3604bfb6a978c6f0ab0bee249ec6fac0edbd64ccd236f2f252d6c92fc39573"
+                  },
+                  {
+                      "path":  "INSTALL.txt",
+                      "bytes":  384,
+                      "sha256":  "03c801345fea4ee664d7585d938db1b654eb79c7f3fcb4c53b54acfd879399c7"
+                  },
+                  {
+                      "path":  "LICENSE",
+                      "bytes":  1094,
+                      "sha256":  "f8e8d9040bca061a5bca034d999641f869ffd5737a197050be312231c2bf00d1"
+                  },
+                  {
+                      "path":  "README.md",
+                      "bytes":  1377,
+                      "sha256":  "d17fed31c4271b702e7b22e7a8703a5a1cd5ade92020bf36cfe997b9bef95f32"
+                  },
+                  {
+                      "path":  "schemas/core-status.schema.json",
+                      "bytes":  2629,
+                      "sha256":  "b778b8d7746ce0dabb837de58e4db58d5cf382cbda9669ff8b84d19ea2327374"
+                  },
+                  {
+                      "path":  "scripts/install-matter-core.ps1",
+                      "bytes":  5996,
+                      "sha256":  "a70ee74da230a0ede589777f2ac4626fd3a3221d4f6baaaf5b8a11c539c3d12d"
+                  },
+                  {
+                      "path":  "scripts/uninstall-matter-core.ps1",
+                      "bytes":  3055,
+                      "sha256":  "0b612d5fd4196a9be4762be28f3164d5e6c0f60b78369f194f36ff1a10f207aa"
+                  },
+                  {
+                      "path":  "scripts/update-matter-core.ps1",
+                      "bytes":  1325,
+                      "sha256":  "f55f3e0972e112de35cd554a3726c7dc57ffe502c423f0ef9dc744f197aa663d"
+                  },
+                  {
+                      "path":  "scripts/verify-matter-core.ps1",
+                      "bytes":  3610,
+                      "sha256":  "5399f274abb9bc6d36b9e55be26e5712fc130c979aeb990b63a03b75b760f2f1"
+                  }
+              ],
+    "excludes":  [
+                     "target/",
+                     "src/",
+                     "crates/",
+                     ".cargo/",
+                     "node_modules/",
+                     "credentials",
+                     "*.pdb"
+                 ],
+    "runtime_requires":  [
+                             "Windows x64",
+                             "system CRT DLLs only (no python3/opengl/mf)"
+                         ]
+}

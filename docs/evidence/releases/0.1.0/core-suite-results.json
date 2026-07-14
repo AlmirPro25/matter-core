@@ -1,0 +1,231 @@
+﻿{
+    "at":  "2026-07-14T18:51:12.6424405-03:00",
+    "cli":  "D:\\Users\\almir\\Desktop\\MANIFESTO DA LINGUAGEM MATTER CORE\\target\\x86_64-pc-windows-gnu\\release\\matter-cli.exe",
+    "passed":  37,
+    "failed":  0,
+    "total":  37,
+    "results":  [
+                    {
+                        "name":  "run-hello",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  ""
+                    },
+                    {
+                        "name":  "check-hello",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  ""
+                    },
+                    {
+                        "name":  "run-fibonacci",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  ""
+                    },
+                    {
+                        "name":  "check-fibonacci",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  ""
+                    },
+                    {
+                        "name":  "run-events",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  ""
+                    },
+                    {
+                        "name":  "check-events",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  ""
+                    },
+                    {
+                        "name":  "run-agent_policy",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  ""
+                    },
+                    {
+                        "name":  "check-agent_policy",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  ""
+                    },
+                    {
+                        "name":  "compile-hello",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  "D:\\Users\\almir\\Desktop\\MANIFESTO DA LINGUAGEM MATTER CORE\\target\\validation\\phase_2_core_hardening\\hello-phase2.mbc"
+                    },
+                    {
+                        "name":  "run-bytecode-hello",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  ""
+                    },
+                    {
+                        "name":  "reject-at_token",
+                        "exit":  1,
+                        "ok":  true,
+                        "detail":  "json_ok_false=True"
+                    },
+                    {
+                        "name":  "run-fail-at_token",
+                        "exit":  1,
+                        "ok":  true,
+                        "detail":  "stderr_bytes=970"
+                    },
+                    {
+                        "name":  "reject-deep_nest",
+                        "exit":  1,
+                        "ok":  true,
+                        "detail":  "json_ok_false=True"
+                    },
+                    {
+                        "name":  "run-fail-deep_nest",
+                        "exit":  1,
+                        "ok":  true,
+                        "detail":  "stderr_bytes=958"
+                    },
+                    {
+                        "name":  "reject-illegal_at",
+                        "exit":  1,
+                        "ok":  true,
+                        "detail":  "json_ok_false=True"
+                    },
+                    {
+                        "name":  "run-fail-illegal_at",
+                        "exit":  1,
+                        "ok":  true,
+                        "detail":  "stderr_bytes=972"
+                    },
+                    {
+                        "name":  "reject-trailing_garbage",
+                        "exit":  1,
+                        "ok":  true,
+                        "detail":  "json_ok_false=True"
+                    },
+                    {
+                        "name":  "run-fail-trailing_garbage",
+                        "exit":  1,
+                        "ok":  true,
+                        "detail":  "stderr_bytes=970"
+                    },
+                    {
+                        "name":  "reject-truncated_fn",
+                        "exit":  1,
+                        "ok":  true,
+                        "detail":  "json_ok_false=True"
+                    },
+                    {
+                        "name":  "run-fail-truncated_fn",
+                        "exit":  1,
+                        "ok":  true,
+                        "detail":  "stderr_bytes=910"
+                    },
+                    {
+                        "name":  "reject-truncated_if",
+                        "exit":  1,
+                        "ok":  true,
+                        "detail":  "json_ok_false=True"
+                    },
+                    {
+                        "name":  "run-fail-truncated_if",
+                        "exit":  1,
+                        "ok":  true,
+                        "detail":  "stderr_bytes=904"
+                    },
+                    {
+                        "name":  "reject-unicode_garbage",
+                        "exit":  1,
+                        "ok":  true,
+                        "detail":  "json_ok_false=True"
+                    },
+                    {
+                        "name":  "run-fail-unicode_garbage",
+                        "exit":  1,
+                        "ok":  true,
+                        "detail":  "stderr_bytes=976"
+                    },
+                    {
+                        "name":  "mbc-reject-bad_magic.mbc",
+                        "exit":  1,
+                        "ok":  true,
+                        "detail":  ""
+                    },
+                    {
+                        "name":  "mbc-json-reject-bad_magic.mbc",
+                        "exit":  1,
+                        "ok":  true,
+                        "detail":  "json_ok_false=True"
+                    },
+                    {
+                        "name":  "mbc-reject-empty.mbc",
+                        "exit":  1,
+                        "ok":  true,
+                        "detail":  ""
+                    },
+                    {
+                        "name":  "mbc-json-reject-empty.mbc",
+                        "exit":  1,
+                        "ok":  true,
+                        "detail":  "json_ok_false=True"
+                    },
+                    {
+                        "name":  "mbc-reject-huge_count.mbc",
+                        "exit":  1,
+                        "ok":  true,
+                        "detail":  ""
+                    },
+                    {
+                        "name":  "mbc-json-reject-huge_count.mbc",
+                        "exit":  1,
+                        "ok":  true,
+                        "detail":  "json_ok_false=True"
+                    },
+                    {
+                        "name":  "mbc-reject-random.bin",
+                        "exit":  1,
+                        "ok":  true,
+                        "detail":  ""
+                    },
+                    {
+                        "name":  "mbc-json-reject-random.bin",
+                        "exit":  1,
+                        "ok":  true,
+                        "detail":  "json_ok_false=True"
+                    },
+                    {
+                        "name":  "mbc-reject-truncated.mbc",
+                        "exit":  1,
+                        "ok":  true,
+                        "detail":  ""
+                    },
+                    {
+                        "name":  "mbc-json-reject-truncated.mbc",
+                        "exit":  1,
+                        "ok":  true,
+                        "detail":  "json_ok_false=True"
+                    },
+                    {
+                        "name":  "minimal-path-version",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  ""
+                    },
+                    {
+                        "name":  "minimal-path-core-status",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  ""
+                    },
+                    {
+                        "name":  "fuzz-smoke",
+                        "exit":  0,
+                        "ok":  true,
+                        "detail":  "ok=32 fail_crash=0"
+                    }
+                ]
+}

@@ -1,0 +1,9 @@
+﻿{
+    "at":  "2026-07-14T19:03:43.1337286-03:00",
+    "expected":  "0A5FEE59F07A0C09E74992A62CDE95EA4C1DCA9AE6529B12AE47E9F23E1332A2",
+    "bytes":  2676017,
+    "sha256":  "0A5FEE59F07A0C09E74992A62CDE95EA4C1DCA9AE6529B12AE47E9F23E1332A2",
+    "note":  "Hash verified on BUILD host only; not independent validation",
+    "match":  true,
+    "role":  "build_host_preflight_only"
+}
