@@ -248,6 +248,10 @@ pub struct BytecodeBuilder {
     bytecode: Bytecode,
     loop_stack: Vec<LoopContext>,
     temp_counter: usize,
+    /// Monotonic id for `__lambda_N` names. Must not use `functions.len()`:
+    /// nested lambdas are compiled before the outer is inserted, so len()-based
+    /// names collide and the outer MakeClosure overwrites the inner function body.
+    lambda_counter: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -813,6 +817,7 @@ impl BytecodeBuilder {
             bytecode: Bytecode::new(),
             loop_stack: Vec::new(),
             temp_counter: 0,
+            lambda_counter: 0,
         }
     }
 
@@ -1927,8 +1932,10 @@ impl BytecodeBuilder {
             }
 
             Expression::Lambda { params, body } => {
-                // Generate unique name for the lambda
-                let lambda_id = self.bytecode.functions.len();
+                // Reserve a unique name *before* compiling the body so nested
+                // lambdas cannot collide with this one (nested compile inserts first).
+                let lambda_id = self.lambda_counter;
+                self.lambda_counter += 1;
                 let func_name = format!("__lambda_{}", lambda_id);
 
                 // Collect free variables (captures) from the body.
@@ -1943,6 +1950,7 @@ impl BytecodeBuilder {
                 captures.dedup();
 
                 // Compile lambda body like FunctionDef: bind params then statements.
+                // Nested lambdas inside `body` get subsequent lambda_counter ids.
                 let mut func_instructions = Vec::new();
                 let param_names: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
                 for (idx, param) in params.iter().enumerate() {
@@ -2181,6 +2189,44 @@ print add(3, 4)
             has_store_a,
             "expected StoreLocal(a): {:?}",
             lambda.instructions
+        );
+    }
+
+    #[test]
+    fn nested_lambdas_get_distinct_function_names() {
+        let bc = check(
+            r#"
+fn outer(a) {
+    return fn(b) {
+        return fn(c) { return a + b + c }
+    }
+}
+let g = outer(1)
+let h = g(2)
+print h(3)
+"#,
+        )
+        .expect("nested lambdas should compile");
+        let lambda_count = bc
+            .functions
+            .keys()
+            .filter(|n| n.starts_with("__lambda_"))
+            .count();
+        assert_eq!(
+            lambda_count, 2,
+            "expected two distinct nested lambdas; functions={:?}",
+            bc.functions.keys().collect::<Vec<_>>()
+        );
+        assert!(bc.functions.contains_key("outer"));
+        let has_nested_make = bc.functions.values().any(|f| {
+            f.name.starts_with("__lambda_")
+                && f.instructions
+                    .iter()
+                    .any(|i| matches!(i, Instruction::MakeClosure { .. }))
+        });
+        assert!(
+            has_nested_make,
+            "middle lambda must emit MakeClosure for the inner lambda"
         );
     }
 

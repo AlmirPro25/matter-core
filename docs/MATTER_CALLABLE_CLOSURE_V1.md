@@ -50,7 +50,7 @@
 | Suite | Result |
 |-------|--------|
 | `matter-bytecode` callable_closure_v1 | PASS |
-| Integration: `test_lambda_basic`, `test_lambda_as_argument`, `test_closure_capture`, `test_nested_closure`, `test_call_non_callable_errors` | PASS |
+| Integration: `test_lambda_basic`, `test_lambda_as_argument`, `test_closure_capture`, `test_nested_closure`, `test_triple_nested_closure`, `test_call_non_callable_errors` | PASS |
 | Core / Semantic / Security (language-only CLI with new bytecode) | **37 / 37 / 26** |
 | `matter-lsp` unit tests | **15/15** (honesty unchanged) |
 | ZIP 0.1.0 | intact |

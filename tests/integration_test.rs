@@ -615,6 +615,23 @@ fn test_nested_closure() {
 }
 
 #[test]
+fn test_triple_nested_closure() {
+    // Capture chain a,b,c across three levels (factory depth ≥ 3).
+    let source = r#"
+        fn outer(a) {
+            return fn(b) {
+                return fn(c) { return a + b + c }
+            }
+        }
+        let g = outer(1)
+        let h = g(2)
+        print h(3)
+    "#;
+    let output = run_matter_code(source).expect("Failed to run triple nested closure test");
+    assert_eq!(output, vec!["6"]);
+}
+
+#[test]
 fn test_call_non_callable_errors() {
     let source = r#"
         let x = 1
