@@ -105,7 +105,8 @@ After installation, configure the extension:
 
 3. **Configure:**
    - `matter.lsp.enabled`: Enable/disable LSP (default: true)
-   - `matter.lsp.path`: Path to matter-cli (default: "matter-cli")
+   - `matter.lsp.path`: Path to **matter-lsp.exe** (default: empty = auto-discover). Not matter-cli.
+   - `matter.cli.path`: Path to language-only CLI for Run/Compile commands
    - `matter.formatter.enabled`: Enable formatter (default: true)
    - `matter.linter.enabled`: Enable linter (default: true)
 

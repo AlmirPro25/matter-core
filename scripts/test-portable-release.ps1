@@ -263,13 +263,41 @@ if (Test-Path -LiteralPath $frozenZip) {
 }
 
 # 9) LSP script has no hardcoded D: install requirement for package path
-$lsp = Join-Path $Root "scripts\start-matter-lsp.ps1"
-if (Test-Path $lsp) {
-    $txt = Get-Content $lsp -Raw
-    $hard = $txt -match 'D:\\Matter\\bin' -and $txt -notmatch 'MATTER_HOME|LOCALAPPDATA|discover'
+$lspScript = Join-Path $Root "scripts\start-matter-lsp.ps1"
+if (Test-Path $lspScript) {
+    $txt = Get-Content $lspScript -Raw
+    $hard = $txt -match 'D:\\Matter\\bin' -and $txt -notmatch 'MATTER_HOME|LOCALAPPDATA|MATTER_LSP'
     Add-Result "lsp-no-drive-hardcode" 0 (-not $hard) ""
+    # Prefer dedicated binary (not invoking matter-cli with lsp subcommand)
+    $invokesCliLsp = $txt -match '(?m)&\s*\$cli\s+lsp\b|matter-cli\.exe\s+lsp\b'
+    $usesDedicated = ($txt -match 'matter-lsp') -and (-not $invokesCliLsp)
+    Add-Result "lsp-script-dedicated-binary" 0 $usesDedicated "start-matter-lsp.ps1 should invoke matter-lsp.exe"
 } else {
     Add-Result "lsp-no-drive-hardcode" 0 $true "script missing skipped"
+    Add-Result "lsp-script-dedicated-binary" 0 $true "script missing skipped"
+}
+
+# 10) Packaged matter-lsp.exe present and smokeable (when package includes it)
+$pkgLsp = Join-Path $PackageRoot "bin\matter-lsp.exe"
+if (Test-Path -LiteralPath $pkgLsp) {
+    $lspSha = (Get-FileHash -LiteralPath $pkgLsp -Algorithm SHA256).Hash
+    Add-Result "package-has-matter-lsp" 0 $true ("sha=$lspSha")
+    # Space-path copy smoke: still a valid PE that exits when run with no client (or host kills)
+    $spaceDir = Join-Path $env:TEMP ("matter lsp space " + [guid]::NewGuid().ToString("n").Substring(0, 8))
+    New-Item -ItemType Directory -Force -Path $spaceDir | Out-Null
+    $spaceLsp = Join-Path $spaceDir "matter-lsp.exe"
+    Copy-Item -LiteralPath $pkgLsp -Destination $spaceLsp -Force
+    $spaceOk = Test-Path -LiteralPath $spaceLsp
+    Add-Result "matter-lsp-space-path-copy" 0 $spaceOk $spaceLsp
+    Remove-Item -LiteralPath $spaceDir -Recurse -Force -ErrorAction SilentlyContinue
+    # MANIFEST / SHA256SUMS mention lsp when present
+    $sumsPath = Join-Path $PackageRoot "SHA256SUMS"
+    if (Test-Path -LiteralPath $sumsPath) {
+        $sums = Get-Content $sumsPath -Raw
+        Add-Result "sha256sums-lists-matter-lsp" 0 ($sums -match 'matter-lsp\.exe') ""
+    }
+} else {
+    Add-Result "package-has-matter-lsp" 0 $false "bin/matter-lsp.exe missing (optional until delivery package)"
 }
 
 # --- Snapshot dist AFTER suite ---

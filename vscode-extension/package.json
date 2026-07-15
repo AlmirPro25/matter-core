@@ -128,12 +128,17 @@
         "matter.lsp.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable Matter Language Server Protocol"
+          "description": "Enable Matter Language Server Protocol (stdio). Uses dedicated matter-lsp.exe — not matter-cli."
         },
         "matter.lsp.path": {
           "type": "string",
+          "default": "",
+          "description": "Optional path to matter-lsp / matter-lsp.exe. Empty = auto-discover (PATH, package bin/, install root). Do not set a personal machine path as the published default."
+        },
+        "matter.cli.path": {
+          "type": "string",
           "default": "matter-cli",
-          "description": "Path to matter-cli executable (on PATH, or absolute path). No drive letter required; empty/default uses PATH resolution."
+          "description": "Path to language-only matter-cli for Run/Compile commands (not used for LSP)."
         },
         "matter.formatter.enabled": {
           "type": "boolean",

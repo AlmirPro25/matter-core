@@ -10,10 +10,12 @@
 # - Existing ZIP/files are never overwritten unless -ForceOverwrite is passed.
 param(
     [string]$CliPath = "",
+    [string]$LspPath = "",
     [string]$Version = "",
     [string]$OutDir = "",
     [string]$ZipPath = "",
     [switch]$SkipBuild,
+    [switch]$SkipLsp,
     [switch]$AllowDistWrite,
     [switch]$ForceOverwrite
 )
@@ -117,12 +119,45 @@ if (-not $SkipBuild -and -not $CliPath) {
     }
 }
 
+# Dedicated LSP binary — independent of language-only CLI (does not enable experimental-full).
+$lsp = $null
+if (-not $SkipLsp) {
+    if (-not $SkipBuild -and -not $LspPath) {
+        Write-Host "Building matter-lsp (release, language-only surface)..." -ForegroundColor Cyan
+        cargo build -p matter-lsp --release --bin matter-lsp
+        if ($LASTEXITCODE -ne 0) { throw "cargo build matter-lsp failed" }
+    }
+    if ($LspPath) {
+        if (-not (Test-Path -LiteralPath $LspPath -PathType Leaf)) { throw "LSP binary not found: $LspPath" }
+        $lsp = (Resolve-Path -LiteralPath $LspPath).Path
+    } else {
+        foreach ($c in @(
+            (Join-Path $repoRoot "target\release\matter-lsp.exe"),
+            (Join-Path $repoRoot "target\x86_64-pc-windows-gnu\release\matter-lsp.exe")
+        )) {
+            if (Test-Path -LiteralPath $c -PathType Leaf) {
+                $lsp = (Resolve-Path -LiteralPath $c).Path
+                break
+            }
+        }
+    }
+    if (-not $lsp) {
+        Write-Host "WARNING: matter-lsp.exe not found; package will omit LSP binary (-SkipLsp or build first)." -ForegroundColor Yellow
+    }
+}
+
 $cli = Resolve-Cli $CliPath
 if (-not $cli) { throw "matter-cli.exe not found. Build first or pass -CliPath." }
 $cliHash = (Get-FileHash -LiteralPath $cli -Algorithm SHA256).Hash
 $cliItem = Get-Item -LiteralPath $cli
 Write-Host ("Using CLI: {0}" -f $cli)
 Write-Host ("CLI sha256: {0} size={1} mtime_utc={2}" -f $cliHash, $cliItem.Length, $cliItem.LastWriteTimeUtc.ToString("o"))
+if ($lsp) {
+    $lspHash = (Get-FileHash -LiteralPath $lsp -Algorithm SHA256).Hash
+    $lspItem = Get-Item -LiteralPath $lsp
+    Write-Host ("Using LSP: {0}" -f $lsp)
+    Write-Host ("LSP sha256: {0} size={1}" -f $lspHash, $lspItem.Length)
+}
 
 # Smoke: language-only contract
 & $cli core-status-json 1>$null 2>$null
@@ -146,6 +181,9 @@ New-Item -ItemType Directory -Force -Path $binDir, $exDir, $schemaDir, $scriptDi
 
 Copy-Item -LiteralPath $cli -Destination (Join-Path $binDir "matter-cli.exe") -Force
 Copy-Item -LiteralPath $cli -Destination (Join-Path $binDir "matter.exe") -Force
+if ($lsp) {
+    Copy-Item -LiteralPath $lsp -Destination (Join-Path $binDir "matter-lsp.exe") -Force
+}
 
 $exampleFiles = @(
     "hello.matter", "fibonacci.matter", "events.matter",
@@ -189,6 +227,7 @@ This package is self-contained. **No Rust, GCC, Python, or Node is required** on
 ## Layout
 
 - ``bin/matter-cli.exe`` / ``bin/matter.exe`` — language-only CLI
+- ``bin/matter-lsp.exe`` — Matter LSP (stdio; optional if built). Independent of experimental-full.
 - ``examples/`` — core sample programs
 - ``schemas/`` — JSON schemas
 - ``scripts/`` — install / verify / update / uninstall
@@ -202,6 +241,8 @@ cd <extracted-folder>
 .\bin\matter-cli.exe run .\examples\hello.matter
 .\bin\matter-cli.exe compile .\examples\hello.matter -o .\hello.mbc
 .\bin\matter-cli.exe run-bytecode .\hello.mbc
+# LSP (stdio; VS Code extension looks for this binary — not "matter-cli lsp")
+# .\bin\matter-lsp.exe
 ``````
 
 ## Install (any drive / path)
