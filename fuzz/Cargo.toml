@@ -1,4 +1,4 @@
-[package]
+﻿[package]
 name = "matter-fuzz"
 version = "0.0.0"
 edition = "2021"
@@ -39,3 +39,6 @@ path = "fuzz_targets/fuzz_compiler.rs"
 test = false
 doc = false
 bench = false
+
+# Standalone fuzz package (not a workspace member yet)
+[workspace]
