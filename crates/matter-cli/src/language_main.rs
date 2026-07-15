@@ -43,7 +43,10 @@ fn main() {
         "capabilities-json" => print_capabilities_json(),
         "core-status-json" => print_core_status_json(),
         "run" => {
-            let opts = parse_exec_opts(&args[2..], "Usage: matter-cli run <file.matter|-> [--allow-fs-read|write|delete <dir>]...");
+            let opts = parse_exec_opts(
+                &args[2..],
+                "Usage: matter-cli run <file.matter|-> [--allow-fs-read|write|delete <dir>]...",
+            );
             commands::run::run_file(&opts.path, opts.policy);
         }
         "run-json" => {
@@ -51,11 +54,17 @@ fn main() {
             commands::run::run_file_json(&opts.path, false, opts.policy);
         }
         "eval" => {
-            let opts = parse_exec_opts(&args[2..], "Usage: matter-cli eval <source> [--allow-fs-read|write|delete <dir>]...");
+            let opts = parse_exec_opts(
+                &args[2..],
+                "Usage: matter-cli eval <source> [--allow-fs-read|write|delete <dir>]...",
+            );
             commands::run::eval_source(&opts.path, opts.policy);
         }
         "eval-json" => {
-            let opts = parse_exec_opts(&args[2..], "Usage: matter-cli eval-json <source> [--allow-fs-read|write|delete <dir>]...");
+            let opts = parse_exec_opts(
+                &args[2..],
+                "Usage: matter-cli eval-json <source> [--allow-fs-read|write|delete <dir>]...",
+            );
             commands::run::eval_source_json(&opts.path, opts.policy);
         }
         "check" => {
@@ -67,7 +76,11 @@ fn main() {
             check_json(&args[2]);
         }
         "compile" => {
-            require_arg(&args, 2, "Usage: matter-cli compile <file.matter|-> [-o out.mbc]");
+            require_arg(
+                &args,
+                2,
+                "Usage: matter-cli compile <file.matter|-> [-o out.mbc]",
+            );
             // compile -o is host-side packaging, not program-initiated FS access.
             let output = option_value(&args[2..], "-o").unwrap_or_else(|| "output.mbc".to_string());
             // First non-flag positional after optional -o handling
@@ -91,7 +104,10 @@ fn main() {
             compile_json(&input, &output);
         }
         "run-bytecode" => {
-            let opts = parse_exec_opts(&args[2..], "Usage: matter-cli run-bytecode <file.mbc> [--allow-fs-read|write|delete <dir>]...");
+            let opts = parse_exec_opts(
+                &args[2..],
+                "Usage: matter-cli run-bytecode <file.mbc> [--allow-fs-read|write|delete <dir>]...",
+            );
             run_bytecode(&opts.path, opts.policy);
         }
         "run-bytecode-json" => {
@@ -288,7 +304,10 @@ fn print_capabilities_json() {
         ],
         "disabled_by_default": capability_policy::LANGUAGE_ONLY_DENIED_COMMANDS
     });
-    println!("{}", serde_json::to_string(&payload).unwrap_or_else(|_| "{}".into()));
+    println!(
+        "{}",
+        serde_json::to_string(&payload).unwrap_or_else(|_| "{}".into())
+    );
 }
 
 fn print_core_status_json() {
@@ -308,18 +327,21 @@ spawn boot
     let mut parser = match Parser::from_source_checked(sample) {
         Ok(p) => p,
         Err(e) => {
-            println!("{}", json!({
-                "ok": false,
-                "kind": "core_status",
-                "schema_version": 1,
-                "summary": {
-                    "claim": "experimental_language_runtime",
-                    "production_ready": false,
-                    "core_loop_validated": false,
-                    "edition": "language-only"
-                },
-                "checks": [{"name":"parse","passed":false,"severity":"fail","detail":e.to_string()}]
-            }));
+            println!(
+                "{}",
+                json!({
+                    "ok": false,
+                    "kind": "core_status",
+                    "schema_version": 1,
+                    "summary": {
+                        "claim": "experimental_language_runtime",
+                        "production_ready": false,
+                        "core_loop_validated": false,
+                        "edition": "language-only"
+                    },
+                    "checks": [{"name":"parse","passed":false,"severity":"fail","detail":e.to_string()}]
+                })
+            );
             return;
         }
     };
@@ -329,18 +351,21 @@ spawn boot
             p
         }
         Err(e) => {
-            println!("{}", json!({
-                "ok": false,
-                "kind": "core_status",
-                "schema_version": 1,
-                "summary": {
-                    "claim": "experimental_language_runtime",
-                    "production_ready": false,
-                    "core_loop_validated": false,
-                    "edition": "language-only"
-                },
-                "checks": [{"name":"parse","passed":false,"severity":"fail","detail":e.to_string()}]
-            }));
+            println!(
+                "{}",
+                json!({
+                    "ok": false,
+                    "kind": "core_status",
+                    "schema_version": 1,
+                    "summary": {
+                        "claim": "experimental_language_runtime",
+                        "production_ready": false,
+                        "core_loop_validated": false,
+                        "edition": "language-only"
+                    },
+                    "checks": [{"name":"parse","passed":false,"severity":"fail","detail":e.to_string()}]
+                })
+            );
             return;
         }
     };
@@ -358,18 +383,21 @@ spawn boot
             b
         }
         Err(e) => {
-            println!("{}", json!({
-                "ok": false,
-                "kind": "core_status",
-                "schema_version": 1,
-                "summary": {
-                    "claim": "experimental_language_runtime",
-                    "production_ready": false,
-                    "core_loop_validated": false,
-                    "edition": "language-only"
-                },
-                "checks": checks
-            }));
+            println!(
+                "{}",
+                json!({
+                    "ok": false,
+                    "kind": "core_status",
+                    "schema_version": 1,
+                    "summary": {
+                        "claim": "experimental_language_runtime",
+                        "production_ready": false,
+                        "core_loop_validated": false,
+                        "edition": "language-only"
+                    },
+                    "checks": checks
+                })
+            );
             let _ = e;
             return;
         }
@@ -381,50 +409,56 @@ spawn boot
         Ok(()) => {
             let out = runtime.take_output();
             checks.push(json!({"name":"run","passed":true,"severity":"pass","detail":format!("{} output lines captured", out.len())}));
-            println!("{}", json!({
-                "ok": true,
-                "kind": "core_status",
-                "schema_version": 1,
-                "$schema": "schemas/core-status.schema.json",
-                "summary": {
-                    "claim": "experimental_language_runtime",
-                    "production_ready": false,
-                    "core_loop_validated": true,
-                    "execution_controlled": true,
-                    "pipeline": "source_to_bytecode_to_vm_to_runtime",
-                    "bytecode": "MBC1",
-                    "edition": "language-only",
-                    "guard_status": "pass"
-                },
-                "checks": checks,
-                "evidence": {
-                    "output": out,
-                    "sample": "embedded:core-status-language-only",
-                    "bytecode": {
-                        "summary": {
-                            "constants": bytecode.constants.len(),
-                            "functions": bytecode.functions.len(),
-                            "event_handlers": bytecode.event_handlers.len(),
-                            "instructions": bytecode.main_instructions.len()
+            println!(
+                "{}",
+                json!({
+                    "ok": true,
+                    "kind": "core_status",
+                    "schema_version": 1,
+                    "$schema": "schemas/core-status.schema.json",
+                    "summary": {
+                        "claim": "experimental_language_runtime",
+                        "production_ready": false,
+                        "core_loop_validated": true,
+                        "execution_controlled": true,
+                        "pipeline": "source_to_bytecode_to_vm_to_runtime",
+                        "bytecode": "MBC1",
+                        "edition": "language-only",
+                        "guard_status": "pass"
+                    },
+                    "checks": checks,
+                    "evidence": {
+                        "output": out,
+                        "sample": "embedded:core-status-language-only",
+                        "bytecode": {
+                            "summary": {
+                                "constants": bytecode.constants.len(),
+                                "functions": bytecode.functions.len(),
+                                "event_handlers": bytecode.event_handlers.len(),
+                                "instructions": bytecode.main_instructions.len()
+                            }
                         }
                     }
-                }
-            }));
+                })
+            );
         }
         Err(e) => {
             checks.push(json!({"name":"run","passed":false,"severity":"fail","detail":e}));
-            println!("{}", json!({
-                "ok": false,
-                "kind": "core_status",
-                "schema_version": 1,
-                "summary": {
-                    "claim": "experimental_language_runtime",
-                    "production_ready": false,
-                    "core_loop_validated": false,
-                    "edition": "language-only"
-                },
-                "checks": checks
-            }));
+            println!(
+                "{}",
+                json!({
+                    "ok": false,
+                    "kind": "core_status",
+                    "schema_version": 1,
+                    "summary": {
+                        "claim": "experimental_language_runtime",
+                        "production_ready": false,
+                        "core_loop_validated": false,
+                        "edition": "language-only"
+                    },
+                    "checks": checks
+                })
+            );
         }
     }
 }
@@ -566,21 +600,30 @@ fn compile_json(input: &str, output: &str) {
     let source = match read_source(input) {
         Ok(s) => s,
         Err(e) => {
-            println!("{}", json!({"ok":false,"phase":"read","error":e,"ok_claim":false}));
+            println!(
+                "{}",
+                json!({"ok":false,"phase":"read","error":e,"ok_claim":false})
+            );
             process::exit(1);
         }
     };
     let mut parser = match Parser::from_source_checked(&source) {
         Ok(p) => p,
         Err(e) => {
-            println!("{}", json!({"ok":false,"phase":"parse","error":e.to_string()}));
+            println!(
+                "{}",
+                json!({"ok":false,"phase":"parse","error":e.to_string()})
+            );
             process::exit(1);
         }
     };
     let program = match parser.parse() {
         Ok(p) => p,
         Err(e) => {
-            println!("{}", json!({"ok":false,"phase":"parse","error":e.to_string()}));
+            println!(
+                "{}",
+                json!({"ok":false,"phase":"parse","error":e.to_string()})
+            );
             process::exit(1);
         }
     };
@@ -588,12 +631,18 @@ fn compile_json(input: &str, output: &str) {
     let bytecode = match builder.build_checked(&program) {
         Ok(b) => b,
         Err(e) => {
-            println!("{}", json!({"ok":false,"phase":"compile","error":format!("{:?}", e)}));
+            println!(
+                "{}",
+                json!({"ok":false,"phase":"compile","error":format!("{:?}", e)})
+            );
             process::exit(1);
         }
     };
     if let Err(e) = bytecode.save_to_file(output) {
-        println!("{}", json!({"ok":false,"phase":"write","error":e.to_string()}));
+        println!(
+            "{}",
+            json!({"ok":false,"phase":"write","error":e.to_string()})
+        );
         process::exit(1);
     }
     println!(

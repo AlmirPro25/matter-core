@@ -3,7 +3,19 @@ param([string]$Cli = "")
 $ErrorActionPreference = "Continue"
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 if (-not $Cli) {
-  $Cli = Join-Path $Root "target\x86_64-pc-windows-gnu\release\matter-cli.exe"
+  # Prefer freshest binary; never silent-stale gnu-only default.
+  $cands = @()
+  foreach ($p in @(
+    (Join-Path $Root "target\release\matter-cli.exe"),
+    (Join-Path $Root "target\x86_64-pc-windows-gnu\release\matter-cli.exe")
+  )) {
+    if (Test-Path -LiteralPath $p) {
+      $i = Get-Item -LiteralPath $p
+      $cands += [pscustomobject]@{ path = $p; mtime = $i.LastWriteTimeUtc }
+    }
+  }
+  if ($cands.Count -eq 0) { $Cli = "" }
+  else { $Cli = ($cands | Sort-Object mtime -Descending | Select-Object -First 1).path }
 }
 if (-not (Test-Path -LiteralPath $Cli)) { Write-Error "CLI missing: $Cli"; exit 2 }
 

@@ -368,7 +368,10 @@ fn serialize_instruction<W: Write>(instr: &Instruction, writer: &mut W) -> Resul
 
         Instruction::Pop => writer.write_all(&[0x70])?,
         Instruction::Halt => writer.write_all(&[0xFF])?,
-        Instruction::MakeClosure { func_name, capture_names } => {
+        Instruction::MakeClosure {
+            func_name,
+            capture_names,
+        } => {
             writer.write_all(&[0xB0])?;
             let name_bytes = func_name.as_bytes();
             writer.write_all(&(name_bytes.len() as u32).to_le_bytes())?;

@@ -4,35 +4,19 @@
 //! Phase 1: default is language-only (stdlib + energy). Optional features:
 //! `polyglot`, `visual`, `frontier`, `device`, `experimental-full`.
 
-use matter_backend::{Backend, GraphBackend, StoreBackend, ToolBackend, Value};
+#[cfg(feature = "frontier")]
+use matter_acoustics::backend::AcousticsBackend;
+#[cfg(feature = "frontier")]
+use matter_atmosphere::backend::AtmosphereBackend;
 #[cfg(feature = "agent")]
 use matter_backend::AgentBackend;
 #[cfg(feature = "net")]
 use matter_backend::NetBackend;
+use matter_backend::{Backend, GraphBackend, StoreBackend, ToolBackend, Value};
 #[cfg(feature = "frontier")]
 use matter_biological::backend::BiologicalBackend;
 #[cfg(feature = "frontier")]
 use matter_biophysics::backend::BiophysicsBackend;
-#[cfg(feature = "frontier")]
-use matter_geophysics::backend::GeophysicsBackend;
-#[cfg(feature = "frontier")]
-use matter_ocean::backend::OceanBackend;
-#[cfg(feature = "frontier")]
-use matter_atmosphere::backend::AtmosphereBackend;
-#[cfg(feature = "frontier")]
-use matter_materials::backend::MaterialsBackend;
-#[cfg(feature = "frontier")]
-use matter_acoustics::backend::AcousticsBackend;
-#[cfg(feature = "frontier")]
-use matter_electromagnetics::backend::ElectromagneticsBackend;
-#[cfg(feature = "frontier")]
-use matter_ml_physics::backend::MLPhysicsBackend;
-#[cfg(feature = "frontier")]
-use matter_climate::backend::ClimateBackend;
-#[cfg(feature = "frontier")]
-use matter_multiscale::backend::MultiscaleBackend;
-#[cfg(feature = "frontier")]
-use matter_cosmology::backend::CosmologyBackend;
 #[cfg(feature = "polyglot")]
 use matter_bridge_go::{Bridge as GoBridgeTrait, GoBridge};
 #[cfg(feature = "polyglot")]
@@ -46,17 +30,33 @@ use matter_bridge_rust::RustBridge;
 use matter_bytecode::Bytecode;
 #[cfg(feature = "frontier")]
 use matter_chemistry::backend::ChemistryBackend;
+#[cfg(feature = "frontier")]
+use matter_climate::backend::ClimateBackend;
+#[cfg(feature = "frontier")]
+use matter_cosmology::backend::CosmologyBackend;
 #[cfg(feature = "device")]
 use matter_device::DeviceBackend;
+#[cfg(feature = "frontier")]
+use matter_electromagnetics::backend::ElectromagneticsBackend;
 use matter_energy::{EnergyBackend, EnergyRuntime};
 #[cfg(feature = "frontier")]
 use matter_genesis::backend::GenesisBackend;
 #[cfg(feature = "frontier")]
+use matter_geophysics::backend::GeophysicsBackend;
+#[cfg(feature = "frontier")]
+use matter_materials::backend::MaterialsBackend;
+#[cfg(feature = "frontier")]
 use matter_memristive::backend::MemristiveBackend;
+#[cfg(feature = "frontier")]
+use matter_ml_physics::backend::MLPhysicsBackend;
 #[cfg(feature = "frontier")]
 use matter_molecular::backend::MolecularBackend;
 #[cfg(feature = "frontier")]
+use matter_multiscale::backend::MultiscaleBackend;
+#[cfg(feature = "frontier")]
 use matter_neuromorphic::backend::NeuromorphicBackend;
+#[cfg(feature = "frontier")]
+use matter_ocean::backend::OceanBackend;
 #[cfg(feature = "frontier")]
 use matter_photonic::backend::PhotonicBackend;
 #[cfg(feature = "polyglot")]

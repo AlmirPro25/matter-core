@@ -1909,11 +1909,14 @@ impl BytecodeBuilder {
                 ));
                 func_instructions.push(Instruction::Return);
 
-                self.bytecode.functions.insert(func_name.clone(), Function {
-                    name: func_name.clone(),
-                    param_count: params.len(),
-                    instructions: func_instructions,
-                });
+                self.bytecode.functions.insert(
+                    func_name.clone(),
+                    Function {
+                        name: func_name.clone(),
+                        param_count: params.len(),
+                        instructions: func_instructions,
+                    },
+                );
 
                 // Emit MakeClosure instruction
                 instructions.push(Instruction::MakeClosure {

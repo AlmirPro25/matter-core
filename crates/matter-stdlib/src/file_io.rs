@@ -26,12 +26,13 @@ impl FileBackend {
     }
 
     fn auth(&self, method: &str, path: &str) -> Result<PathBuf, String> {
-        let perm = FsCapabilityPolicy::permission_for_method("fileio", method).ok_or_else(|| {
-            format!(
-                "capability_denied: multi-path or unknown fileio method '{}'",
-                method
-            )
-        })?;
+        let perm =
+            FsCapabilityPolicy::permission_for_method("fileio", method).ok_or_else(|| {
+                format!(
+                    "capability_denied: multi-path or unknown fileio method '{}'",
+                    method
+                )
+            })?;
         self.policy.check_path(path, perm)
     }
 }
@@ -47,7 +48,10 @@ impl Backend for FileBackend {
         match method {
             "read" => {
                 if args.len() != 1 {
-                    return Err(format!("fileio.read expects 1 argument, got {}", args.len()));
+                    return Err(format!(
+                        "fileio.read expects 1 argument, got {}",
+                        args.len()
+                    ));
                 }
                 let path = args[0]
                     .as_string()
@@ -205,7 +209,10 @@ impl Backend for FileBackend {
 
             "copy" => {
                 if args.len() != 2 {
-                    return Err(format!("fileio.copy expects 2 arguments, got {}", args.len()));
+                    return Err(format!(
+                        "fileio.copy expects 2 arguments, got {}",
+                        args.len()
+                    ));
                 }
                 let src = args[0]
                     .as_string()
@@ -216,8 +223,7 @@ impl Backend for FileBackend {
                 let src = self.policy.check_path(&src, FsPermission::Read)?;
                 let dst = self.policy.check_path(&dst, FsPermission::Write)?;
 
-                fs::copy(&src, &dst)
-                    .map_err(|e| format!("fileio.copy: cannot copy: {}", e))?;
+                fs::copy(&src, &dst).map_err(|e| format!("fileio.copy: cannot copy: {}", e))?;
 
                 Ok(Value::Bool(true))
             }
@@ -237,10 +243,9 @@ impl Backend for FileBackend {
                     .map_err(|e| format!("fileio.rename: {}", e))?;
                 // Rename needs read+write+delete on the source side of the move.
                 let old = self.policy.check_path(&old, FsPermission::Read)?;
-                let _ = self.policy.check_path(
-                    old.to_str().unwrap_or(""),
-                    FsPermission::Delete,
-                )?;
+                let _ = self
+                    .policy
+                    .check_path(old.to_str().unwrap_or(""), FsPermission::Delete)?;
                 let new = self.policy.check_path(&new, FsPermission::Write)?;
 
                 fs::rename(&old, &new)
@@ -251,7 +256,10 @@ impl Backend for FileBackend {
 
             "size" => {
                 if args.len() != 1 {
-                    return Err(format!("fileio.size expects 1 argument, got {}", args.len()));
+                    return Err(format!(
+                        "fileio.size expects 1 argument, got {}",
+                        args.len()
+                    ));
                 }
                 let path = args[0]
                     .as_string()
@@ -514,28 +522,35 @@ mod tests {
         let mut backend = backend_for(&root);
         let dir_path = temp_path(&root, "test_dir");
         let dir_str = dir_path.to_string_lossy().to_string();
-        
+
         // Create directory
-        backend.call("create_dir", vec![Value::new_string(dir_str.clone())]).unwrap();
-        
+        backend
+            .call("create_dir", vec![Value::new_string(dir_str.clone())])
+            .unwrap();
+
         // Check is_dir
         let result = backend.call("is_dir", vec![Value::new_string(dir_str.clone())]);
         assert_eq!(result.unwrap(), Value::Bool(true));
-        
+
         // Create a file inside
         let file_path = dir_path.join("test.txt");
         let file_str = file_path.to_string_lossy().to_string();
-        backend.call("write", vec![
-            Value::new_string(file_str.clone()),
-            Value::new_string("test".to_string()),
-        ]).unwrap();
-        
+        backend
+            .call(
+                "write",
+                vec![
+                    Value::new_string(file_str.clone()),
+                    Value::new_string("test".to_string()),
+                ],
+            )
+            .unwrap();
+
         // List directory
         let result = backend.call("list_dir", vec![Value::new_string(dir_str.clone())]);
         if let Value::List(items) = result.unwrap() {
             assert_eq!(items.len(), 1);
         }
-        
+
         // Cleanup
         let _ = fs::remove_dir_all(root);
     }

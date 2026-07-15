@@ -80,7 +80,9 @@ fn arity(op: &str, expected: usize, got: usize) -> Result<(), String> {
 }
 
 fn ai(args: &[Value], i: usize, op: &str) -> Result<i64, String> {
-    args[i].as_int().map_err(|e| format!("tensor.{}: {}", op, e))
+    args[i]
+        .as_int()
+        .map_err(|e| format!("tensor.{}: {}", op, e))
 }
 
 fn af(args: &[Value], i: usize, op: &str) -> Result<f64, String> {
@@ -141,7 +143,9 @@ impl Backend for TensorBackend {
                 let c = ai(&args, 2, "from_list")? as usize;
                 let items = match &args[0] {
                     Value::List(items) => items,
-                    _ => return Err("tensor.from_list: 1o argumento deve ser uma lista".to_string()),
+                    _ => {
+                        return Err("tensor.from_list: 1o argumento deve ser uma lista".to_string())
+                    }
                 };
                 if items.len() != r * c {
                     return Err(format!(
@@ -152,7 +156,10 @@ impl Backend for TensorBackend {
                 }
                 let mut data = Vec::with_capacity(r * c);
                 for it in items.iter() {
-                    data.push(it.as_float().map_err(|e| format!("tensor.from_list: {}", e))?);
+                    data.push(
+                        it.as_float()
+                            .map_err(|e| format!("tensor.from_list: {}", e))?,
+                    );
                 }
                 let id = self.insert(Tensor {
                     rows: r,
@@ -199,7 +206,10 @@ impl Backend for TensorBackend {
                 let c = ai(&args, 2, "get")? as usize;
                 let t = self.get_t(id)?;
                 if r >= t.rows || c >= t.cols {
-                    return Err(format!("tensor.get: indice ({},{}) fora de {}x{}", r, c, t.rows, t.cols));
+                    return Err(format!(
+                        "tensor.get: indice ({},{}) fora de {}x{}",
+                        r, c, t.rows, t.cols
+                    ));
                 }
                 Ok(Value::Float(t.data[r * t.cols + c]))
             }
@@ -214,7 +224,10 @@ impl Backend for TensorBackend {
                     .get_mut(&id)
                     .ok_or_else(|| format!("tensor: handle {} nao existe", id))?;
                 if r >= t.rows || c >= t.cols {
-                    return Err(format!("tensor.set: indice ({},{}) fora de {}x{}", r, c, t.rows, t.cols));
+                    return Err(format!(
+                        "tensor.set: indice ({},{}) fora de {}x{}",
+                        r, c, t.rows, t.cols
+                    ));
                 }
                 let cols = t.cols;
                 t.data[r * cols + c] = v;
@@ -331,7 +344,11 @@ impl Backend for TensorBackend {
             "relu" => {
                 arity("relu", 1, args.len())?;
                 let a = self.get_t(ai(&args, 0, "relu")?)?;
-                let data: Vec<f64> = a.data.iter().map(|v| if *v > 0.0 { *v } else { 0.0 }).collect();
+                let data: Vec<f64> = a
+                    .data
+                    .iter()
+                    .map(|v| if *v > 0.0 { *v } else { 0.0 })
+                    .collect();
                 let id = self.insert(Tensor {
                     rows: a.rows,
                     cols: a.cols,
@@ -343,7 +360,11 @@ impl Backend for TensorBackend {
                 // 1.0 onde pre > 0, senao 0.0
                 arity("relu_grad", 1, args.len())?;
                 let a = self.get_t(ai(&args, 0, "relu_grad")?)?;
-                let data: Vec<f64> = a.data.iter().map(|v| if *v > 0.0 { 1.0 } else { 0.0 }).collect();
+                let data: Vec<f64> = a
+                    .data
+                    .iter()
+                    .map(|v| if *v > 0.0 { 1.0 } else { 0.0 })
+                    .collect();
                 let id = self.insert(Tensor {
                     rows: a.rows,
                     cols: a.cols,
@@ -430,7 +451,11 @@ impl Backend for TensorBackend {
                 let p = self.get_t(ai(&args, 0, "ce_loss")?)?;
                 let targets = match &args[1] {
                     Value::List(items) => items,
-                    _ => return Err("tensor.ce_loss: 2o argumento deve ser lista de alvos".to_string()),
+                    _ => {
+                        return Err(
+                            "tensor.ce_loss: 2o argumento deve ser lista de alvos".to_string()
+                        )
+                    }
                 };
                 if targets.len() != p.rows {
                     return Err(format!(
@@ -481,7 +506,12 @@ fn elementwise<F: Fn(f64, f64) -> f64>(
     f: F,
 ) -> Result<Tensor, String> {
     if a.rows == b.rows && a.cols == b.cols {
-        let data: Vec<f64> = a.data.iter().zip(b.data.iter()).map(|(x, y)| f(*x, *y)).collect();
+        let data: Vec<f64> = a
+            .data
+            .iter()
+            .zip(b.data.iter())
+            .map(|(x, y)| f(*x, *y))
+            .collect();
         Ok(Tensor {
             rows: a.rows,
             cols: a.cols,

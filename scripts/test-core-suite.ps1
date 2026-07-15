@@ -3,7 +3,24 @@ param([string]$Cli = "")
 $ErrorActionPreference = "Continue"
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 if (-not $Cli) {
-  $Cli = Join-Path $Root "target\x86_64-pc-windows-gnu\release\matter-cli.exe"
+  # Prefer freshest binary (release first by mtime); never silent-stale gnu-only default.
+  $cands = @()
+  foreach ($p in @(
+    (Join-Path $Root "target\release\matter-cli.exe"),
+    (Join-Path $Root "target\x86_64-pc-windows-gnu\release\matter-cli.exe")
+  )) {
+    if (Test-Path -LiteralPath $p) {
+      $i = Get-Item -LiteralPath $p
+      $cands += [pscustomobject]@{ path = $p; mtime = $i.LastWriteTimeUtc; sha = (Get-FileHash $p -Algorithm SHA256).Hash }
+    }
+  }
+  if ($cands.Count -eq 0) {
+    Write-Error "CLI not found under target\release or target\x86_64-pc-windows-gnu\release"
+    exit 2
+  }
+  $best = $cands | Sort-Object mtime -Descending | Select-Object -First 1
+  $Cli = $best.path
+  Write-Host ("CLI selected: {0} sha256={1}" -f $Cli, $best.sha)
 }
 if (-not (Test-Path -LiteralPath $Cli)) {
   Write-Error "CLI not found: $Cli"

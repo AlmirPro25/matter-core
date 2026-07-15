@@ -4,8 +4,8 @@
 // Sprint 80: Extended stdlib modules
 pub mod file_io;
 pub mod fs_capability;
-pub mod vec;
 pub mod hashmap;
+pub mod vec;
 
 // Tensor backend: algebra linear nativa em Rust (matmul, softmax, etc.)
 pub mod tensor;
@@ -13,9 +13,9 @@ pub mod tensor;
 // Re-exports
 pub use file_io::FileBackend as FileIOBackend;
 pub use fs_capability::{FsCapabilityPolicy, FsPermission};
-pub use vec::VecBackend;
 pub use hashmap::HashMapBackend;
 pub use tensor::TensorBackend;
+pub use vec::VecBackend;
 
 use matter_backend::{Backend, Value};
 use std::collections::HashMap;
@@ -1971,7 +1971,10 @@ impl FileBackend {
 
     fn authorize(&self, method: &str, path: &str) -> Result<std::path::PathBuf, String> {
         let perm = FsCapabilityPolicy::permission_for_method("file", method).ok_or_else(|| {
-            format!("capability_denied: unknown or multi-path file method '{}'", method)
+            format!(
+                "capability_denied: unknown or multi-path file method '{}'",
+                method
+            )
         })?;
         self.policy.check_path(path, perm)
     }
@@ -2102,16 +2105,14 @@ impl Backend for FileBackend {
                     .map_err(|e| format!("file.write_lines: {}", e))?;
                 let path = self.authorize("write_lines", &path)?;
                 if let Value::List(lines) = &args[1] {
-                    let mut file = std::fs::File::create(&path).map_err(|e| {
-                        format!("file.write_lines: failed to create: {}", e)
-                    })?;
+                    let mut file = std::fs::File::create(&path)
+                        .map_err(|e| format!("file.write_lines: failed to create: {}", e))?;
                     for line_val in lines.iter() {
                         let line_str = line_val
                             .as_string()
                             .map_err(|e| format!("file.write_lines: {}", e))?;
-                        writeln!(file, "{}", line_str).map_err(|e| {
-                            format!("file.write_lines: failed to write: {}", e)
-                        })?;
+                        writeln!(file, "{}", line_str)
+                            .map_err(|e| format!("file.write_lines: failed to write: {}", e))?;
                     }
                     Ok(Value::Bool(true))
                 } else {
@@ -2781,11 +2782,15 @@ fn world_error_payload(message: &str) -> Value {
 pub struct ResultBackend;
 
 impl ResultBackend {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }
 
 impl Default for ResultBackend {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Backend for ResultBackend {
@@ -2811,33 +2816,50 @@ impl Backend for ResultBackend {
             }
             "is_ok" => {
                 if args.len() != 1 {
-                    return Err(format!("result.is_ok expects 1 argument, got {}", args.len()));
+                    return Err(format!(
+                        "result.is_ok expects 1 argument, got {}",
+                        args.len()
+                    ));
                 }
                 if let Value::Map(m) = &args[0] {
-                    Ok(Value::Bool(m.get("tag").map_or(false, |v| v.to_display_string() == "Ok")))
+                    Ok(Value::Bool(
+                        m.get("tag")
+                            .map_or(false, |v| v.to_display_string() == "Ok"),
+                    ))
                 } else {
                     Ok(Value::Bool(false))
                 }
             }
             "is_err" => {
                 if args.len() != 1 {
-                    return Err(format!("result.is_err expects 1 argument, got {}", args.len()));
+                    return Err(format!(
+                        "result.is_err expects 1 argument, got {}",
+                        args.len()
+                    ));
                 }
                 if let Value::Map(m) = &args[0] {
-                    Ok(Value::Bool(m.get("tag").map_or(false, |v| v.to_display_string() == "Err")))
+                    Ok(Value::Bool(
+                        m.get("tag")
+                            .map_or(false, |v| v.to_display_string() == "Err"),
+                    ))
                 } else {
                     Ok(Value::Bool(false))
                 }
             }
             "unwrap" => {
                 if args.len() != 1 {
-                    return Err(format!("result.unwrap expects 1 argument, got {}", args.len()));
+                    return Err(format!(
+                        "result.unwrap expects 1 argument, got {}",
+                        args.len()
+                    ));
                 }
                 if let Value::Map(m) = &args[0] {
                     match m.get("tag").map(|v| v.to_display_string()).as_deref() {
                         Some("Ok") => Ok(m.get("value").cloned().unwrap_or(Value::Null)),
                         Some("Err") => {
-                            let err = m.get("error").map_or("unknown error".to_string(), |v| v.to_display_string());
+                            let err = m
+                                .get("error")
+                                .map_or("unknown error".to_string(), |v| v.to_display_string());
                             Err(format!("result.unwrap: called on Err({})", err))
                         }
                         _ => Err("result.unwrap: not a Result".to_string()),
@@ -2848,7 +2870,10 @@ impl Backend for ResultBackend {
             }
             "unwrap_or" => {
                 if args.len() != 2 {
-                    return Err(format!("result.unwrap_or expects 2 arguments, got {}", args.len()));
+                    return Err(format!(
+                        "result.unwrap_or expects 2 arguments, got {}",
+                        args.len()
+                    ));
                 }
                 if let Value::Map(m) = &args[0] {
                     match m.get("tag").map(|v| v.to_display_string()).as_deref() {
@@ -2861,7 +2886,10 @@ impl Backend for ResultBackend {
             }
             "try_unwrap" => {
                 if args.len() != 1 {
-                    return Err(format!("result.try_unwrap expects 1 argument, got {}", args.len()));
+                    return Err(format!(
+                        "result.try_unwrap expects 1 argument, got {}",
+                        args.len()
+                    ));
                 }
                 if let Value::Map(m) = &args[0] {
                     match m.get("tag").map(|v| v.to_display_string()).as_deref() {
@@ -2881,7 +2909,10 @@ impl Backend for ResultBackend {
             }
             "map" => {
                 if args.len() != 2 {
-                    return Err(format!("result.map expects 2 arguments (result, fn), got {}", args.len()));
+                    return Err(format!(
+                        "result.map expects 2 arguments (result, fn), got {}",
+                        args.len()
+                    ));
                 }
                 if let Value::Map(m) = &args[0] {
                     match m.get("tag").map(|v| v.to_display_string()).as_deref() {
@@ -2891,14 +2922,20 @@ impl Backend for ResultBackend {
                             match &args[1] {
                                 Value::Function(_name) => {
                                     let mut map_result = HashMap::new();
-                                    map_result.insert("tag".to_string(), Value::new_string("Ok".to_string()));
+                                    map_result.insert(
+                                        "tag".to_string(),
+                                        Value::new_string("Ok".to_string()),
+                                    );
                                     map_result.insert("value".to_string(), val);
                                     // Caller should handle the actual function call
                                     Ok(Value::new_map(map_result))
                                 }
                                 _ => {
                                     let mut map_result = HashMap::new();
-                                    map_result.insert("tag".to_string(), Value::new_string("Ok".to_string()));
+                                    map_result.insert(
+                                        "tag".to_string(),
+                                        Value::new_string("Ok".to_string()),
+                                    );
                                     map_result.insert("value".to_string(), val);
                                     Ok(Value::new_map(map_result))
                                 }
@@ -2920,11 +2957,15 @@ impl Backend for ResultBackend {
 pub struct OptionBackend;
 
 impl OptionBackend {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }
 
 impl Default for OptionBackend {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Backend for OptionBackend {
@@ -2932,7 +2973,10 @@ impl Backend for OptionBackend {
         match method {
             "some" => {
                 if args.len() != 1 {
-                    return Err(format!("option.some expects 1 argument, got {}", args.len()));
+                    return Err(format!(
+                        "option.some expects 1 argument, got {}",
+                        args.len()
+                    ));
                 }
                 let mut map = HashMap::new();
                 map.insert("tag".to_string(), Value::new_string("Some".to_string()));
@@ -2946,27 +2990,42 @@ impl Backend for OptionBackend {
             }
             "is_some" => {
                 if args.len() != 1 {
-                    return Err(format!("option.is_some expects 1 argument, got {}", args.len()));
+                    return Err(format!(
+                        "option.is_some expects 1 argument, got {}",
+                        args.len()
+                    ));
                 }
                 if let Value::Map(m) = &args[0] {
-                    Ok(Value::Bool(m.get("tag").map_or(false, |v| v.to_display_string() == "Some")))
+                    Ok(Value::Bool(
+                        m.get("tag")
+                            .map_or(false, |v| v.to_display_string() == "Some"),
+                    ))
                 } else {
                     Ok(Value::Bool(false))
                 }
             }
             "is_none" => {
                 if args.len() != 1 {
-                    return Err(format!("option.is_none expects 1 argument, got {}", args.len()));
+                    return Err(format!(
+                        "option.is_none expects 1 argument, got {}",
+                        args.len()
+                    ));
                 }
                 if let Value::Map(m) = &args[0] {
-                    Ok(Value::Bool(m.get("tag").map_or(false, |v| v.to_display_string() == "None")))
+                    Ok(Value::Bool(
+                        m.get("tag")
+                            .map_or(false, |v| v.to_display_string() == "None"),
+                    ))
                 } else {
                     Ok(Value::Bool(true))
                 }
             }
             "unwrap" => {
                 if args.len() != 1 {
-                    return Err(format!("option.unwrap expects 1 argument, got {}", args.len()));
+                    return Err(format!(
+                        "option.unwrap expects 1 argument, got {}",
+                        args.len()
+                    ));
                 }
                 if let Value::Map(m) = &args[0] {
                     match m.get("tag").map(|v| v.to_display_string()).as_deref() {
@@ -2979,7 +3038,10 @@ impl Backend for OptionBackend {
             }
             "unwrap_or" => {
                 if args.len() != 2 {
-                    return Err(format!("option.unwrap_or expects 2 arguments, got {}", args.len()));
+                    return Err(format!(
+                        "option.unwrap_or expects 2 arguments, got {}",
+                        args.len()
+                    ));
                 }
                 if let Value::Map(m) = &args[0] {
                     match m.get("tag").map(|v| v.to_display_string()).as_deref() {

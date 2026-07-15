@@ -1283,7 +1283,10 @@ impl Parser {
                 } else {
                     None
                 };
-                params.push(Param { name: param_name, type_annotation });
+                params.push(Param {
+                    name: param_name,
+                    type_annotation,
+                });
                 if self.current() == &Token::Comma {
                     self.advance();
                 } else {
@@ -1476,8 +1479,7 @@ mod tests {
         let mut parser = Parser::from_source(r#"panic("boom")"#);
         let err = parser.parse().unwrap_err();
         assert!(
-            err.to_string().contains("not implemented")
-                || err.to_string().contains("reserved"),
+            err.to_string().contains("not implemented") || err.to_string().contains("reserved"),
             "{}",
             err
         );

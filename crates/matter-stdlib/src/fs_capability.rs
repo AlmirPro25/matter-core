@@ -151,9 +151,9 @@ fn perm_flag(p: FsPermission) -> &'static str {
 
 fn canonicalize_root(dir: &Path) -> Result<PathBuf, String> {
     if !dir.exists() {
-        return Err(format!(
-            "capability_denied: allow root does not exist (create the directory first)"
-        ));
+        return Err(
+            "capability_denied: allow root does not exist (create the directory first)".into(),
+        );
     }
     if !dir.is_dir() {
         return Err("capability_denied: allow root must be a directory".into());
@@ -186,9 +186,9 @@ fn resolve_path_for_check(path: &str) -> Result<PathBuf, String> {
 
     // File does not exist: resolve parent.
     let parent = p.parent().filter(|par| !par.as_os_str().is_empty());
-    let file_name = p.file_name().ok_or_else(|| {
-        "capability_denied: path has no file name".to_string()
-    })?;
+    let file_name = p
+        .file_name()
+        .ok_or_else(|| "capability_denied: path has no file name".to_string())?;
 
     let parent = match parent {
         Some(par) => par,
@@ -280,7 +280,9 @@ mod tests {
     #[test]
     fn deny_all_by_default() {
         let p = FsCapabilityPolicy::deny_all();
-        let err = p.check_path("anything.txt", FsPermission::Read).unwrap_err();
+        let err = p
+            .check_path("anything.txt", FsPermission::Read)
+            .unwrap_err();
         assert!(err.contains("capability_denied"));
     }
 
