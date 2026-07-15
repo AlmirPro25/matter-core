@@ -1,0 +1,166 @@
+{
+  "version": "WIP_TRIAGE_V1",
+  "date": "2026-07-15",
+  "base_commit": "7533efc4fa8afd1f288ba6fd20580edccfc0b183",
+  "main_unmodified": true,
+  "stash": {
+    "ref": "stash@{0}",
+    "message": "pre-merge-0.2.0: stash unrelated local WIP",
+    "sha": "afbdec2beeb67a7dfaae2366900d7c0402a78ba3",
+    "parents": [
+      "211afdf03c6d9c60ae28e58b51405e7d96ace2c5",
+      "9ca4334609382f2d9d6a712ed81e936b52224c45"
+    ],
+    "rescue_branch": "rescue/pre-merge-0.2.0",
+    "popped": false,
+    "dropped": false,
+    "secret_scan_hits": 0,
+    "absolute_path_hits": 3,
+    "vault_dir": "D:\\Users\\almir\\MatterArtifactVault\\wip-triage-v1",
+    "vault_files": {
+      "stash0_full.patch": {
+        "sha256": "E0B808656C71BAB2EB068A736361B714190A45D8384FD4A0C07569CC08B4F43C",
+        "bytes": 61602
+      },
+      "stash0_metadata.txt": {
+        "sha256": "A6D8D88FC6F3512C35101712FEE0BB4A4856CAAD26E0FC16D439390A1449EDFD",
+        "bytes": 405
+      },
+      "stash0_name_status.txt": {
+        "sha256": "5CCA77571634B705B52CE1235A5BE2D77B91528849C72E2E1E21782F39A8B9D6",
+        "bytes": 824
+      },
+      "stash0_stat.txt": {
+        "sha256": "C2F3C3C6EFDA8CF3E64599219EF8C8D428DF61ABE4F557FE8743A90DE9658D10",
+        "bytes": 1363
+      }
+    }
+  },
+  "worktree": "D:\\matter-wip-triage-v1",
+  "cargo_target_dir": "D:\\matter-target-wip-triage-v1",
+  "branches": {
+    "rescue/pre-merge-0.2.0": "afbdec2beeb67a7dfaae2366900d7c0402a78ba3",
+    "wip/triage-base": "7533efc4fa8afd1f288ba6fd20580edccfc0b183",
+    "wip/lsp-package-resolver-recovery": "30cf5d7",
+    "tooling/fuzz-harness-recovery": "b1f7944",
+    "docs/core-examples-recovery": "5626324",
+    "docs/session-archive-2026-07-14": "b901338",
+    "docs/wip-triage-v1-report": "HEAD_AFTER_REPORT_COMMIT"
+  },
+  "buckets": {
+    "lsp_resolver": {
+      "branch": "wip/lsp-package-resolver-recovery",
+      "extracted": [
+        {
+          "path": "crates/matter-package-resolver/src/lib.rs",
+          "class": "UNIQUE_USEFUL"
+        },
+        {
+          "path": "crates/matter-lsp/src/lib.rs",
+          "class": "UNIQUE_USEFUL"
+        },
+        {
+          "path": "crates/matter-lsp/Cargo.toml",
+          "class": "UNIQUE_USEFUL"
+        },
+        {
+          "path": "tests/integration_test.rs",
+          "class": "UNIQUE_USEFUL",
+          "rework": true
+        }
+      ],
+      "not_extracted_already_resolved": [
+        "bridges",
+        "visual",
+        "linter",
+        "formatter",
+        "ast",
+        "native"
+      ],
+      "tests": {
+        "matter_lsp_check": 0,
+        "matter_package_resolver_check": 0,
+        "matter_package_resolver_lib_tests": 0,
+        "matter_lsp_lib_tests": 0,
+        "integration_test": 101,
+        "integration_pass": 36,
+        "integration_fail": 4,
+        "integration_fail_names": [
+          "test_lambda_basic",
+          "test_lambda_as_argument",
+          "test_closure_capture",
+          "test_nested_closure"
+        ]
+      },
+      "secret_scan_hits": 0,
+      "merged_to_main": false
+    },
+    "fuzz": {
+      "branch": "tooling/fuzz-harness-recovery",
+      "class": "UNIQUE_USEFUL",
+      "rework": "needs g++/libfuzzer on this host",
+      "cargo_check_exit": 101,
+      "secret_scan_hits": 0,
+      "corpus_versioned": false
+    },
+    "examples": {
+      "branch": "docs/core-examples-recovery",
+      "items": [
+        {
+          "path": "examples/apps/calculadora_orcamento.matter",
+          "edition": "Core",
+          "cli_exit": 0,
+          "disposition": "KEEP"
+        },
+        {
+          "path": "examples/apps/diario_tarefas.matter",
+          "edition": "Core",
+          "cli_exit": 0,
+          "disposition": "KEEP"
+        },
+        {
+          "path": "examples/new_features_demo.matter",
+          "edition": "Experimental",
+          "cli_exit": 1,
+          "disposition": "REWORK"
+        },
+        {
+          "path": "examples/polyglot/node_path_smoke.matter",
+          "edition": "Experimental",
+          "cli_exit": 1,
+          "note": "language-only lacks node backend",
+          "disposition": "KEEP"
+        },
+        {
+          "path": "examples/polyglot/python_math_smoke.matter",
+          "edition": "Experimental",
+          "cli_exit": 1,
+          "note": "language-only lacks python backend",
+          "disposition": "KEEP"
+        }
+      ]
+    },
+    "session_docs": {
+      "branch": "docs/session-archive-2026-07-14",
+      "class": "ARCHIVE",
+      "identical_to_docs_status_on_main": true,
+      "root_untracked_disposition": "DISCARD_CANDIDATE_after_confirm"
+    },
+    "local_only": {
+      "vscode_settings": "LOCAL_ONLY",
+      "vscode_extensions": "LOCAL_ONLY",
+      "my_app": "VAULTED",
+      "cargo_lock_working_tree": "DIAGNOSTIC_NO_COMMIT",
+      "vscode_extension_package_lock": "OPTIONAL_REWORK"
+    }
+  },
+  "protections": {
+    "stash_pop": false,
+    "git_add_dot": false,
+    "git_clean": false,
+    "main_altered": false,
+    "zip_0_1_0": "0A5FEE59F07A0C09E74992A62CDE95EA4C1DCA9AE6529B12AE47E9F23E1332A2",
+    "force_push": false,
+    "modules_or_types_started": false
+  }
+}
