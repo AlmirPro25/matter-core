@@ -562,3 +562,143 @@ fn test_parameter_mutation() {
         ]
     );
 }
+
+// ── New Feature Tests ──
+
+#[test]
+fn test_lambda_basic() {
+    let source = r#"
+        let add = fn(a, b) { return a + b }
+        print add(3, 4)
+    "#;
+    let output = run_matter_code(source).expect("Failed to run lambda test");
+    assert_eq!(output, vec!["7"]);
+}
+
+#[test]
+fn test_lambda_as_argument() {
+    let source = r#"
+        fn apply(f, x) {
+            return f(x)
+        }
+        let double = fn(x) { return x * 2 }
+        print apply(double, 5)
+    "#;
+    let output = run_matter_code(source).expect("Failed to run lambda-as-argument test");
+    assert_eq!(output, vec!["10"]);
+}
+
+#[test]
+fn test_result_ok_err() {
+    let source = r#"
+        let r1 = ok(42)
+        let r2 = err("fail")
+        print r1
+        print r2
+    "#;
+    let output = run_matter_code(source).expect("Failed to run Result test");
+    assert!(output[0].contains("42"));
+    assert!(output[1].contains("fail"));
+}
+
+#[test]
+fn test_option_some_none() {
+    let source = r#"
+        let o1 = some(10)
+        let o2 = none
+        print o1
+        print o2
+    "#;
+    let output = run_matter_code(source).expect("Failed to run Option test");
+    assert!(output[0].contains("10"));
+    assert!(output[1].contains("None"));
+}
+
+#[test]
+fn test_closure_capture() {
+    let source = r#"
+        let x = 10
+        let add_x = fn(y) { return x + y }
+        print add_x(5)
+    "#;
+    let output = run_matter_code(source).expect("Failed to run closure capture test");
+    assert_eq!(output, vec!["15"]);
+}
+
+#[test]
+fn test_lambda_list_operations() {
+    let source = r#"
+        let numbers = [1, 2, 3, 4, 5]
+        let total = 0
+        for n in numbers {
+            set total = total + n
+        }
+        print total
+    "#;
+    let output = run_matter_code(source).expect("Failed to run lambda list operations test");
+    assert_eq!(output, vec!["15"]);
+}
+
+#[test]
+fn test_import_from_syntax_parse() {
+    // Test that the new import syntax parses correctly
+    let source = r#"import { foo, bar } from "lib.matter""#;
+    let mut parser = Parser::from_source(source);
+    let program = parser.parse().expect("Failed to parse import-from syntax");
+    assert_eq!(program.statements.len(), 1);
+    match &program.statements[0] {
+        matter_ast::Statement::ImportFrom { path, names } => {
+            assert_eq!(path, "lib.matter");
+            assert_eq!(names.len(), 2);
+            assert_eq!(names[0].name, "foo");
+            assert_eq!(names[1].name, "bar");
+        }
+        _ => panic!("Expected ImportFrom statement"),
+    }
+}
+
+#[test]
+fn test_import_as_syntax_parse() {
+    let source = r#"import "math.matter" as math"#;
+    let mut parser = Parser::from_source(source);
+    let program = parser.parse().expect("Failed to parse import-as syntax");
+    assert_eq!(program.statements.len(), 1);
+    match &program.statements[0] {
+        matter_ast::Statement::ImportAs { path, alias } => {
+            assert_eq!(path, "math.matter");
+            assert_eq!(alias, "math");
+        }
+        _ => panic!("Expected ImportAs statement"),
+    }
+}
+
+#[test]
+fn test_export_syntax_parse() {
+    let source = r#"export { main, helper }"#;
+    let mut parser = Parser::from_source(source);
+    let program = parser.parse().expect("Failed to parse export syntax");
+    assert_eq!(program.statements.len(), 1);
+    match &program.statements[0] {
+        matter_ast::Statement::Export { names } => {
+            assert_eq!(names.len(), 2);
+            assert_eq!(names[0], "main");
+            assert_eq!(names[1], "helper");
+        }
+        _ => panic!("Expected Export statement"),
+    }
+}
+
+#[test]
+fn test_nested_closure() {
+    let source = r#"
+        fn make_adder(n) {
+            return fn(x) { return x + n }
+        }
+        let add5 = make_adder(5)
+        let add10 = make_adder(10)
+        print add5(3)
+        print add10(7)
+    "#;
+    let output = run_matter_code(source).expect("Failed to run nested closure test");
+    assert_eq!(output, vec!["8", "17"]);
+}
