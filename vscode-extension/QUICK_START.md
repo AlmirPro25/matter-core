@@ -6,7 +6,7 @@
 
 ```bash
 # Windows
-cd "F:\Users\almir\Desktop\MANIFESTO DA LINGUAGEM MATTER CORE"
+cd <path-to-matter-core-repo>
 .\install.ps1
 
 # Verify installation
