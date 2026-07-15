@@ -1,0 +1,83 @@
+{
+  "version": "LSP_RECOVERY_ASSESSMENT_V1",
+  "date": "2026-07-15",
+  "base": "7533efc4fa8afd1f288ba6fd20580edccfc0b183",
+  "source_wip": "30cf5d7",
+  "source_wip_branch": "wip/lsp-package-resolver-recovery",
+  "source_wip_modified": false,
+  "feature_branch": "feature/lsp-recovery-v1",
+  "merged_to_main": false,
+  "recommendations": {
+    "lsp": "LSP_MERGE_READY",
+    "package_resolver": "FUTURE_MODULE_SYSTEM",
+    "lambda_closure": "KEEP_BLOCKED_REWORK"
+  },
+  "lsp": {
+    "files": [
+      "crates/matter-lsp/src/lib.rs",
+      "crates/matter-lsp/Cargo.toml"
+    ],
+    "cargo_lock_delta": "none vs 7533efc (lock already listed matter-bytecode under matter-lsp)",
+    "honesty": {
+      "import_export_hover": "not_implemented",
+      "match_hover": "equality_first_arm",
+      "panic_hover": "reserved_not_implemented",
+      "diagnostics_path": "Parser + BytecodeBuilder::build_checked"
+    },
+    "tests": {
+      "cargo_check": 0,
+      "cargo_test_lib": 0,
+      "passed": 15,
+      "failed": 0
+    }
+  },
+  "package_resolver": {
+    "integrated": false,
+    "executable_path_usage": false,
+    "fs_access": true,
+    "network": false,
+    "shell": false,
+    "depends_on_import_export": true,
+    "integrating_now_breaks_semantic_honesty": true,
+    "unit_tests_on_wip": 4,
+    "classification": "FUTURE_MODULE_SYSTEM"
+  },
+  "lambda_closure": {
+    "tests": [
+      {
+        "name": "test_lambda_basic",
+        "phase": "compiler",
+        "observed": "unknown function 'add'",
+        "recommendation": "KEEP_BLOCKED"
+      },
+      {
+        "name": "test_lambda_as_argument",
+        "phase": "compiler",
+        "observed": "unknown function 'f'",
+        "recommendation": "KEEP_BLOCKED"
+      },
+      {
+        "name": "test_closure_capture",
+        "phase": "compiler",
+        "observed": "unknown function 'add_x'",
+        "recommendation": "KEEP_BLOCKED"
+      },
+      {
+        "name": "test_nested_closure",
+        "phase": "compiler",
+        "observed": "unknown function 'add5'",
+        "recommendation": "KEEP_BLOCKED"
+      }
+    ],
+    "expectations_weakened": false
+  },
+  "gates": {
+    "semantic": 0,
+    "core": 0,
+    "security": 0,
+    "language_only_build": 0,
+    "language_only_sha256": "7D0A3947685B539662F34E3057FBA50D194EACB144716CF7B7F6916E7B3D8FEE",
+    "zip_sha256": "0A5FEE59F07A0C09E74992A62CDE95EA4C1DCA9AE6529B12AE47E9F23E1332A2",
+    "zip_ok": true
+  }
+}
