@@ -62,6 +62,17 @@ pub enum Statement {
     Import {
         path: String,
     },
+    ImportFrom {
+        path: String,
+        names: Vec<ImportName>,
+    },
+    ImportAs {
+        path: String,
+        alias: String,
+    },
+    Export {
+        names: Vec<String>,
+    },
     OnEvent {
         event: String,
         body: Vec<Statement>,
@@ -101,6 +112,13 @@ pub enum Statement {
 pub struct MatchArm {
     pub pattern: Expression,
     pub body: Vec<Statement>,
+}
+
+/// Name in an import statement: `name` or `name as alias`
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImportName {
+    pub name: String,
+    pub alias: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -150,6 +168,15 @@ pub enum Expression {
         method: String,
         args: Vec<Expression>,
     },
+    Lambda {
+        params: Vec<Param>,
+        body: Vec<Statement>,
+    },
+    OkExpr(Box<Expression>),
+    ErrExpr(Box<Expression>),
+    SomeExpr(Box<Expression>),
+    NoneExpr,
+    TryPropagate(Box<Expression>),
 }
 
 #[derive(Debug, Clone, PartialEq)]

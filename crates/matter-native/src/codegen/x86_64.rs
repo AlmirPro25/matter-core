@@ -469,6 +469,7 @@ impl X86CodeGen {
                 | Instruction::PopScope
                 | Instruction::Jump(_)
                 | Instruction::SpawnEvent(_)
+                | Instruction::MakeClosure { .. }
                 | Instruction::Halt => {}
             }
         }
@@ -639,6 +640,7 @@ impl X86CodeGen {
                 | Instruction::PopScope
                 | Instruction::Jump(_)
                 | Instruction::SpawnEvent(_)
+                | Instruction::MakeClosure { .. }
                 | Instruction::Halt => {}
             }
         }
@@ -930,6 +932,7 @@ impl X86CodeGen {
                 | Instruction::PopScope
                 | Instruction::Jump(_)
                 | Instruction::SpawnEvent(_)
+                | Instruction::MakeClosure { .. }
                 | Instruction::Halt => {}
             }
         }
@@ -1048,6 +1051,7 @@ impl X86CodeGen {
                 | Instruction::PopScope
                 | Instruction::Jump(_)
                 | Instruction::SpawnEvent(_)
+                | Instruction::MakeClosure { .. }
                 | Instruction::Halt => {}
             }
         }
@@ -1514,6 +1518,9 @@ impl X86CodeGen {
                 arg_count,
             } => {
                 self.compile_backend_call(backend, method, *arg_count)?;
+            }
+            Instruction::MakeClosure { .. } => {
+                // Closure compilation: same as LoadFunction for native
             }
         }
 
