@@ -263,6 +263,16 @@ fn encode_value(value: &Value) -> JsonValue {
             );
             object.insert("value".to_string(), JsonValue::String((**name).clone()));
         }
+        Value::Closure(data) => {
+            object.insert(
+                "type".to_string(),
+                JsonValue::String("closure".to_string()),
+            );
+            object.insert(
+                "value".to_string(),
+                JsonValue::String(data.func_name.clone()),
+            );
+        }
     }
     JsonValue::Object(object)
 }

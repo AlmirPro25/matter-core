@@ -113,6 +113,7 @@ fn value_to_json(value: &Value) -> JsonValue {
             .map(JsonValue::Number)
             .unwrap_or(JsonValue::Null),
         Value::String(value) | Value::Function(value) => JsonValue::String(value.to_string()),
+        Value::Closure(data) => JsonValue::String(data.func_name.clone()),
         Value::List(items) => JsonValue::Array(items.iter().map(value_to_json).collect()),
         Value::Map(entries) => JsonValue::Object(
             entries

@@ -206,6 +206,9 @@ impl GoBridge {
             Value::Function(_) => Err(BridgeError::ConversionError(
                 "Cannot convert Matter function to Go".to_string(),
             )),
+            Value::Closure(_) => Err(BridgeError::ConversionError(
+                "Cannot convert Matter closure to Go".to_string(),
+            )),
         }
     }
 

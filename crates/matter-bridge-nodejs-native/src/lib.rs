@@ -159,6 +159,9 @@ impl NodeJSNativeBridge {
             Value::Function(_) => Err(BridgeError::ConversionError(
                 "Cannot convert Matter function to JavaScript".to_string(),
             )),
+            Value::Closure(_) => Err(BridgeError::ConversionError(
+                "Cannot convert Matter closure to JavaScript".to_string(),
+            )),
         }
     }
 

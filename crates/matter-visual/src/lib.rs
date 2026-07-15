@@ -3867,6 +3867,7 @@ fn value_json(value: &Value) -> String {
         Value::String(value) => format!("\"{}\"", json_escape(value)),
         Value::Unit => "null".to_string(),
         Value::Function(name) => format!("\"<fn {}>\"", json_escape(name)),
+        Value::Closure(data) => format!("\"<closure {}>\"", json_escape(&data.func_name)),
         Value::List(values) => format!(
             "[{}]",
             values.iter().map(value_json).collect::<Vec<_>>().join(",")

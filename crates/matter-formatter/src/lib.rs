@@ -135,6 +135,23 @@ impl Formatter {
                 format!("{}struct {} {{ {} }}", i, name, fields)
             }
             Statement::Import { path } => format!("{}import \"{}\"", i, path),
+            Statement::ImportFrom { path, names } => {
+                let names = names
+                    .iter()
+                    .map(|n| match &n.alias {
+                        Some(alias) => format!("{} as {}", n.name, alias),
+                        None => n.name.clone(),
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("{}import {{ {} }} from \"{}\"", i, names, path)
+            }
+            Statement::ImportAs { path, alias } => {
+                format!("{}import \"{}\" as {}", i, path, alias)
+            }
+            Statement::Export { names } => {
+                format!("{}export {{ {} }}", i, names.join(", "))
+            }
             Statement::OnEvent { event, body } => {
                 let mut out = format!("{}on {} {{", i, event);
                 if !body.is_empty() {
@@ -332,6 +349,29 @@ impl Formatter {
                     .join(", ")
             ),
             Expression::Null => "null".to_string(),
+            Expression::Lambda { params, body } => {
+                let params = params
+                    .iter()
+                    .map(format_param)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let mut out = format!("|{}| {{", params);
+                if !body.is_empty() {
+                    out.push(' ');
+                    for stmt in body {
+                        out.push_str(&self.format_statement(stmt, 0).trim());
+                        out.push(';');
+                    }
+                    out.push(' ');
+                }
+                out.push('}');
+                out
+            }
+            Expression::OkExpr(inner) => format!("Ok({})", self.format_expr(inner)),
+            Expression::ErrExpr(inner) => format!("Err({})", self.format_expr(inner)),
+            Expression::SomeExpr(inner) => format!("Some({})", self.format_expr(inner)),
+            Expression::NoneExpr => "None".to_string(),
+            Expression::TryPropagate(inner) => format!("{}?", self.format_expr(inner)),
         }
     }
 }

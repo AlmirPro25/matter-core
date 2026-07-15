@@ -2582,3 +2582,17 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod make_closure_native_surface {
+    use matter_bytecode::Instruction;
+
+    #[test]
+    fn make_closure_instruction_variant_exists() {
+        let i = Instruction::MakeClosure {
+            func_name: "f".into(),
+            capture_names: vec![],
+        };
+        assert!(matches!(i, Instruction::MakeClosure { .. }));
+    }
+}

@@ -2121,3 +2121,29 @@ print "after"
         assert!(check(src).is_ok());
     }
 }
+
+/// Permanent surface test (991dcf4 / clean-build residual):
+/// Ensure MakeClosure remains a constructible Instruction so native/JIT paths
+/// that match exhaustively cannot silently drop the variant without a test failure.
+#[cfg(test)]
+mod make_closure_surface {
+    use super::*;
+
+    #[test]
+    fn make_closure_instruction_constructible() {
+        let i = Instruction::MakeClosure {
+            func_name: "__lambda_0".into(),
+            capture_names: vec!["x".into()],
+        };
+        match i {
+            Instruction::MakeClosure {
+                func_name,
+                capture_names,
+            } => {
+                assert_eq!(func_name, "__lambda_0");
+                assert_eq!(capture_names, vec!["x".to_string()]);
+            }
+            _ => panic!("expected MakeClosure"),
+        }
+    }
+}

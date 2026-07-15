@@ -15,7 +15,9 @@
 | Merge commit | `c273992cc5166dccb786c8b5f29e928d427de4ff` | `merge: Matter 0.2.0 semantic honesty and file capabilities v1` |
 | Feature tip (pre-merge) | `211afdf03c6d9c60ae28e58b51405e7d96ace2c5` | recover 0.1.0 ZIP / seal dist |
 | Post-merge build integrity | `991dcf455acfb83efe64f14969449f607e600f0e` | restore AST + native `MakeClosure` arms for clean-tree builds |
-| **main HEAD after merge** | `991dcf455acfb83efe64f14969449f607e600f0e` | (includes merge + build fix) |
+| Milestone doc | `6c3a77e52e783466caa0b3a693f59e1e07364865` | merge milestone (postcheck) |
+| **Residual close** | `0c860aa` | clean-tree Closure/AST/link fixes + permanent gates; **RESIDUAL_CLOSED** |
+| **main HEAD** | `0c860aa` | residual close on top of merge milestone |
 
 Parent of merge: `main` was `fa973a3` (inventory), matching `github-matter-core/main` with no unexpected remote commits.
 
@@ -44,7 +46,7 @@ Parent of merge: `main` was `fa973a3` (inventory), matching `github-matter-core/
 | cargo tests Core crates | **PASS** (lexer, parser, bytecode, vm, runtime, stdlib, ast) |
 | cargo test matter-cli (capability_policy) | **8/8 PASS** |
 | language-only build | **PASS** (after AST integrity fix) |
-| experimental-full | **Binary present** (rebuild of full dep graph was interrupted; see residuals) |
+| experimental-full | **PASS** on clean worktree (see Residual close) |
 | `cargo fmt --check` (altered crates) | **PASS** |
 
 Evidence: `target/validation/merge_0_2_0_postcheck/`
@@ -73,14 +75,73 @@ Evidence: `target/validation/merge_0_2_0_postcheck/`
 
 ---
 
-## Residual risks
+## Residual close (post-merge) — **RESIDUAL_CLOSED**
+
+Closed on clean worktree of **`6c3a77e`** with isolated `CARGO_TARGET_DIR` on `D:` (no `cargo clean` on primary tree; stash `pre-merge-0.2.0` untouched; ZIP/tag 0.1.0 untouched).
+
+### Environment
+
+| Field | Value |
+|-------|--------|
+| Worktree | `D:\matter-clean-6c3a77e` (detached `6c3a77e`) |
+| `CARGO_TARGET_DIR` | `D:\matter-target-clean-6c3a77e` |
+| Prebuilt CLI in isolated target before language-only | **none** (language-only built first) |
+| Target space after both builds | **~1.87 GB** / ~4300 files |
+
+### Clean builds
+
+| Variant | Command | Exit | Duration | Binary SHA-256 | Size |
+|---------|---------|------|----------|----------------|------|
+| **language-only** | `cargo build -p matter-cli --release --bin matter-cli` | **0** | **31.0 s** | `B232B8F96D1A3EA672154C1B53A5C83A1891DA0C34819AFDCCA00323181F8682` | 3 764 158 |
+| **experimental-full** | `cargo build -p matter-cli --release --features experimental-full --bin matter-cli-experimental` | **0** | **73.2 s** (incremental after compile-fix retries; first full graph ~552 s then blockers) | `FD091B8C5BE98EBABE759F85112E977511FDB6313F21B7003D77070B7B596410` | 48 141 741 |
+
+Language-only system DLL surface (representative): `kernel32`, `ntdll`, `userenv`, `ws2_32`, CRT APIs — no `python3` / `opengl32`.  
+Experimental additionally links GUI/polyglot deps (incl. `shlwapi`, `python3`, `opengl32`, DXGI/D3D family).
+
+### Compile blockers fixed (residual-only)
+
+1. **`Value::Closure` non-exhaustive** in bridges (`java`, `go`, `python`, `nodejs`, native variants, `rust`) and **`matter-visual`** `value_json`.  
+2. **AST arms** for `ImportFrom` / `ImportAs` / `Export` and `Lambda` / `Ok`/`Err`/`Some`/`None` / `TryPropagate` in **`matter-linter`** and **`matter-formatter`**.  
+3. **windows-gnu link**: missing `libshlwapi.a` in Rust self-contained sysroot for experimental-full — vendored `tools/windows-gnu-libs/libshlwapi.a` + gate installs into toolchain `self-contained` when needed.
+
+### Suites on clean language-only CLI
+
+| Gate | Result |
+|------|--------|
+| Semantic Honesty | **37/37 PASS** (exit 0) |
+| Core | **37/37 PASS** (exit 0) |
+| Security | **26/26 PASS** (exit 0) |
+| ZIP 0.1.0 | **`0A5FEE59…332A2` match** |
+
+CLI: `D:\matter-target-clean-6c3a77e\release\matter-cli.exe`  
+SHA-256: `B232B8F9…1F8682`
+
+### cargo tests (Core crates, isolated target)
+
+| Crate | Result |
+|-------|--------|
+| matter-lexer / parser / bytecode / vm / runtime / stdlib / ast | **PASS** (all exit 0) |
+| `surface_integrity_991dcf4` (ast) | **3/3 PASS** |
+| `make_closure_surface` (bytecode) | **1/1 PASS** |
+| `make_closure_native_surface` (native) | **1/1 PASS** |
+
+### Permanent gates added
+
+- `scripts/test-clean-checkout-build.ps1` — worktree + isolated target; optional `-IncludeExperimental`; surface tests; shlwapi ensure for gnu experimental.  
+- Unit surfaces above so incremental caches cannot hide missing 991dcf4 / MakeClosure arms.
+
+Evidence: `target/validation/residual_0_2_0_clean/` (`language_only.json`, `experimental_full.json`, `suite_results.json`, `cargo_core_tests.json`, `residual_report.json`, build logs).
+
+---
+
+## Residual risks (remaining, non-blocking)
 
 1. **Draft Release** for original 0.1.0 ZIP still pending (`gh` auth). Vault copy: `D:\Users\almir\MatterArtifactVault\…ORIGINAL-0A5FEE59.zip`.  
-2. **experimental-full** full rebuild from a clean dep cache is slow; gate verified language-only thoroughly; experimental binary was present from an earlier successful build on this workstation.  
+2. **experimental-full** full cold rebuild remains slow (multi-minute).  
 3. **Symlink file** escape tests still require Administrator; junction/reparse cases verified.  
 4. **TOCTOU** remains between capability path check and FS op (not a full OS sandbox).  
-5. **Uncommitted local WIP** was stashed before merge (`stash@{0}: pre-merge-0.2.0: stash unrelated local WIP`) — restore with `git stash pop` when convenient.  
-6. Clean-tree build required restoring AST variants (`ImportFrom`/`Lambda`/…) that the parser already referenced but that had lived only in local WIP — fixed in `991dcf4`.
+5. **Uncommitted local WIP** stashed before merge (`stash@{0}: pre-merge-0.2.0`) — **not** popped; restore only when convenient.  
+6. windows-gnu toolchains without `libshlwapi.a` need vendored import lib (documented under `tools/windows-gnu-libs/`).
 
 ---
 
@@ -92,10 +153,12 @@ Evidence: `target/validation/merge_0_2_0_postcheck/`
 - No force push  
 - No deletion of `develop/0.2.0-semantic-honesty`  
 - No modules / type system feature work  
+- No new product features beyond residual compile/surface gates  
 
 ---
 
 ## Status claim
 
-**Matter Core main** now includes **development track 0.2.0** (semantic honesty + file capabilities v1).  
+**Matter Core main** includes **development track 0.2.0** (semantic honesty + file capabilities v1).  
+**Post-merge residual close: RESIDUAL_CLOSED** (clean language-only + experimental-full builds proven; permanent gates landed).  
 Still **not** production-ready and **not** a release candidate.

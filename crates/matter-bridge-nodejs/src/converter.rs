@@ -51,6 +51,7 @@ impl JavaScriptTypeConverter {
                 Ok(serde_json::Value::Object(json_map))
             }
             Value::Function(_) => Err("Cannot convert Matter function to JavaScript".to_string()),
+            Value::Closure(_) => Err("Cannot convert Matter closure to JavaScript".to_string()),
         }
     }
 

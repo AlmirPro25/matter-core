@@ -266,6 +266,9 @@ impl JavaBridge {
             Value::Function(_) => Err(BridgeError::ConversionError(
                 "Cannot convert Matter function to Java".to_string(),
             )),
+            Value::Closure(_) => Err(BridgeError::ConversionError(
+                "Cannot convert Matter closure to Java".to_string(),
+            )),
         }
     }
 

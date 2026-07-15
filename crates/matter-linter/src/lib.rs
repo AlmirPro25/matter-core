@@ -194,6 +194,9 @@ fn collect_stmt_defs_uses(
             }
         }
         Statement::Import { .. }
+        | Statement::ImportFrom { .. }
+        | Statement::ImportAs { .. }
+        | Statement::Export { .. }
         | Statement::StructDef { .. }
         | Statement::Spawn { .. }
         | Statement::Break
@@ -262,6 +265,9 @@ fn collect_stmt_calls(stmt: &Statement, called: &mut HashSet<String>) {
             }
         }
         Statement::Import { .. }
+        | Statement::ImportFrom { .. }
+        | Statement::ImportAs { .. }
+        | Statement::Export { .. }
         | Statement::StructDef { .. }
         | Statement::Spawn { .. }
         | Statement::Break
@@ -316,7 +322,17 @@ fn collect_expr_uses(expr: &Expression, used: &mut HashSet<String>) {
         | Expression::Bool(_)
         | Expression::String(_)
         | Expression::Null
-        | Expression::Unit => {}
+        | Expression::Unit
+        | Expression::NoneExpr => {}
+        Expression::OkExpr(inner)
+        | Expression::ErrExpr(inner)
+        | Expression::SomeExpr(inner)
+        | Expression::TryPropagate(inner) => collect_expr_uses(inner, used),
+        Expression::Lambda { body, .. } => {
+            for stmt in body {
+                collect_stmt_defs_uses(stmt, &mut HashSet::new(), used);
+            }
+        }
     }
 }
 
@@ -368,6 +384,16 @@ fn collect_expr_calls(expr: &Expression, called: &mut HashSet<String>) {
         | Expression::Bool(_)
         | Expression::String(_)
         | Expression::Null
-        | Expression::Unit => {}
+        | Expression::Unit
+        | Expression::NoneExpr => {}
+        Expression::OkExpr(inner)
+        | Expression::ErrExpr(inner)
+        | Expression::SomeExpr(inner)
+        | Expression::TryPropagate(inner) => collect_expr_calls(inner, called),
+        Expression::Lambda { body, .. } => {
+            for stmt in body {
+                collect_stmt_calls(stmt, called);
+            }
+        }
     }
 }

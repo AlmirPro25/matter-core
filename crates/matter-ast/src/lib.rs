@@ -223,3 +223,57 @@ impl Param {
         }
     }
 }
+
+/// Surface integrity tests (commit 991dcf4):
+/// Parser and bytecode already reference these variants. Incremental builds can hide
+/// missing variants if only dirty crates recompile; these unit tests force `matter-ast`
+/// to construct every required surface so a clean checkout fails loudly if they regress.
+#[cfg(test)]
+mod surface_integrity_991dcf4 {
+    use super::*;
+
+    #[test]
+    fn statement_import_export_variants_constructible() {
+        let _ = Statement::Import {
+            path: "mod.matter".into(),
+        };
+        let _ = Statement::ImportFrom {
+            path: "mod.matter".into(),
+            names: vec![ImportName {
+                name: "foo".into(),
+                alias: None,
+            }],
+        };
+        let _ = Statement::ImportAs {
+            path: "mod.matter".into(),
+            alias: "m".into(),
+        };
+        let _ = Statement::Export {
+            names: vec!["foo".into()],
+        };
+    }
+
+    #[test]
+    fn expression_lambda_result_option_try_variants_constructible() {
+        let body = vec![Statement::Return(Expression::Int(1))];
+        let _ = Expression::Lambda {
+            params: vec![Param::new("x".into())],
+            body: body.clone(),
+        };
+        let _ = Expression::OkExpr(Box::new(Expression::Int(1)));
+        let _ = Expression::ErrExpr(Box::new(Expression::String("e".into())));
+        let _ = Expression::SomeExpr(Box::new(Expression::Bool(true)));
+        let _ = Expression::NoneExpr;
+        let _ = Expression::TryPropagate(Box::new(Expression::Identifier("r".into())));
+    }
+
+    #[test]
+    fn statement_and_expression_enums_remain_nonempty() {
+        // Touch both enums so renames/deletions of the module surface fail compile/tests.
+        assert!(matches!(
+            Statement::Break,
+            Statement::Break | Statement::Continue
+        ));
+        assert!(matches!(Expression::Unit, Expression::Unit | Expression::Null));
+    }
+}

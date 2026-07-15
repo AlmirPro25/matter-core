@@ -113,6 +113,9 @@ impl PythonTypeConverter {
             Value::Function(_) => Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
                 "Cannot convert Matter function to Python",
             )),
+            Value::Closure(_) => Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
+                "Cannot convert Matter closure to Python",
+            )),
         }
     }
 }

@@ -263,6 +263,16 @@ pub fn encode_value_json(value: &Value) -> serde_json::Value {
                 serde_json::Value::String(name.as_str().to_string()),
             );
         }
+        Value::Closure(data) => {
+            object.insert(
+                "type".to_string(),
+                serde_json::Value::String("closure".to_string()),
+            );
+            object.insert(
+                "value".to_string(),
+                serde_json::Value::String(data.func_name.clone()),
+            );
+        }
         Value::Null => {
             object.insert(
                 "type".to_string(),
