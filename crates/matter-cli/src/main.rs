@@ -16888,6 +16888,8 @@ fn token_json(index: usize, token: &Token, line: usize, column: usize) -> String
         Token::Semicolon => ("semicolon", None),
         Token::Newline => ("newline", None),
         Token::Eof => ("eof", None),
+        // Phase 2 hardening: lexer may emit Illegal; experimental token JSON must not crash.
+        Token::Illegal(c) => ("illegal", Some(c.to_string())),
     };
 
     let value_field = match value {
