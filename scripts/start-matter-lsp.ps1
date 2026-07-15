@@ -1,32 +1,47 @@
 # Start Matter Language Server (stdio) without hardcoded drive letters.
-# Resolution order:
-#   1) $env:MATTER_CLI
-#   2) matter-cli.exe / matter.exe on PATH
-#   3) relative to this script (dev tree or installed package)
-#   4) $env:MATTER_HOME\bin\matter-cli.exe
-#   5) $env:LOCALAPPDATA\Matter\bin\matter-cli.exe
+# Prefers dedicated matter-lsp.exe (delivery binary). Does NOT use "matter-cli lsp"
+# (language-only CLI has no lsp subcommand).
 #
-# VS Code: set "matter.lsp.path" to matter-cli (on PATH) or absolute path you choose.
-# Do not hardcode C:/D:/F: in settings for portability.
+# Resolution order:
+#   1) $env:MATTER_LSP
+#   2) matter-lsp.exe / matter-lsp on PATH
+#   3) same directory as matter-cli on PATH
+#   4) relative package / install / dev tree bin/
+#   5) $env:MATTER_HOME\bin\matter-lsp.exe
+#   6) $env:LOCALAPPDATA\Matter\bin\matter-lsp.exe
+#
+# VS Code: set "matter.lsp.path" to matter-lsp.exe or leave empty for auto-discover.
+# Do not hardcode C:/D:/F: personal paths in settings.
 
 $ErrorActionPreference = "Stop"
 
-function Find-MatterCli {
-    if ($env:MATTER_CLI -and (Test-Path -LiteralPath $env:MATTER_CLI)) {
-        return (Resolve-Path -LiteralPath $env:MATTER_CLI).Path
+function Find-MatterLsp {
+    if ($env:MATTER_LSP -and (Test-Path -LiteralPath $env:MATTER_LSP)) {
+        return (Resolve-Path -LiteralPath $env:MATTER_LSP).Path
     }
 
-    foreach ($name in @("matter-cli.exe", "matter-cli", "matter.exe", "matter")) {
+    foreach ($name in @("matter-lsp.exe", "matter-lsp")) {
         $cmd = Get-Command $name -ErrorAction SilentlyContinue
         if ($cmd -and $cmd.Source) { return $cmd.Source }
     }
 
+    # Adjacent to matter-cli on PATH
+    foreach ($cliName in @("matter-cli.exe", "matter-cli", "matter.exe", "matter")) {
+        $cmd = Get-Command $cliName -ErrorAction SilentlyContinue
+        if ($cmd -and $cmd.Source) {
+            $dir = Split-Path -Parent $cmd.Source
+            $cand = Join-Path $dir "matter-lsp.exe"
+            if (Test-Path -LiteralPath $cand) {
+                return (Resolve-Path -LiteralPath $cand).Path
+            }
+        }
+    }
+
     $scriptDir = $PSScriptRoot
     $relatives = @(
-        (Join-Path $scriptDir "..\bin\matter-cli.exe"),
-        (Join-Path $scriptDir "..\bin\matter.exe"),
-        (Join-Path $scriptDir "..\target\x86_64-pc-windows-gnu\release\matter-cli.exe"),
-        (Join-Path $scriptDir "..\target\release\matter-cli.exe")
+        (Join-Path $scriptDir "..\bin\matter-lsp.exe"),
+        (Join-Path $scriptDir "..\target\release\matter-lsp.exe"),
+        (Join-Path $scriptDir "..\target\x86_64-pc-windows-gnu\release\matter-lsp.exe")
     )
     foreach ($c in $relatives) {
         if (Test-Path -LiteralPath $c) {
@@ -35,24 +50,28 @@ function Find-MatterCli {
     }
 
     if ($env:MATTER_HOME) {
-        $c = Join-Path $env:MATTER_HOME "bin\matter-cli.exe"
+        $c = Join-Path $env:MATTER_HOME "bin\matter-lsp.exe"
         if (Test-Path -LiteralPath $c) { return (Resolve-Path -LiteralPath $c).Path }
     }
 
-    $local = Join-Path $env:LOCALAPPDATA "Matter\bin\matter-cli.exe"
-    if (Test-Path -LiteralPath $local) {
-        return (Resolve-Path -LiteralPath $local).Path
+    if ($env:LOCALAPPDATA) {
+        $local = Join-Path $env:LOCALAPPDATA "Matter\bin\matter-lsp.exe"
+        if (Test-Path -LiteralPath $local) {
+            return (Resolve-Path -LiteralPath $local).Path
+        }
     }
 
     return $null
 }
 
-$cli = Find-MatterCli
-if (-not $cli) {
-    [Console]::Error.WriteLine("matter-cli.exe not found. Install Matter Core or set MATTER_CLI / PATH / MATTER_HOME.")
+$lsp = Find-MatterLsp
+if (-not $lsp) {
+    [Console]::Error.WriteLine("matter-lsp.exe not found. Build: cargo build -p matter-lsp --release --bin matter-lsp")
+    [Console]::Error.WriteLine("Or install Matter Core package with bin/matter-lsp.exe, or set MATTER_LSP.")
+    [Console]::Error.WriteLine("Note: language-only matter-cli does not implement the 'lsp' subcommand.")
     exit 1
 }
 
 # LSP speaks over stdin/stdout — do not print banners.
-& $cli lsp
+& $lsp
 exit $LASTEXITCODE

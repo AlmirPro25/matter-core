@@ -86,19 +86,22 @@ code --install-extension matter-0.7.0.vsix
 {
   // Enable/disable LSP
   "matter.lsp.enabled": true,
-  
-  // Path to matter-cli executable
-  "matter.lsp.path": "matter-cli",
-  
+
+  // Path to matter-lsp.exe (empty = auto-discover). Not matter-cli.
+  "matter.lsp.path": "",
+
+  // Path to language-only CLI for Run/Compile commands
+  "matter.cli.path": "matter-cli",
+
   // Enable/disable formatter
   "matter.formatter.enabled": true,
-  
+
   // Enable/disable linter
   "matter.linter.enabled": true,
-  
+
   // Enable/disable debugger
   "matter.debug.enabled": true,
-  
+
   // LSP trace level (off, messages, verbose)
   "matter.trace.server": "off"
 }
@@ -213,7 +216,7 @@ print response
 
 2. Check extension settings:
    - `matter.lsp.enabled` should be `true`
-   - `matter.lsp.path` should point to `matter-cli`
+   - `matter.lsp.path` empty (auto-discover `matter-lsp.exe`) or full path to **`matter-lsp.exe`** (not `matter-cli lsp`)
 
 3. Restart VS Code
 

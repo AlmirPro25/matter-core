@@ -82,7 +82,7 @@ vscode-extension/
 ```json
 {
   "matter.lsp.enabled": true,
-  "matter.lsp.path": "matter-cli",
+  "matter.lsp.path": "",
   "matter.formatter.enabled": true,
   "matter.linter.enabled": true,
   "matter.debug.enabled": true,
@@ -94,7 +94,7 @@ vscode-extension/
 
 ### LSP Client
 - Uses `vscode-languageclient` package
-- Connects to `matter-cli lsp` via stdio
+- Connects to dedicated `matter-lsp.exe` via stdio (not language-only `matter-cli lsp`)
 - Handles all LSP protocol messages
 - Automatic reconnection on config changes
 

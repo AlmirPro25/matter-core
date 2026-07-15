@@ -6,7 +6,7 @@
 
 ```bash
 # Windows
-cd "F:\Users\almir\Desktop\MANIFESTO DA LINGUAGEM MATTER CORE"
+cd <path-to-matter-core-repo>
 .\install.ps1
 
 # Verify installation
@@ -178,10 +178,9 @@ Search for "Matter" and configure:
 {
   // Enable LSP (default: true)
   "matter.lsp.enabled": true,
-  
-  // Path to matter-cli (default: "matter-cli")
-  "matter.lsp.path": "matter-cli",
-  
+  "matter.lsp.path": "",
+  "matter.cli.path": "matter-cli",
+
   // Enable formatter (default: true)
   "matter.formatter.enabled": true,
   

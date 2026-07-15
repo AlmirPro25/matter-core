@@ -2,6 +2,13 @@
 name = "matter-lsp"
 version = "0.5.0"
 edition = "2021"
+description = "Matter Language Server Protocol (stdio) — language-only Core surface"
+publish = false
+
+# Versioned delivery binary (independent of matter-cli language-only).
+[[bin]]
+name = "matter-lsp"
+path = "src/main.rs"
 
 [dependencies]
 matter-lexer = { path = "../matter-lexer" }

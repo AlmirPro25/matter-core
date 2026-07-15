@@ -1,7 +1,7 @@
 ﻿# Matter LSP v1 Merge Milestone
 
 **Date:** 2026-07-15  
-**Status:** **MERGED** (Pre-Merge Gate v1 **PASS**)  
+**Status:** **LSP engine merged** (Pre-Merge Gate v1 **PASS**) — **not** “LSP delivered” until packaging + dedicated `matter-lsp.exe` + extension wiring pass Delivery v1.  
 **Remote:** `github-matter-core` (`https://github.com/AlmirPro25/matter-core.git`)  
 **Merge type:** `git merge --no-ff`  
 **Force push:** not used  
@@ -27,7 +27,7 @@
 
 | Gate | Result |
 |------|--------|
-| Clean worktree / checkout | PASS (`D:\matter-lsp-premerge-gate` @ feature tip) |
+| Clean worktree / checkout | PASS (isolated worktree @ feature tip) |
 | `cargo fmt --check -p matter-lsp` | PASS (after rustfmt commit `edc2cdd`) |
 | `cargo check -p matter-lsp` | PASS |
 | `cargo test -p matter-lsp --lib` | **15/15 PASS** |
