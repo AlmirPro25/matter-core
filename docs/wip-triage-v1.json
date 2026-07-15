@@ -1,4 +1,4 @@
-{
+﻿{
   "version": "WIP_TRIAGE_V1",
   "date": "2026-07-15",
   "base_commit": "7533efc4fa8afd1f288ba6fd20580edccfc0b183",
@@ -45,7 +45,7 @@
     "tooling/fuzz-harness-recovery": "b1f7944",
     "docs/core-examples-recovery": "5626324",
     "docs/session-archive-2026-07-14": "b901338",
-    "docs/wip-triage-v1-report": "HEAD_AFTER_REPORT_COMMIT"
+    "docs/wip-triage-v1-report": "bda2b758784187b207ff3a2f3887e285e30ca556"
   },
   "buckets": {
     "lsp_resolver": {
@@ -164,3 +164,4 @@
     "modules_or_types_started": false
   }
 }
+
