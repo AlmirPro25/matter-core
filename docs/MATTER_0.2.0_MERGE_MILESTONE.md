@@ -16,8 +16,7 @@
 | Feature tip (pre-merge) | `211afdf03c6d9c60ae28e58b51405e7d96ace2c5` | recover 0.1.0 ZIP / seal dist |
 | Post-merge build integrity | `991dcf455acfb83efe64f14969449f607e600f0e` | restore AST + native `MakeClosure` arms for clean-tree builds |
 | Milestone doc | `6c3a77e52e783466caa0b3a693f59e1e07364865` | merge milestone (postcheck) |
-| **Residual close** | `0c860aa` | clean-tree Closure/AST/link fixes + permanent gates; **RESIDUAL_CLOSED** |
-| **main HEAD** | `0c860aa` | residual close on top of merge milestone |
+| **Residual close** | `da9b10f34c2f2dc4d94b755216d1b51442df64ab` | clean-tree Closure/AST/link fixes + permanent gates; **RESIDUAL_CLOSED** |
 
 Parent of merge: `main` was `fa973a3` (inventory), matching `github-matter-core/main` with no unexpected remote commits.
 
