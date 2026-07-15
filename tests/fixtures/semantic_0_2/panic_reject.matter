@@ -1,0 +1,2 @@
+// Should fail: panic reserved not implemented
+panic

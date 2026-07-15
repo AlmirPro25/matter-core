@@ -1,0 +1,2 @@
+﻿// Write grant must not allow delete
+file.delete("ok.txt")

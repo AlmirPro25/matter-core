@@ -4,35 +4,19 @@
 //! Phase 1: default is language-only (stdlib + energy). Optional features:
 //! `polyglot`, `visual`, `frontier`, `device`, `experimental-full`.
 
-use matter_backend::{Backend, GraphBackend, StoreBackend, ToolBackend, Value};
+#[cfg(feature = "frontier")]
+use matter_acoustics::backend::AcousticsBackend;
+#[cfg(feature = "frontier")]
+use matter_atmosphere::backend::AtmosphereBackend;
 #[cfg(feature = "agent")]
 use matter_backend::AgentBackend;
 #[cfg(feature = "net")]
 use matter_backend::NetBackend;
+use matter_backend::{Backend, GraphBackend, StoreBackend, ToolBackend, Value};
 #[cfg(feature = "frontier")]
 use matter_biological::backend::BiologicalBackend;
 #[cfg(feature = "frontier")]
 use matter_biophysics::backend::BiophysicsBackend;
-#[cfg(feature = "frontier")]
-use matter_geophysics::backend::GeophysicsBackend;
-#[cfg(feature = "frontier")]
-use matter_ocean::backend::OceanBackend;
-#[cfg(feature = "frontier")]
-use matter_atmosphere::backend::AtmosphereBackend;
-#[cfg(feature = "frontier")]
-use matter_materials::backend::MaterialsBackend;
-#[cfg(feature = "frontier")]
-use matter_acoustics::backend::AcousticsBackend;
-#[cfg(feature = "frontier")]
-use matter_electromagnetics::backend::ElectromagneticsBackend;
-#[cfg(feature = "frontier")]
-use matter_ml_physics::backend::MLPhysicsBackend;
-#[cfg(feature = "frontier")]
-use matter_climate::backend::ClimateBackend;
-#[cfg(feature = "frontier")]
-use matter_multiscale::backend::MultiscaleBackend;
-#[cfg(feature = "frontier")]
-use matter_cosmology::backend::CosmologyBackend;
 #[cfg(feature = "polyglot")]
 use matter_bridge_go::{Bridge as GoBridgeTrait, GoBridge};
 #[cfg(feature = "polyglot")]
@@ -46,17 +30,33 @@ use matter_bridge_rust::RustBridge;
 use matter_bytecode::Bytecode;
 #[cfg(feature = "frontier")]
 use matter_chemistry::backend::ChemistryBackend;
+#[cfg(feature = "frontier")]
+use matter_climate::backend::ClimateBackend;
+#[cfg(feature = "frontier")]
+use matter_cosmology::backend::CosmologyBackend;
 #[cfg(feature = "device")]
 use matter_device::DeviceBackend;
+#[cfg(feature = "frontier")]
+use matter_electromagnetics::backend::ElectromagneticsBackend;
 use matter_energy::{EnergyBackend, EnergyRuntime};
 #[cfg(feature = "frontier")]
 use matter_genesis::backend::GenesisBackend;
 #[cfg(feature = "frontier")]
+use matter_geophysics::backend::GeophysicsBackend;
+#[cfg(feature = "frontier")]
+use matter_materials::backend::MaterialsBackend;
+#[cfg(feature = "frontier")]
 use matter_memristive::backend::MemristiveBackend;
+#[cfg(feature = "frontier")]
+use matter_ml_physics::backend::MLPhysicsBackend;
 #[cfg(feature = "frontier")]
 use matter_molecular::backend::MolecularBackend;
 #[cfg(feature = "frontier")]
+use matter_multiscale::backend::MultiscaleBackend;
+#[cfg(feature = "frontier")]
 use matter_neuromorphic::backend::NeuromorphicBackend;
+#[cfg(feature = "frontier")]
+use matter_ocean::backend::OceanBackend;
 #[cfg(feature = "frontier")]
 use matter_photonic::backend::PhotonicBackend;
 #[cfg(feature = "polyglot")]
@@ -68,8 +68,8 @@ use matter_relativity::backend::RelativityBackend;
 #[cfg(feature = "frontier")]
 use matter_spintronics::backend::SpintronicsBackend;
 use matter_stdlib::{
-    AudioBackend, ConsoleBackend, FileBackend, FileIOBackend, HashMapBackend, JsonBackend,
-    ListBackend, MapBackend, MathBackend, OptionBackend, RandomBackend, ResultBackend,
+    AudioBackend, ConsoleBackend, FileBackend, FileIOBackend, FsCapabilityPolicy, HashMapBackend,
+    JsonBackend, ListBackend, MapBackend, MathBackend, OptionBackend, RandomBackend, ResultBackend,
     StringBackend, TensorBackend, TimeBackend, TypeBackend, VecBackend, WorldBackend,
 };
 #[cfg(feature = "visual")]
@@ -86,25 +86,25 @@ pub struct Runtime {
 }
 
 impl Runtime {
+    /// Create a runtime with default-deny filesystem capabilities.
     pub fn new(bytecode: Bytecode) -> Self {
-        let mut vm = Vm::new(bytecode);
-
-        register_default_backends(&mut vm, false);
-        register_stdlib_backends(&mut vm, true);
-        #[cfg(feature = "polyglot")]
-        register_polyglot_backends(&mut vm);
-
-        Self {
-            vm,
-            energy_runtime: Some(EnergyRuntime::new()),
-        }
+        Self::with_fs_policy(bytecode, FsCapabilityPolicy::deny_all(), false)
     }
 
+    /// Silent stdlib (no extended I/O noise) with default-deny FS.
     pub fn new_silent(bytecode: Bytecode) -> Self {
+        Self::with_fs_policy(bytecode, FsCapabilityPolicy::deny_all(), true)
+    }
+
+    /// Runtime with explicit File Capabilities v1 policy for `file.*` / `fileio.*`.
+    ///
+    /// Program-initiated FS access is denied unless roots were granted on `policy`.
+    /// CLI compile `-o` and host packaging paths are unrelated to this policy.
+    pub fn with_fs_policy(bytecode: Bytecode, fs_policy: FsCapabilityPolicy, silent: bool) -> Self {
         let mut vm = Vm::new(bytecode);
 
-        register_default_backends(&mut vm, true);
-        register_stdlib_backends(&mut vm, false);
+        register_default_backends(&mut vm, silent);
+        register_stdlib_backends(&mut vm, !silent, fs_policy);
         #[cfg(feature = "polyglot")]
         register_polyglot_backends(&mut vm);
 
@@ -415,7 +415,7 @@ fn register_default_backends(vm: &mut Vm, silent: bool) {
     let _ = silent;
 }
 
-fn register_stdlib_backends(vm: &mut Vm, include_extended: bool) {
+fn register_stdlib_backends(vm: &mut Vm, include_extended: bool, fs_policy: FsCapabilityPolicy) {
     // Language-core stdlib (no optional crates).
     vm.register_backend("math".to_string(), Box::new(MathBackend::new()));
     vm.register_backend("string".to_string(), Box::new(StringBackend::new()));
@@ -435,8 +435,15 @@ fn register_stdlib_backends(vm: &mut Vm, include_extended: bool) {
         vm.register_backend("map".to_string(), Box::new(MapBackend::new()));
         vm.register_backend("type".to_string(), Box::new(TypeBackend::new()));
         vm.register_backend("console".to_string(), Box::new(ConsoleBackend::new()));
-        vm.register_backend("file".to_string(), Box::new(FileBackend::new()));
-        vm.register_backend("fileio".to_string(), Box::new(FileIOBackend::new()));
+        // Shared policy for file.* and fileio.* (File Capabilities v1).
+        vm.register_backend(
+            "file".to_string(),
+            Box::new(FileBackend::with_policy(fs_policy.clone())),
+        );
+        vm.register_backend(
+            "fileio".to_string(),
+            Box::new(FileIOBackend::with_policy(fs_policy)),
+        );
     }
 
     #[cfg(feature = "frontier")]

@@ -1,0 +1,5 @@
+let x = "z"
+match x {
+  "a" => { print "A" }
+  "z" => { print "Z" }
+}

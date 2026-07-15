@@ -1,13 +1,16 @@
 //! Core execution commands: run, eval, run-json, eval-json
+//!
+//! All program execution paths share the same File Capabilities v1 policy.
 
 use matter_bytecode::BytecodeBuilder;
 use matter_parser::Parser;
 use matter_runtime::Runtime;
+use matter_stdlib::FsCapabilityPolicy;
 use std::fs;
 use std::process;
 
-/// Run a Matter source file
-pub fn run_file(path: &str) {
+/// Run a Matter source file under the given FS policy.
+pub fn run_file(path: &str, fs_policy: FsCapabilityPolicy) {
     let source = read_source_or_exit(path);
     let mut parser = match Parser::from_source_checked(&source) {
         Ok(p) => p,
@@ -28,12 +31,12 @@ pub fn run_file(path: &str) {
     let bytecode = match builder.build_checked(&program) {
         Ok(b) => b,
         Err(e) => {
-            eprintln!("Compilation error: {:?}", e);
+            eprintln!("Compilation error: {}", e);
             process::exit(1);
         }
     };
 
-    let mut runtime = Runtime::new(bytecode);
+    let mut runtime = Runtime::with_fs_policy(bytecode, fs_policy, false);
     if let Err(e) = runtime.run() {
         eprintln!("Runtime error: {}", e);
         process::exit(1);
@@ -41,13 +44,13 @@ pub fn run_file(path: &str) {
 }
 
 /// Run a Matter source file and print JSON result
-pub fn run_file_json(path: &str, with_energy: bool) {
+pub fn run_file_json(path: &str, with_energy: bool, fs_policy: FsCapabilityPolicy) {
     let source = read_source_or_exit(path);
-    run_source_json(&source, path, with_energy);
+    run_source_json(&source, path, with_energy, fs_policy);
 }
 
 /// Evaluate Matter source text
-pub fn eval_source(source: &str) {
+pub fn eval_source(source: &str, fs_policy: FsCapabilityPolicy) {
     let mut parser = match Parser::from_source_checked(source) {
         Ok(p) => p,
         Err(e) => {
@@ -67,12 +70,12 @@ pub fn eval_source(source: &str) {
     let bytecode = match builder.build_checked(&program) {
         Ok(b) => b,
         Err(e) => {
-            eprintln!("Compilation error: {:?}", e);
+            eprintln!("Compilation error: {}", e);
             process::exit(1);
         }
     };
 
-    let mut runtime = Runtime::new(bytecode);
+    let mut runtime = Runtime::with_fs_policy(bytecode, fs_policy, false);
     if let Err(e) = runtime.run() {
         eprintln!("Runtime error: {}", e);
         process::exit(1);
@@ -80,12 +83,17 @@ pub fn eval_source(source: &str) {
 }
 
 /// Evaluate Matter source text and print JSON result
-pub fn eval_source_json(source: &str) {
-    run_source_json(source, "<eval>", false);
+pub fn eval_source_json(source: &str, fs_policy: FsCapabilityPolicy) {
+    run_source_json(source, "<eval>", false, fs_policy);
 }
 
 /// Internal: run source and print JSON
-pub fn run_source_json(source: &str, label: &str, with_energy: bool) {
+pub fn run_source_json(
+    source: &str,
+    label: &str,
+    with_energy: bool,
+    fs_policy: FsCapabilityPolicy,
+) {
     let _ = with_energy;
     let mut parser = match Parser::from_source_checked(source) {
         Ok(p) => p,
@@ -95,7 +103,10 @@ pub fn run_source_json(source: &str, label: &str, with_energy: bool) {
                 "error": format!("{}", e),
                 "phase": "parse",
             });
-            println!("{}", serde_json::to_string_pretty(&err).unwrap_or_else(|_| "{\"ok\":false}".into()));
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&err).unwrap_or_else(|_| "{\"ok\":false}".into())
+            );
             process::exit(1);
         }
     };
@@ -107,7 +118,10 @@ pub fn run_source_json(source: &str, label: &str, with_energy: bool) {
                 "error": format!("{}", e),
                 "phase": "parse",
             });
-            println!("{}", serde_json::to_string_pretty(&err).unwrap_or_else(|_| "{\"ok\":false}".into()));
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&err).unwrap_or_else(|_| "{\"ok\":false}".into())
+            );
             process::exit(1);
         }
     };
@@ -118,15 +132,18 @@ pub fn run_source_json(source: &str, label: &str, with_energy: bool) {
         Err(e) => {
             let err = serde_json::json!({
                 "ok": false,
-                "error": format!("{:?}", e),
+                "error": format!("{}", e),
                 "phase": "compile",
             });
-            println!("{}", serde_json::to_string_pretty(&err).unwrap_or_else(|_| "{\"ok\":false}".into()));
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&err).unwrap_or_else(|_| "{\"ok\":false}".into())
+            );
             process::exit(1);
         }
     };
 
-    let mut runtime = Runtime::new(bytecode);
+    let mut runtime = Runtime::with_fs_policy(bytecode, fs_policy, false);
     let start = std::time::Instant::now();
     let run_result = runtime.run();
     let elapsed = start.elapsed();
@@ -143,9 +160,16 @@ pub fn run_source_json(source: &str, label: &str, with_energy: bool) {
             println!("{}", serde_json::to_string_pretty(&result).unwrap());
         }
         Err(e) => {
+            let capability_denied = e.contains("capability_denied");
             let err = serde_json::json!({
                 "ok": false,
-                "error": format!("{}", e),
+                "error": if capability_denied {
+                    // Avoid leaking host paths; surface stable code.
+                    "capability_denied".to_string()
+                } else {
+                    format!("{}", e)
+                },
+                "error_code": if capability_denied { Some("capability_denied") } else { None::<&str> },
                 "phase": "runtime",
             });
             println!("{}", serde_json::to_string_pretty(&err).unwrap());

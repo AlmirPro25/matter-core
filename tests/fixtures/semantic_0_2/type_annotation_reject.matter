@@ -1,0 +1,3 @@
+// Should fail: type annotations unsupported
+let x: int = 10
+print x

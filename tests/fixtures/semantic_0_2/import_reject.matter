@@ -1,0 +1,3 @@
+// Should fail: import not implemented
+import "mod.matter"
+print "should not run"

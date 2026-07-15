@@ -1,0 +1,2 @@
+﻿// Read denied by default
+print file.read("secret.txt")

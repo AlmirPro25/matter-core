@@ -1,0 +1,3 @@
+﻿// Authorized write+read inside root (path relative to CWD; suite sets sandbox)
+file.write("ok.txt", "hello")
+print file.read("ok.txt")

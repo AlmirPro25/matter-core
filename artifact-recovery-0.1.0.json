@@ -1,0 +1,125 @@
+﻿{
+    "schema":  "matter.artifact_recovery.0.1.0",
+    "recommendation":  "MERGE_APPROVED",
+    "residual_open":  [
+                          "private_draft_release_attachment_pending_gh_auth"
+                      ],
+    "production_ready":  false,
+    "release_candidate":  false,
+    "merge_performed":  false,
+    "release_0_2_0_performed":  false,
+    "tag_baseline_modified":  false,
+    "quarantine":  {
+                       "action":  "quarantine",
+                       "original_path":  "dist\\matter-core-0.1.0-windows-x64.zip",
+                       "quarantine_path":  "dist\\matter-core-0.1.0-windows-x64.OVERWRITTEN-938ACA2F.zip",
+                       "sha256":  "938ACA2F9807B10DCC261B5801ED7907484C42CDA5EAC42952105D8C6BE4296D",
+                       "size_bytes":  2707058,
+                       "last_write_time_utc":  "2026-07-15T00:15:37.9021337Z",
+                       "creation_time_utc":  "2026-07-15T00:15:37.4243576Z",
+                       "probable_origin":  "Overwritten during Pre-Merge Gate 0.2.0 when scripts/test-portable-release.ps1 repackaged dist/matter-core-0.1.0-windows-x64.zip with a newer matter-cli (gate evidence: portable suite zip_sha256=938ACA2F...)",
+                       "expected_original_sha256":  "0A5FEE59F07A0C09E74992A62CDE95EA4C1DCA9AE6529B12AE47E9F23E1332A2",
+                       "is_original":  false,
+                       "deleted":  false
+                   },
+    "recovery":  {
+                     "status":  "ARTIFACT_ORIGINAL_RECOVERED",
+                     "expected_sha256":  "0A5FEE59F07A0C09E74992A62CDE95EA4C1DCA9AE6529B12AE47E9F23E1332A2",
+                     "source_path":  "D:\\Users\\almir\\Desktop\\MANIFESTO DA LINGUAGEM MATTER CORE\\target\\validation\\production_readiness_v2\\baseline_phase4\\matter-core-0.1.0-windows-x64.zip",
+                     "source_sha256":  "0A5FEE59F07A0C09E74992A62CDE95EA4C1DCA9AE6529B12AE47E9F23E1332A2",
+                     "source_size":  2676017,
+                     "source_mtime_utc":  "2026-07-14T21:36:21.3476865Z",
+                     "restored_dist_path":  "D:\\Users\\almir\\Desktop\\MANIFESTO DA LINGUAGEM MATTER CORE\\dist\\matter-core-0.1.0-windows-x64.zip",
+                     "restored_sha256":  "0A5FEE59F07A0C09E74992A62CDE95EA4C1DCA9AE6529B12AE47E9F23E1332A2",
+                     "restored_readonly":  true,
+                     "vault_path":  "D:\\Users\\almir\\MatterArtifactVault\\matter-core-0.1.0-windows-x64.ORIGINAL-0A5FEE59.zip",
+                     "vault_sha256":  "0A5FEE59F07A0C09E74992A62CDE95EA4C1DCA9AE6529B12AE47E9F23E1332A2",
+                     "vault_readonly":  true,
+                     "sidecars":  [
+
+                                  ],
+                     "draft_release":  {
+                                           "attempted":  true,
+                                           "success":  false,
+                                           "reason":  "gh CLI not authenticated (gh auth status failed). Manual attach to private Draft Release on tag matter-core-v0.1.0-baseline required."
+                                       },
+                     "quarantine_preserved":  "dist\\matter-core-0.1.0-windows-x64.OVERWRITTEN-938ACA2F.zip",
+                     "note":  "Original accepted solely by full SHA-256 match. Not claiming overwritten file was original."
+                 },
+    "original_status":  "ARTIFACT_ORIGINAL_RECOVERED",
+    "original_sha256":  "0A5FEE59F07A0C09E74992A62CDE95EA4C1DCA9AE6529B12AE47E9F23E1332A2",
+    "frozen_dist":  {
+                        "readonly":  true,
+                        "path":  "dist\\matter-core-0.1.0-windows-x64.zip",
+                        "sha256":  "0A5FEE59F07A0C09E74992A62CDE95EA4C1DCA9AE6529B12AE47E9F23E1332A2",
+                        "match_expected":  true
+                    },
+    "quarantine_file":  {
+                            "path":  "dist\\matter-core-0.1.0-windows-x64.OVERWRITTEN-938ACA2F.zip",
+                            "sha256":  "938ACA2F9807B10DCC261B5801ED7907484C42CDA5EAC42952105D8C6BE4296D",
+                            "preserved":  true,
+                            "claimed_as_original":  false
+                        },
+    "vault":  {
+                  "sha256":  "0A5FEE59F07A0C09E74992A62CDE95EA4C1DCA9AE6529B12AE47E9F23E1332A2",
+                  "path":  "D:\\Users\\almir\\MatterArtifactVault\\matter-core-0.1.0-windows-x64.ORIGINAL-0A5FEE59.zip"
+              },
+    "draft_release":  {
+                          "success":  false,
+                          "reason":  "gh not authenticated"
+                      },
+    "suites":  {
+                   "portable":  {
+                                    "fail":  0,
+                                    "pass":  24,
+                                    "ok":  true,
+                                    "total":  24,
+                                    "dist_immutable":  true,
+                                    "wrote_to_dist":  false
+                                },
+                   "core":  {
+                                "ok":  true,
+                                "pass":  37,
+                                "fail":  0,
+                                "total":  37
+                            },
+                   "security":  {
+                                    "ok":  true,
+                                    "pass":  26,
+                                    "fail":  0,
+                                    "total":  26
+                                },
+                   "semantic":  {
+                                    "ok":  true,
+                                    "pass":  37,
+                                    "fail":  0,
+                                    "total":  37
+                                }
+               },
+    "fmt_check_branch_packages":  "PASS",
+    "builds":  {
+                   "language_only":  "PASS",
+                   "experimental_full":  "PASS"
+               },
+    "cli_tested":  {
+                       "sha256":  "616B8BA1551287DD31A6754557781C33D29E53D67BBB6F2699DE4844A4E5C646",
+                       "path":  "D:\\Users\\almir\\Desktop\\MANIFESTO DA LINGUAGEM MATTER CORE\\target\\release\\matter-cli.exe"
+                   },
+    "clippy":  {
+                   "branch_introduced_fixed":  [
+                                                   "fs_capability useless format!",
+                                                   "removed unused strip_fs_flags_keep_rest"
+                                               ],
+                   "preexisting_under_deny_warnings":  [
+                                                           "bytecode validate/recursion patterns",
+                                                           "stdlib tensor/string/map_or"
+                                                       ],
+                   "broad_historical_cleanup":  false
+               },
+    "suite_fixes":  [
+                        "package-matter-core: no dist write without -AllowDistWrite; no overwrite without -ForceOverwrite; zip outside content root; freshest CLI",
+                        "test-portable-release: temp-package only; dist snapshot before/after; fail on mutation",
+                        "test-core-suite / test-capability-security: freshest CLI selection"
+                    ],
+    "generated_at":  "2026-07-14T21:35:58.1547504-03:00"
+}

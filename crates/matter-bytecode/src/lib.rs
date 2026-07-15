@@ -406,7 +406,19 @@ fn validate_statement(
     functions: &HashMap<String, usize>,
 ) -> std::result::Result<(), SemanticError> {
     match stmt {
-        Statement::Let { name, value, .. } => {
+        Statement::Let {
+            name,
+            type_annotation,
+            value,
+        } => {
+            // Semantic honesty (0.2.0): annotations are parsed but not type-checked.
+            if type_annotation.is_some() {
+                return Err(SemanticError::new(
+                    "type annotations unsupported in Matter Core 0.2.0: \
+                     annotations are not verified (no typechecker). \
+                     Remove the annotation; a full type system is not available in this version.",
+                ));
+            }
             validate_expression(value, structs, functions, context)?;
             context.define(name);
         }
@@ -440,12 +452,62 @@ fn validate_statement(
             validate_expression(index, structs, functions, context)?;
             validate_expression(value, structs, functions, context)?;
         }
-        Statement::FunctionDef { .. } => {}
+        Statement::FunctionDef {
+            params,
+            return_type,
+            ..
+        } => {
+            // Semantic honesty (0.2.0): typed params/returns are not enforced.
+            for p in params {
+                if p.type_annotation.is_some() {
+                    return Err(SemanticError::new(
+                        "type annotations unsupported in Matter Core 0.2.0: \
+                         parameter/return annotations are not verified (no typechecker). \
+                         Remove the annotation; a full type system is not available in this version.",
+                    ));
+                }
+            }
+            if return_type.is_some() {
+                return Err(SemanticError::new(
+                    "type annotations unsupported in Matter Core 0.2.0: \
+                     return type annotations are not verified (no typechecker). \
+                     Remove the annotation; a full type system is not available in this version.",
+                ));
+            }
+        }
         Statement::StructDef { .. } => {}
-        Statement::Import { .. } => {}
-        Statement::ImportFrom { .. } => {}
-        Statement::ImportAs { .. } => {}
-        Statement::Export { .. } => {}
+        // Semantic honesty (0.2.0): import/export must never be silent no-ops.
+        Statement::Import { path } => {
+            return Err(SemanticError::new(format!(
+                "import is not implemented in Matter Core 0.2.0: \
+                 no module was loaded for '{}'. \
+                 Module system is not available in this version.",
+                path
+            )));
+        }
+        Statement::ImportFrom { path, .. } => {
+            return Err(SemanticError::new(format!(
+                "import is not implemented in Matter Core 0.2.0: \
+                 no module was loaded for '{}'. \
+                 Module system is not available in this version.",
+                path
+            )));
+        }
+        Statement::ImportAs { path, .. } => {
+            return Err(SemanticError::new(format!(
+                "import is not implemented in Matter Core 0.2.0: \
+                 no module was loaded for '{}'. \
+                 Module system is not available in this version.",
+                path
+            )));
+        }
+        Statement::Export { .. } => {
+            return Err(SemanticError::new(
+                "export is not implemented in Matter Core 0.2.0: \
+                 no module was loaded and no symbols were exported. \
+                 Module system is not available in this version.",
+            ));
+        }
         Statement::OnEvent { .. } => {}
         Statement::Spawn { .. } => {}
         Statement::If {
@@ -879,18 +941,13 @@ impl BytecodeBuilder {
                 // Struct definitions are declarations for now; struct literals carry runtime shape.
             }
 
-            Statement::Import { .. } => {
-                // Imports are resolved before bytecode execution; keep the compiler tolerant
-                // while module loading is still being wired through the runtime.
-            }
-
-            Statement::ImportFrom { .. } | Statement::ImportAs { .. } => {
-                // Extended imports are resolved before bytecode execution.
-            }
-
-            Statement::Export { .. } => {
-                // Exports are resolved at module boundary; no bytecode needed.
-            }
+            // Import/export are rejected in validate_program (build_checked).
+            // Unchecked build() still no-ops so legacy internal callers do not
+            // emit false instructions; CLI/check/compile always use build_checked.
+            Statement::Import { .. }
+            | Statement::ImportFrom { .. }
+            | Statement::ImportAs { .. }
+            | Statement::Export { .. } => {}
 
             Statement::OnEvent { event, body } => {
                 let mut event_instructions = Vec::new();
@@ -1852,11 +1909,14 @@ impl BytecodeBuilder {
                 ));
                 func_instructions.push(Instruction::Return);
 
-                self.bytecode.functions.insert(func_name.clone(), Function {
-                    name: func_name.clone(),
-                    param_count: params.len(),
-                    instructions: func_instructions,
-                });
+                self.bytecode.functions.insert(
+                    func_name.clone(),
+                    Function {
+                        name: func_name.clone(),
+                        param_count: params.len(),
+                        instructions: func_instructions,
+                    },
+                );
 
                 // Emit MakeClosure instruction
                 instructions.push(Instruction::MakeClosure {
@@ -1970,5 +2030,94 @@ fn collect_free_variables_expr(
             }
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod semantic_honesty_0_2_tests {
+    use super::*;
+    use matter_parser::Parser;
+
+    fn check(src: &str) -> std::result::Result<Bytecode, SemanticError> {
+        let mut p = Parser::from_source(src);
+        let program = p.parse().expect("parse");
+        BytecodeBuilder::new().build_checked(&program)
+    }
+
+    #[test]
+    fn import_is_not_noop() {
+        let err = check(r#"import "foo.matter""#).unwrap_err();
+        assert!(
+            err.message.contains("import is not implemented"),
+            "{}",
+            err.message
+        );
+        assert!(
+            err.message.contains("no module was loaded"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn export_is_not_noop() {
+        let err = check("export { foo }").unwrap_err();
+        assert!(
+            err.message.contains("export is not implemented"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn type_annotation_rejected() {
+        let err = check("let x: int = 1").unwrap_err();
+        assert!(
+            err.message.contains("type annotations unsupported"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn typed_function_rejected() {
+        let err = check("fn add(a: int, b: int) -> int { return a + b }").unwrap_err();
+        assert!(
+            err.message.contains("type annotations unsupported"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn plain_let_still_ok() {
+        assert!(check("let x = 1\nprint x").is_ok());
+    }
+
+    #[test]
+    fn match_equality_first_arm_wins() {
+        // Semantic formalization: equality match, first matching arm.
+        // Syntax: pattern => { body }
+        let src = r#"
+match 2 {
+    1 => { print "one" }
+    2 => { print "two" }
+    2 => { print "two-again" }
+}
+"#;
+        let bc = check(src).expect("compile match");
+        assert!(!bc.main_instructions.is_empty());
+    }
+
+    #[test]
+    fn match_no_arm_is_valid_compile() {
+        // Absence of match: no arm runs; not an error at compile time.
+        let src = r#"
+match 99 {
+    1 => { print "one" }
+}
+print "after"
+"#;
+        assert!(check(src).is_ok());
     }
 }

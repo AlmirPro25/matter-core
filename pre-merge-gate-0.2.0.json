@@ -1,0 +1,218 @@
+﻿{
+    "schema":  "matter.pre_merge_gate.0.2.0",
+    "recommendation":  "MERGE_BLOCKED",
+    "production_ready":  false,
+    "release_candidate":  false,
+    "development_track":  "0.2.0-semantic-honesty",
+    "generated_at":  "2026-07-14T21:26:37.9252069-03:00",
+    "git":  {
+                "branch":  "develop/0.2.0-semantic-honesty",
+                "head":  "de693a494887f515bf5a8a36df41fbec5bfce8fe",
+                "feature_commit":  "08a2f9f4c998fc045ad849027d76f49eae3bb136",
+                "build_compat_commit":  "de693a494887f515bf5a8a36df41fbec5bfce8fe",
+                "remote":  "github-matter-core",
+                "remote_url":  "https://github.com/AlmirPro25/matter-core.git",
+                "remote_branch":  "de693a494887f515bf5a8a36df41fbec5bfce8fe\trefs/heads/develop/0.2.0-semantic-honesty",
+                "baseline_tag":  "matter-core-v0.1.0-baseline",
+                "baseline_tag_commit":  "6ca31f3fbb44425f5fa7f950b9d8f9a8b8965129",
+                "baseline_tag_intact":  true
+            },
+    "cli_tested":  {
+                       "branch":  "develop/0.2.0-semantic-honesty",
+                       "commit":  "08a2f9f4c998fc045ad849027d76f49eae3bb136",
+                       "commit_short":  "08a2f9f",
+                       "cli_path":  "D:\\Users\\almir\\Desktop\\MANIFESTO DA LINGUAGEM MATTER CORE\\target\\release\\matter-cli.exe",
+                       "cli_sha256":  "FA045DF7B76EC10FBE9F74C81478AD7282CEAA11C82CBDD83CC47BEF4A98AE08",
+                       "cli_mtime_utc":  "2026-07-14T23:36:20.4656786Z",
+                       "cli_size":  3764163,
+                       "cli_version":  "matter-cli 0.1.0 (language-only; development track 0.2.0 semantic-honesty)\r\nedition=language-only features=default status=development_0_2_0\r\nproduction_ready=false release_candidate=false",
+                       "dual_binary_notes":  [
+                                                 "release_mtime=07/14/2026 23:36:20 hash=FA045DF7B76EC10FBE9F74C81478AD7282CEAA11C82CBDD83CC47BEF4A98AE08",
+                                                 "gnu_mtime=07/14/2026 21:28:20 hash=355F7406680A3D7B662A7728B92986DE53E87431794AD886310BBCDC1B3D6F22",
+                                                 "WARNING: dual binaries differ; gate uses newest by mtime"
+                                             ],
+                       "expected_commit":  "08a2f9f4c998fc045ad849027d76f49eae3bb136",
+                       "commit_match":  true
+                   },
+    "frozen_0_1_0":  {
+                         "zip_path":  "dist/matter-core-0.1.0-windows-x64.zip",
+                         "expected_sha256":  "0A5FEE59F07A0C09E74992A62CDE95EA4C1DCA9AE6529B12AE47E9F23E1332A2",
+                         "observed_sha256":  "938ACA2F9807B10DCC261B5801ED7907484C42CDA5EAC42952105D8C6BE4296D",
+                         "match":  false,
+                         "sha256sums_file_still_lists_original":  true,
+                         "mutated_during_gate":  true,
+                         "mutation_cause":  "test-portable-release.ps1 repackaged dist zip with newer CLI during pre-merge gate",
+                         "d_matter_still_0_1_0_language_only":  true,
+                         "d_matter_cli_sha256":  "89A5495FC265A3B82298DE39C4E750EDB3389D32EC1802F1AD9C4A08F08EDDB1"
+                     },
+    "suites":  {
+                   "semantic_honesty":  {
+                                            "expected":  "37/37",
+                                            "ok":  true,
+                                            "pass":  37,
+                                            "fail":  0,
+                                            "total":  37
+                                        },
+                   "core":  {
+                                "expected":  "37/37",
+                                "ok":  true,
+                                "pass":  37,
+                                "fail":  0,
+                                "total":  37
+                            },
+                   "security":  {
+                                    "expected":  "26/26",
+                                    "ok":  true,
+                                    "pass":  26,
+                                    "fail":  0,
+                                    "total":  26
+                                },
+                   "portable":  {
+                                    "note":  "suite now has 21 cases; all passed",
+                                    "fail":  0,
+                                    "pass":  21,
+                                    "ok":  true,
+                                    "total":  21,
+                                    "expected":  "20/20"
+                                }
+               },
+    "cargo":  {
+                  "tests":  {
+                                "value":  [
+                                              {
+                                                  "crate":  "matter-lexer",
+                                                  "exit":  0,
+                                                  "ok":  true
+                                              },
+                                              {
+                                                  "crate":  "matter-parser",
+                                                  "exit":  0,
+                                                  "ok":  true
+                                              },
+                                              {
+                                                  "crate":  "matter-bytecode",
+                                                  "exit":  0,
+                                                  "ok":  true
+                                              },
+                                              {
+                                                  "crate":  "matter-vm",
+                                                  "exit":  0,
+                                                  "ok":  true
+                                              },
+                                              {
+                                                  "crate":  "matter-runtime",
+                                                  "exit":  0,
+                                                  "ok":  true
+                                              },
+                                              {
+                                                  "crate":  "matter-stdlib",
+                                                  "exit":  0,
+                                                  "ok":  true
+                                              },
+                                              {
+                                                  "crate":  "matter-cli",
+                                                  "exit":  0,
+                                                  "ok":  true
+                                              }
+                                          ],
+                                "Count":  7
+                            },
+                  "fmt_all_exit":  1,
+                  "fmt_0_2_crates_exit":  1,
+                  "clippy_deny_warnings_exit":  101,
+                  "clippy_allow_warnings_exit":  0
+              },
+    "builds":  {
+                   "language_only":  "PASS",
+                   "experimental_full":  "PASS_after_de693a4",
+                   "experimental_full_on_08a2f9f_alone":  "FAIL_Token_Illegal_nonexhaustive"
+               },
+    "file_capabilities":  {
+                              "fs_edge_pass":  14,
+                              "fs_edge_fail":  5,
+                              "fs_edge_total":  19,
+                              "symlink_file_tests":  "NOT_RUN_NEEDS_ADMIN",
+                              "junction_escape_tests":  "PASS",
+                              "unc_device_ads_prefix_root_case_newfile":  "PASS",
+                              "policy_parity_run_runjson_bytecode":  "PASS",
+                              "policy_parity_eval":  "PASS_via_cmd_quoting_and_shared_Runtime_with_fs_policy",
+                              "is_sandbox":  false,
+                              "toctou_residual":  true
+                          },
+    "script_audit":  {
+                         "value":  [
+                                       {
+                                           "script":  "scripts\\test-core-suite.ps1",
+                                           "gnu":  true,
+                                           "release":  false,
+                                           "order":  "gnu_only"
+                                       },
+                                       {
+                                           "script":  "scripts\\test-capability-security.ps1",
+                                           "gnu":  true,
+                                           "release":  false,
+                                           "order":  "gnu_only"
+                                       },
+                                       {
+                                           "script":  "scripts\\test-portable-release.ps1",
+                                           "gnu":  true,
+                                           "release":  false,
+                                           "order":  "gnu_only"
+                                       },
+                                       {
+                                           "script":  "scripts\\test-semantic-honesty-0.2.ps1",
+                                           "gnu":  true,
+                                           "release":  true,
+                                           "order":  "release_first"
+                                       },
+                                       {
+                                           "script":  "scripts\\test-fuzz-stress-v2.ps1",
+                                           "gnu":  true,
+                                           "release":  false,
+                                           "order":  "gnu_only"
+                                       },
+                                       {
+                                           "script":  "scripts\\test-package-repro-v2.ps1",
+                                           "gnu":  true,
+                                           "release":  false,
+                                           "order":  "gnu_only"
+                                       },
+                                       {
+                                           "script":  "scripts\\production-readiness-v2.ps1",
+                                           "gnu":  true,
+                                           "release":  false,
+                                           "order":  "gnu_only"
+                                       },
+                                       {
+                                           "script":  "scripts\\package-matter-core.ps1",
+                                           "gnu":  true,
+                                           "release":  true,
+                                           "order":  "gnu_first"
+                                       },
+                                       {
+                                           "script":  "scripts\\build-matter-cli.ps1",
+                                           "gnu":  false,
+                                           "release":  false,
+                                           "order":  "other"
+                                       }
+                                   ],
+                         "Count":  9
+                     },
+    "blockers":  [
+                     "FROZEN_ZIP_0_1_0_HASH_MISMATCH: expected 0A5FEE59... observed 938ACA2F... (portable suite mutated dist zip)",
+                     "Suite scripts default gnu_only may use stale binary",
+                     "cargo fmt --check not green",
+                     "cargo clippy -D warnings not green",
+                     "symlink file escape not verified without admin"
+                 ],
+    "open_risks":  [
+                       "TOCTOU between path authorize and open/write/delete",
+                       "Not an OS sandbox",
+                       "Symlink file containment not host-proven",
+                       "Root grant snapshot / directory swap after grant",
+                       "Windows case folding",
+                       "PowerShell eval quoting fragility"
+                   ],
+    "merge_performed":  false,
+    "release_performed":  false
+}

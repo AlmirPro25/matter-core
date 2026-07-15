@@ -91,10 +91,7 @@ impl Bytecode {
     /// Validate structural integrity against explicit limits.
     pub fn validate_with_limits(&self, limits: &BytecodeLimits) -> Result<()> {
         if &self.magic != b"MBC1" {
-            return Err(invalid(format!(
-                "invalid MBC1 magic: {:?}",
-                self.magic
-            )));
+            return Err(invalid(format!("invalid MBC1 magic: {:?}", self.magic)));
         }
 
         if self.constants.len() > limits.max_constants {
@@ -342,8 +339,7 @@ mod tests {
     #[test]
     fn load_const_oob_rejected() {
         let mut bc = Bytecode::new();
-        bc.main_instructions
-            .push(Instruction::LoadConst(5));
+        bc.main_instructions.push(Instruction::LoadConst(5));
         bc.main_instructions.push(Instruction::Halt);
         assert!(bc.validate().is_err());
     }
@@ -381,11 +377,10 @@ mod tests {
                 instructions: vec![Instruction::LoadConst(0), Instruction::Return],
             },
         );
-        bc.main_instructions
-            .push(Instruction::CallNamed {
-                name: "f".into(),
-                arg_count: 0,
-            });
+        bc.main_instructions.push(Instruction::CallNamed {
+            name: "f".into(),
+            arg_count: 0,
+        });
         bc.main_instructions.push(Instruction::Halt);
 
         let mut buf = Vec::new();

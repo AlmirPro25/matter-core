@@ -8,11 +8,13 @@
 
 mod capability_policy;
 mod commands;
+mod fs_flags;
 
 use capability_policy::is_language_only_denied_command;
 use matter_bytecode::{Bytecode, BytecodeBuilder};
 use matter_parser::Parser;
 use matter_runtime::Runtime;
+use matter_stdlib::FsCapabilityPolicy;
 use serde_json::json;
 use std::env;
 use std::fs;
@@ -31,26 +33,39 @@ fn main() {
     match command {
         "help" | "--help" | "-h" => print_usage(),
         "version" | "--version" | "-V" => {
-            println!("matter-cli {} (language-only)", env!("CARGO_PKG_VERSION"));
-            println!("edition=language-only features=default");
+            println!(
+                "matter-cli {} (language-only; development track 0.2.0 semantic-honesty)",
+                env!("CARGO_PKG_VERSION")
+            );
+            println!("edition=language-only features=default status=development_0_2_0");
+            println!("production_ready=false release_candidate=false");
         }
         "capabilities-json" => print_capabilities_json(),
         "core-status-json" => print_core_status_json(),
         "run" => {
-            require_arg(&args, 2, "Usage: matter-cli run <file.matter|->");
-            commands::run::run_file(&args[2]);
+            let opts = parse_exec_opts(
+                &args[2..],
+                "Usage: matter-cli run <file.matter|-> [--allow-fs-read|write|delete <dir>]...",
+            );
+            commands::run::run_file(&opts.path, opts.policy);
         }
         "run-json" => {
-            require_arg(&args, 2, "Usage: matter-cli run-json <file.matter|->");
-            commands::run::run_file_json(&args[2], false);
+            let opts = parse_exec_opts(&args[2..], "Usage: matter-cli run-json <file.matter|-> [--allow-fs-read|write|delete <dir>]...");
+            commands::run::run_file_json(&opts.path, false, opts.policy);
         }
         "eval" => {
-            require_arg(&args, 2, "Usage: matter-cli eval <source>");
-            commands::run::eval_source(&args[2]);
+            let opts = parse_exec_opts(
+                &args[2..],
+                "Usage: matter-cli eval <source> [--allow-fs-read|write|delete <dir>]...",
+            );
+            commands::run::eval_source(&opts.path, opts.policy);
         }
         "eval-json" => {
-            require_arg(&args, 2, "Usage: matter-cli eval-json <source>");
-            commands::run::eval_source_json(&args[2]);
+            let opts = parse_exec_opts(
+                &args[2..],
+                "Usage: matter-cli eval-json <source> [--allow-fs-read|write|delete <dir>]...",
+            );
+            commands::run::eval_source_json(&opts.path, opts.policy);
         }
         "check" => {
             require_arg(&args, 2, "Usage: matter-cli check <file.matter|->");
@@ -61,9 +76,19 @@ fn main() {
             check_json(&args[2]);
         }
         "compile" => {
-            require_arg(&args, 2, "Usage: matter-cli compile <file.matter|-> [-o out.mbc]");
+            require_arg(
+                &args,
+                2,
+                "Usage: matter-cli compile <file.matter|-> [-o out.mbc]",
+            );
+            // compile -o is host-side packaging, not program-initiated FS access.
             let output = option_value(&args[2..], "-o").unwrap_or_else(|| "output.mbc".to_string());
-            compile_file(&args[2], &output);
+            // First non-flag positional after optional -o handling
+            let input = first_positional_source(&args[2..]).unwrap_or_else(|| {
+                eprintln!("Usage: matter-cli compile <file.matter|-> [-o out.mbc]");
+                process::exit(1);
+            });
+            compile_file(&input, &output);
         }
         "compile-json" => {
             require_arg(
@@ -72,15 +97,22 @@ fn main() {
                 "Usage: matter-cli compile-json <file.matter|-> [-o out.mbc]",
             );
             let output = option_value(&args[2..], "-o").unwrap_or_else(|| "output.mbc".to_string());
-            compile_json(&args[2], &output);
+            let input = first_positional_source(&args[2..]).unwrap_or_else(|| {
+                eprintln!("Usage: matter-cli compile-json <file.matter|-> [-o out.mbc]");
+                process::exit(1);
+            });
+            compile_json(&input, &output);
         }
         "run-bytecode" => {
-            require_arg(&args, 2, "Usage: matter-cli run-bytecode <file.mbc>");
-            run_bytecode(&args[2]);
+            let opts = parse_exec_opts(
+                &args[2..],
+                "Usage: matter-cli run-bytecode <file.mbc> [--allow-fs-read|write|delete <dir>]...",
+            );
+            run_bytecode(&opts.path, opts.policy);
         }
         "run-bytecode-json" => {
-            require_arg(&args, 2, "Usage: matter-cli run-bytecode-json <file.mbc>");
-            run_bytecode_json(&args[2]);
+            let opts = parse_exec_opts(&args[2..], "Usage: matter-cli run-bytecode-json <file.mbc> [--allow-fs-read|write|delete <dir>]...");
+            run_bytecode_json(&opts.path, opts.policy);
         }
         "inspect" => {
             require_arg(&args, 2, "Usage: matter-cli inspect <file.mbc>");
@@ -131,27 +163,88 @@ fn option_value(args: &[String], flag: &str) -> Option<String> {
     None
 }
 
+struct ExecOpts {
+    path: String,
+    policy: FsCapabilityPolicy,
+}
+
+fn parse_exec_opts(args: &[String], usage: &str) -> ExecOpts {
+    let parsed = fs_flags::parse_fs_cli_args(args).unwrap_or_else(|e| {
+        eprintln!("error: {}", e);
+        eprintln!("{}", usage);
+        process::exit(1);
+    });
+    // Reject unknown dash flags left in positional (parse_fs_cli_args parks them there).
+    for p in &parsed.positional {
+        if p.starts_with('-') && p != "-" {
+            eprintln!("error: unknown flag '{}'", p);
+            eprintln!("{}", usage);
+            process::exit(1);
+        }
+    }
+    let path = parsed.positional.first().cloned().unwrap_or_else(|| {
+        eprintln!("{}", usage);
+        process::exit(1);
+    });
+    ExecOpts {
+        path,
+        policy: parsed.policy,
+    }
+}
+
+fn first_positional_source(args: &[String]) -> Option<String> {
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == "-o" {
+            i += 2;
+            continue;
+        }
+        if args[i].starts_with("--allow-fs-") {
+            // compile ignores FS flags (host compile -o is not program I/O)
+            i += 2;
+            continue;
+        }
+        if args[i].starts_with('-') && args[i] != "-" {
+            i += 1;
+            continue;
+        }
+        return Some(args[i].clone());
+    }
+    None
+}
+
 fn print_usage() {
-    println!("Matter CLI {} — language-only edition", env!("CARGO_PKG_VERSION"));
+    println!(
+        "Matter CLI {} — language-only edition (development 0.2.0 semantic-honesty)",
+        env!("CARGO_PKG_VERSION")
+    );
     println!();
     println!("Usage:");
     println!("  matter-cli --help");
     println!("  matter-cli --version");
     println!("  matter-cli capabilities-json");
     println!("  matter-cli core-status-json");
-    println!("  matter-cli run <file.matter|->");
-    println!("  matter-cli run-json <file.matter|->");
-    println!("  matter-cli eval <source>");
+    println!("  matter-cli run <file.matter|-> [--allow-fs-read|write|delete <dir>]...");
+    println!("  matter-cli run-json <file.matter|-> [--allow-fs-read|write|delete <dir>]...");
+    println!("  matter-cli eval <source> [--allow-fs-read|write|delete <dir>]...");
     println!("  matter-cli check <file.matter|->");
     println!("  matter-cli check-json <file.matter|->");
     println!("  matter-cli compile <file.matter|-> [-o out.mbc]");
     println!("  matter-cli compile-json <file.matter|-> [-o out.mbc]");
-    println!("  matter-cli run-bytecode <file.mbc>");
-    println!("  matter-cli run-bytecode-json <file.mbc>");
+    println!("  matter-cli run-bytecode <file.mbc> [--allow-fs-read|write|delete <dir>]...");
+    println!("  matter-cli run-bytecode-json <file.mbc> [--allow-fs-read|write|delete <dir>]...");
     println!("  matter-cli inspect <file.mbc>");
+    println!();
+    println!("File Capabilities v1 (default deny for program-initiated file.*/fileio.*):");
+    println!("  --allow-fs-read <dir>    grant read under root");
+    println!("  --allow-fs-write <dir>   grant write under root (does NOT grant delete)");
+    println!("  --allow-fs-delete <dir>  grant delete under root");
+    println!("  No environment variable grants filesystem access.");
+    println!("  compile -o is host packaging and is not program FS access.");
     println!();
     println!("Language-only build excludes agent/shell/network, polyglot bridges, visual/device.");
     println!("Experimental full binary: matter-cli-experimental --features experimental-full");
+    println!("Status: development 0.2.0 — not production_ready, not RELEASE_CANDIDATE.");
 }
 
 fn print_capabilities_json() {
@@ -170,8 +263,18 @@ fn print_capabilities_json() {
             "agent_ui": false,
             "package_install": false,
             "local_command_capture": false,
-            "policy": "dangerous capabilities absent from language-only binary / denied by command gate"
+            "file_capabilities_v1": {
+                "default": "deny",
+                "ops": ["read", "write", "delete"],
+                "flags": ["--allow-fs-read", "--allow-fs-write", "--allow-fs-delete"],
+                "env_grants": false,
+                "write_implies_delete": false
+            },
+            "policy": "dangerous capabilities absent from language-only binary / denied by command gate; program FS default-deny"
         },
+        "development_track": "0.2.0-semantic-honesty",
+        "production_ready": false,
+        "release_candidate": false,
         "features": {
             "polyglot": cfg!(feature = "polyglot"),
             "visual": cfg!(feature = "visual"),
@@ -201,7 +304,10 @@ fn print_capabilities_json() {
         ],
         "disabled_by_default": capability_policy::LANGUAGE_ONLY_DENIED_COMMANDS
     });
-    println!("{}", serde_json::to_string(&payload).unwrap_or_else(|_| "{}".into()));
+    println!(
+        "{}",
+        serde_json::to_string(&payload).unwrap_or_else(|_| "{}".into())
+    );
 }
 
 fn print_core_status_json() {
@@ -221,18 +327,21 @@ spawn boot
     let mut parser = match Parser::from_source_checked(sample) {
         Ok(p) => p,
         Err(e) => {
-            println!("{}", json!({
-                "ok": false,
-                "kind": "core_status",
-                "schema_version": 1,
-                "summary": {
-                    "claim": "experimental_language_runtime",
-                    "production_ready": false,
-                    "core_loop_validated": false,
-                    "edition": "language-only"
-                },
-                "checks": [{"name":"parse","passed":false,"severity":"fail","detail":e.to_string()}]
-            }));
+            println!(
+                "{}",
+                json!({
+                    "ok": false,
+                    "kind": "core_status",
+                    "schema_version": 1,
+                    "summary": {
+                        "claim": "experimental_language_runtime",
+                        "production_ready": false,
+                        "core_loop_validated": false,
+                        "edition": "language-only"
+                    },
+                    "checks": [{"name":"parse","passed":false,"severity":"fail","detail":e.to_string()}]
+                })
+            );
             return;
         }
     };
@@ -242,18 +351,21 @@ spawn boot
             p
         }
         Err(e) => {
-            println!("{}", json!({
-                "ok": false,
-                "kind": "core_status",
-                "schema_version": 1,
-                "summary": {
-                    "claim": "experimental_language_runtime",
-                    "production_ready": false,
-                    "core_loop_validated": false,
-                    "edition": "language-only"
-                },
-                "checks": [{"name":"parse","passed":false,"severity":"fail","detail":e.to_string()}]
-            }));
+            println!(
+                "{}",
+                json!({
+                    "ok": false,
+                    "kind": "core_status",
+                    "schema_version": 1,
+                    "summary": {
+                        "claim": "experimental_language_runtime",
+                        "production_ready": false,
+                        "core_loop_validated": false,
+                        "edition": "language-only"
+                    },
+                    "checks": [{"name":"parse","passed":false,"severity":"fail","detail":e.to_string()}]
+                })
+            );
             return;
         }
     };
@@ -271,18 +383,21 @@ spawn boot
             b
         }
         Err(e) => {
-            println!("{}", json!({
-                "ok": false,
-                "kind": "core_status",
-                "schema_version": 1,
-                "summary": {
-                    "claim": "experimental_language_runtime",
-                    "production_ready": false,
-                    "core_loop_validated": false,
-                    "edition": "language-only"
-                },
-                "checks": checks
-            }));
+            println!(
+                "{}",
+                json!({
+                    "ok": false,
+                    "kind": "core_status",
+                    "schema_version": 1,
+                    "summary": {
+                        "claim": "experimental_language_runtime",
+                        "production_ready": false,
+                        "core_loop_validated": false,
+                        "edition": "language-only"
+                    },
+                    "checks": checks
+                })
+            );
             let _ = e;
             return;
         }
@@ -294,50 +409,56 @@ spawn boot
         Ok(()) => {
             let out = runtime.take_output();
             checks.push(json!({"name":"run","passed":true,"severity":"pass","detail":format!("{} output lines captured", out.len())}));
-            println!("{}", json!({
-                "ok": true,
-                "kind": "core_status",
-                "schema_version": 1,
-                "$schema": "schemas/core-status.schema.json",
-                "summary": {
-                    "claim": "experimental_language_runtime",
-                    "production_ready": false,
-                    "core_loop_validated": true,
-                    "execution_controlled": true,
-                    "pipeline": "source_to_bytecode_to_vm_to_runtime",
-                    "bytecode": "MBC1",
-                    "edition": "language-only",
-                    "guard_status": "pass"
-                },
-                "checks": checks,
-                "evidence": {
-                    "output": out,
-                    "sample": "embedded:core-status-language-only",
-                    "bytecode": {
-                        "summary": {
-                            "constants": bytecode.constants.len(),
-                            "functions": bytecode.functions.len(),
-                            "event_handlers": bytecode.event_handlers.len(),
-                            "instructions": bytecode.main_instructions.len()
+            println!(
+                "{}",
+                json!({
+                    "ok": true,
+                    "kind": "core_status",
+                    "schema_version": 1,
+                    "$schema": "schemas/core-status.schema.json",
+                    "summary": {
+                        "claim": "experimental_language_runtime",
+                        "production_ready": false,
+                        "core_loop_validated": true,
+                        "execution_controlled": true,
+                        "pipeline": "source_to_bytecode_to_vm_to_runtime",
+                        "bytecode": "MBC1",
+                        "edition": "language-only",
+                        "guard_status": "pass"
+                    },
+                    "checks": checks,
+                    "evidence": {
+                        "output": out,
+                        "sample": "embedded:core-status-language-only",
+                        "bytecode": {
+                            "summary": {
+                                "constants": bytecode.constants.len(),
+                                "functions": bytecode.functions.len(),
+                                "event_handlers": bytecode.event_handlers.len(),
+                                "instructions": bytecode.main_instructions.len()
+                            }
                         }
                     }
-                }
-            }));
+                })
+            );
         }
         Err(e) => {
             checks.push(json!({"name":"run","passed":false,"severity":"fail","detail":e}));
-            println!("{}", json!({
-                "ok": false,
-                "kind": "core_status",
-                "schema_version": 1,
-                "summary": {
-                    "claim": "experimental_language_runtime",
-                    "production_ready": false,
-                    "core_loop_validated": false,
-                    "edition": "language-only"
-                },
-                "checks": checks
-            }));
+            println!(
+                "{}",
+                json!({
+                    "ok": false,
+                    "kind": "core_status",
+                    "schema_version": 1,
+                    "summary": {
+                        "claim": "experimental_language_runtime",
+                        "production_ready": false,
+                        "core_loop_validated": false,
+                        "edition": "language-only"
+                    },
+                    "checks": checks
+                })
+            );
         }
     }
 }
@@ -479,21 +600,30 @@ fn compile_json(input: &str, output: &str) {
     let source = match read_source(input) {
         Ok(s) => s,
         Err(e) => {
-            println!("{}", json!({"ok":false,"phase":"read","error":e,"ok_claim":false}));
+            println!(
+                "{}",
+                json!({"ok":false,"phase":"read","error":e,"ok_claim":false})
+            );
             process::exit(1);
         }
     };
     let mut parser = match Parser::from_source_checked(&source) {
         Ok(p) => p,
         Err(e) => {
-            println!("{}", json!({"ok":false,"phase":"parse","error":e.to_string()}));
+            println!(
+                "{}",
+                json!({"ok":false,"phase":"parse","error":e.to_string()})
+            );
             process::exit(1);
         }
     };
     let program = match parser.parse() {
         Ok(p) => p,
         Err(e) => {
-            println!("{}", json!({"ok":false,"phase":"parse","error":e.to_string()}));
+            println!(
+                "{}",
+                json!({"ok":false,"phase":"parse","error":e.to_string()})
+            );
             process::exit(1);
         }
     };
@@ -501,12 +631,18 @@ fn compile_json(input: &str, output: &str) {
     let bytecode = match builder.build_checked(&program) {
         Ok(b) => b,
         Err(e) => {
-            println!("{}", json!({"ok":false,"phase":"compile","error":format!("{:?}", e)}));
+            println!(
+                "{}",
+                json!({"ok":false,"phase":"compile","error":format!("{:?}", e)})
+            );
             process::exit(1);
         }
     };
     if let Err(e) = bytecode.save_to_file(output) {
-        println!("{}", json!({"ok":false,"phase":"write","error":e.to_string()}));
+        println!(
+            "{}",
+            json!({"ok":false,"phase":"write","error":e.to_string()})
+        );
         process::exit(1);
     }
     println!(
@@ -536,16 +672,16 @@ fn load_bytecode_or_exit(path: &str) -> Bytecode {
     }
 }
 
-fn run_bytecode(path: &str) {
+fn run_bytecode(path: &str, fs_policy: FsCapabilityPolicy) {
     let bytecode = load_bytecode_or_exit(path);
-    let mut runtime = Runtime::new(bytecode);
+    let mut runtime = Runtime::with_fs_policy(bytecode, fs_policy, false);
     if let Err(e) = runtime.run() {
         eprintln!("Runtime error: {}", e);
         process::exit(1);
     }
 }
 
-fn run_bytecode_json(path: &str) {
+fn run_bytecode_json(path: &str, fs_policy: FsCapabilityPolicy) {
     let bytecode = match Bytecode::load_from_file(path) {
         Ok(b) => b,
         Err(e) => {
@@ -561,7 +697,7 @@ fn run_bytecode_json(path: &str) {
             process::exit(1);
         }
     };
-    let mut runtime = Runtime::new(bytecode);
+    let mut runtime = Runtime::with_fs_policy(bytecode, fs_policy, false);
     let start = std::time::Instant::now();
     match runtime.run() {
         Ok(()) => {
@@ -577,13 +713,15 @@ fn run_bytecode_json(path: &str) {
             );
         }
         Err(e) => {
+            let capability_denied = e.contains("capability_denied");
             println!(
                 "{}",
                 json!({
                     "ok": false,
                     "input": path,
                     "phase": "runtime",
-                    "error": e
+                    "error": if capability_denied { "capability_denied".to_string() } else { e },
+                    "error_code": if capability_denied { Some("capability_denied") } else { None::<&str> }
                 })
             );
             process::exit(1);

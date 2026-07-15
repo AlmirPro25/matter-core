@@ -3548,6 +3548,7 @@ name = "matter-bytecode"
 version = "0.1.0"
 dependencies = [
  "matter-ast",
+ "matter-parser",
  "serde",
 ]
 
@@ -3590,6 +3591,7 @@ dependencies = [
  "matter-polyglot",
  "matter-runtime",
  "matter-sentinel-abi",
+ "matter-stdlib",
  "matter-vm",
  "serde_json",
  "tokio",
