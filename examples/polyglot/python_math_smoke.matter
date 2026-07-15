@@ -1,0 +1,11 @@
+﻿# Edition: Experimental (requires experimental-full CLI + python backend)
+# Repro: matter-cli-experimental run examples/polyglot/python_math_smoke.matter
+# FS: none
+
+# Minimal Python polyglot smoke (stdlib only)
+
+python.import_module("math")
+print python.call("math", "sqrt", [16])
+print python.call("math", "pow", [2, 10])
+print python.call("math", "floor", [3.7])
+

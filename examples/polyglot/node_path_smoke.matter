@@ -1,0 +1,12 @@
+﻿# Edition: Experimental (requires experimental-full CLI + node backend)
+# Repro: matter-cli-experimental run examples/polyglot/node_path_smoke.matter
+# FS: none (no file.*)
+# Note: uses literal path strings as data, not host FS ops
+
+# Node.js bridge smoke (stdlib path module)
+
+node.import_module("path")
+print node.call("path", "basename", ["D:/Matter/examples/hello.matter"])
+print node.call("path", "extname", ["app.matter"])
+print node.call("path", "join", ["D:", "Matter", "bin"])
+

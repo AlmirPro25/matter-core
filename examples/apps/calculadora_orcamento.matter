@@ -1,0 +1,61 @@
+﻿# Edition: Core (language-only)
+# Repro: matter-cli run examples/apps/calculadora_orcamento.matter
+# FS: none
+
+# App real: calculadora de orcamento mensal
+
+fn classifica(gasto, limite) {
+    if gasto > limite {
+        return "estourou"
+    }
+    if gasto * 100 / limite >= 80 {
+        return "atencao"
+    }
+    return "ok"
+}
+
+fn percent(gasto, limite) {
+    if limite <= 0 {
+        return 0
+    }
+    return gasto * 100 / limite
+}
+
+let renda = 5000
+let aluguel = 1400
+let comida = 900
+let transporte = 350
+let lazer = 280
+let outros = 220
+
+let fixos = aluguel + comida + transporte
+let variaveis = lazer + outros
+let gasto_total = fixos + variaveis
+let sobra = renda - gasto_total
+let limite_mensal = renda * 80 / 100
+
+print "===================================="
+print "   CALCULADORA DE ORCAMENTO"
+print "===================================="
+print "renda"
+print renda
+print "fixos"
+print fixos
+print "variaveis"
+print variaveis
+print "gasto_total"
+print gasto_total
+print "sobra"
+print sobra
+print "uso_da_renda_%"
+print percent(gasto_total, renda)
+print "status"
+print classifica(gasto_total, limite_mensal)
+
+if sobra < 0 {
+    print "alerta: deficit"
+} else {
+    print "reserva_sugerida"
+    print sobra / 2
+}
+

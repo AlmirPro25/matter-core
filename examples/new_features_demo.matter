@@ -1,0 +1,93 @@
+﻿# Edition: Experimental / REWORK
+# Status: FAILS on Core 0.2.0 language-only (closures/lambda/Result not fully wired)
+# Repro: matter-cli run examples/new_features_demo.matter  # expects compile error today
+# FS: none
+
+# Matter Core - New Features Demo
+# Demonstrates: modules, closures, Result/Option, error propagation
+
+# â”€â”€ Closures â”€â”€
+let multiplier = fn(n) {
+    return fn(x) { return x * n }
+}
+
+let double = multiplier(2)
+let triple = multiplier(3)
+
+print "Closures:"
+print "double(5) = {double(5)}"
+print "triple(5) = {triple(5)}"
+
+# â”€â”€ Lambda as higher-order function â”€â”€
+fn apply(f, x) {
+    return f(x)
+}
+
+let result = apply(fn(x) { return x * x }, 4)
+print "apply(square, 4) = {result}"
+
+# â”€â”€ Result type â”€â”€
+fn divide(a, b) {
+    if b == 0 {
+        return err("division by zero")
+    }
+    return ok(a / b)
+}
+
+print "\nResult type:"
+print "divide(10, 2) = {divide(10, 2)}"
+print "divide(10, 0) = {divide(10, 0)}"
+
+let r = divide(10, 2)
+print "is_ok(divide(10, 2)) = {result.is_ok(r)}"
+
+# â”€â”€ Option type â”€â”€
+fn find_first(list, target) {
+    for item in list {
+        if item == target {
+            return some(item)
+        }
+    }
+    return none
+}
+
+print "\nOption type:"
+let nums = [1, 2, 3, 4, 5]
+print "find_first([1,2,3,4,5], 3) = {find_first(nums, 3)}"
+print "find_first([1,2,3,4,5], 9) = {find_first(nums, 9)}"
+
+let opt = find_first(nums, 3)
+print "is_some(found) = {option.is_some(opt)}"
+
+# â”€â”€ Nested closures (factory pattern) â”€â”€
+fn make_counter(start) {
+    let count = start
+    return fn() {
+        set count = count + 1
+        return count
+    }
+}
+
+print "\nFactory pattern:"
+let counter = make_counter(0)
+print "counter() = {counter()}"
+print "counter() = {counter()}"
+print "counter() = {counter()}"
+
+# â”€â”€ Closures with list operations â”€â”€
+print "\nClosures with lists:"
+let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+let sum = 0
+for n in numbers {
+    set sum = sum + n
+}
+print "sum(1..10) = {sum}"
+
+let evens = 0
+for n in numbers {
+    if n % 2 == 0 {
+        set evens = evens + 1
+    }
+}
+print "even count = {evens}"
+
