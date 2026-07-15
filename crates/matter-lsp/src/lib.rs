@@ -22,9 +22,9 @@ struct MatterLanguageServer {
 /// Keywords recognized for completion/hover. Reserved-but-unimplemented
 /// keywords still appear so the editor can surface honesty diagnostics.
 const KEYWORDS: &[&str] = &[
-    "let", "set", "fn", "return", "if", "else", "on", "print", "while", "for",
-    "in", "loop", "break", "continue", "struct", "import", "from", "as", "export",
-    "match", "null", "spawn", "true", "false", "and", "or", "not", "panic",
+    "let", "set", "fn", "return", "if", "else", "on", "print", "while", "for", "in", "loop",
+    "break", "continue", "struct", "import", "from", "as", "export", "match", "null", "spawn",
+    "true", "false", "and", "or", "not", "panic",
 ];
 
 /// Language-only stdlib surface commonly used in Core. File I/O is listed
@@ -294,8 +294,7 @@ impl LanguageServer for MatterLanguageServer {
         if let Some(word) = word {
             for (i, src_line) in source.lines().enumerate() {
                 let trimmed = src_line.trim();
-                if let Some(loc) =
-                    definition_location_on_line(uri, i as u32, trimmed, &word, "fn ")
+                if let Some(loc) = definition_location_on_line(uri, i as u32, trimmed, &word, "fn ")
                 {
                     return Ok(Some(GotoDefinitionResponse::Scalar(loc)));
                 }
@@ -397,10 +396,7 @@ fn completions_for_target(target: &str, prefix: &str) -> Vec<CompletionItem> {
             ("len", "len(l)"),
             ("reverse", "reverse(l)"),
         ],
-        "json" => &[
-            ("stringify", "stringify(v)"),
-            ("parse", "parse(s)"),
-        ],
+        "json" => &[("stringify", "stringify(v)"), ("parse", "parse(s)")],
         "file" => &[
             ("read", "read(path) — requires --allow-fs-read"),
             ("write", "write(path, data) — requires --allow-fs-write"),
@@ -513,7 +509,10 @@ fn builtin_doc(builtin: &str) -> String {
             builtin
         )
     } else {
-        format!("```matter\n{}\n```\n\nBuilt-in function (language-only surface).", builtin)
+        format!(
+            "```matter\n{}\n```\n\nBuilt-in function (language-only surface).",
+            builtin
+        )
     }
 }
 
