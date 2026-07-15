@@ -1160,7 +1160,9 @@ impl Vm {
                             }
                         }
                         Value::Closure(data) => {
-                            // Push captured variables into scope
+                            // Captures live in a block under the function frame so Return
+                            // can pop both (scope_depth points *before* the capture block).
+                            let depth_before_capture = self.scope_stack.len();
                             self.push_scope(ScopeType::Block)?;
                             if let Some(scope) = self.scope_stack.last_mut() {
                                 for (name, value) in &data.captures {
@@ -1173,18 +1175,25 @@ impl Vm {
                             if let Some(new_instructions) =
                                 self.setup_function_call(&data.func_name, *arg_count)?
                             {
-                                self.check_call_depth()?;
                                 self.call_stack.push(CallFrame {
                                     instructions: current_instructions,
                                     ip,
-                                    scope_depth: self.scope_stack.len() - 1,
+                                    scope_depth: depth_before_capture,
                                 });
                                 current_instructions = new_instructions;
                                 ip = 0;
+                            } else {
+                                // JIT path returned immediately — drop capture block
+                                while self.scope_stack.len() > depth_before_capture {
+                                    self.pop_scope();
+                                }
                             }
                         }
                         _ => {
-                            return Err(vm_exec_type_error("call", "expected function or closure"));
+                            return Err(vm_exec_type_error(
+                                "call",
+                                "value is not callable (expected function or closure)",
+                            ));
                         }
                     }
                 }
@@ -1978,7 +1987,11 @@ mod tests {
 
         assert!(matches!(error, VmError::TypeError(_)));
         let msg = error.to_string();
-        assert!(msg.contains("VM execution failed [context:op=call]: expected function"));
+        assert!(
+            msg.contains("VM execution failed [context:op=call]")
+                && (msg.contains("expected function") || msg.contains("not callable")),
+            "unexpected call type error: {msg}"
+        );
     }
 
     #[test]
@@ -2403,11 +2416,7 @@ mod tests {
         };
         let mut vm = Vm::with_limits(bytecode, limits);
         let err = vm.run().expect_err("must hit call depth");
-        assert!(
-            matches!(err, VmError::CallStackOverflow),
-            "got {:?}",
-            err
-        );
+        assert!(matches!(err, VmError::CallStackOverflow), "got {:?}", err);
     }
 
     #[test]

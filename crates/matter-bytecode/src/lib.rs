@@ -308,6 +308,16 @@ impl ValidationContext {
     }
 }
 
+/// True if `name` is a let/param binding (not merely a FunctionDef name).
+fn context_has_value_binding(context: &ValidationContext, name: &str) -> bool {
+    context
+        .scopes
+        .iter()
+        .rev()
+        .any(|scope| scope.contains(name))
+        || context.ambient_globals.contains(name)
+}
+
 /// Contexto de loop para break/continue
 #[derive(Debug, Clone)]
 struct LoopContext {
@@ -619,6 +629,8 @@ fn validate_expression(
             validate_expression(operand, structs, functions, context)?;
         }
         Expression::Call { callee, args } => {
+            // Named FunctionDef: static arity check. Variables holding closures/functions
+            // are validated as expressions and checked at runtime (callable semantics v1).
             if let Expression::Identifier(name) = callee.as_ref() {
                 if let Some(expected) = functions.get(name) {
                     if args.len() != *expected {
@@ -629,8 +641,11 @@ fn validate_expression(
                             args.len()
                         )));
                     }
-                } else {
-                    return Err(SemanticError::new(format!("unknown function '{}'", name)));
+                } else if !context_has_value_binding(context, name) {
+                    return Err(SemanticError::new(format!(
+                        "unknown function or callable '{}'",
+                        name
+                    )));
                 }
             }
 
@@ -823,6 +838,21 @@ impl BytecodeBuilder {
     }
 
     pub fn build(mut self, program: &Program) -> Bytecode {
+        // Pre-register FunctionDef names so CallNamed vs dynamic Call is stable
+        // regardless of source order (call-before-def in the same program).
+        for statement in &program.statements {
+            if let Statement::FunctionDef { name, params, .. } = statement {
+                self.bytecode
+                    .functions
+                    .entry(name.clone())
+                    .or_insert(Function {
+                        name: name.clone(),
+                        param_count: params.len(),
+                        instructions: Vec::new(),
+                    });
+            }
+        }
+
         let mut main_instructions = Vec::new();
 
         for statement in &program.statements {
@@ -1441,11 +1471,18 @@ impl BytecodeBuilder {
                     self.compile_function_expression(arg, instructions, params);
                 }
 
+                // CallNamed only for known FunctionDef names. Variables / params that hold
+                // closures must load the value and use Call(n).
                 if let Expression::Identifier(name) = callee.as_ref() {
-                    instructions.push(Instruction::CallNamed {
-                        name: name.clone(),
-                        arg_count: args.len(),
-                    });
+                    if self.bytecode.functions.contains_key(name) {
+                        instructions.push(Instruction::CallNamed {
+                            name: name.clone(),
+                            arg_count: args.len(),
+                        });
+                    } else {
+                        self.compile_function_expression(callee, instructions, params);
+                        instructions.push(Instruction::Call(args.len()));
+                    }
                 } else {
                     self.compile_function_expression(callee, instructions, params);
                     instructions.push(Instruction::Call(args.len()));
@@ -1713,18 +1750,23 @@ impl BytecodeBuilder {
             }
 
             Expression::Call { callee, args } => {
-                // Push arguments onto stack
+                // Push arguments onto stack (callee on top for Call)
                 for arg in args {
                     self.compile_expression(arg, instructions);
                 }
 
                 if let Expression::Identifier(name) = callee.as_ref() {
-                    instructions.push(Instruction::CallNamed {
-                        name: name.clone(),
-                        arg_count: args.len(),
-                    });
+                    if self.bytecode.functions.contains_key(name) {
+                        instructions.push(Instruction::CallNamed {
+                            name: name.clone(),
+                            arg_count: args.len(),
+                        });
+                    } else {
+                        // Variable / expression holding a function or closure
+                        self.compile_expression(callee, instructions);
+                        instructions.push(Instruction::Call(args.len()));
+                    }
                 } else {
-                    // Push function reference
                     self.compile_expression(callee, instructions);
                     instructions.push(Instruction::Call(args.len()));
                 }
@@ -1889,25 +1931,33 @@ impl BytecodeBuilder {
                 let lambda_id = self.bytecode.functions.len();
                 let func_name = format!("__lambda_{}", lambda_id);
 
-                // Collect free variables (captures) from the body
+                // Collect free variables (captures) from the body.
+                // Capture-by-value at MakeClosure: snapshot of current bindings.
                 let mut captures = Vec::new();
-                let param_names: std::collections::HashSet<String> =
+                let mut bound: std::collections::HashSet<String> =
                     params.iter().map(|p| p.name.clone()).collect();
                 for stmt in body {
-                    collect_free_variables(stmt, &param_names, &mut captures);
+                    collect_free_variables(stmt, &mut bound, &mut captures);
                 }
                 captures.sort();
                 captures.dedup();
 
-                // Compile the function body
+                // Compile lambda body like FunctionDef: bind params then statements.
                 let mut func_instructions = Vec::new();
-                for stmt in body {
-                    self.compile_statement_with_scope(stmt, &mut func_instructions, false);
+                let param_names: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
+                for (idx, param) in params.iter().enumerate() {
+                    func_instructions.push(Instruction::LoadParam(idx));
+                    func_instructions.push(Instruction::StoreLocal(param.name.clone()));
                 }
-                func_instructions.push(Instruction::LoadConst(
-                    self.bytecode.add_constant(Constant::Unit),
-                ));
-                func_instructions.push(Instruction::Return);
+                for stmt in body {
+                    self.compile_function_statement(stmt, &mut func_instructions, &param_names);
+                }
+                if !matches!(func_instructions.last(), Some(Instruction::Return)) {
+                    func_instructions.push(Instruction::LoadConst(
+                        self.bytecode.add_constant(Constant::Unit),
+                    ));
+                    func_instructions.push(Instruction::Return);
+                }
 
                 self.bytecode.functions.insert(
                     func_name.clone(),
@@ -1934,48 +1984,70 @@ impl Default for BytecodeBuilder {
     }
 }
 
-/// Collect free variables referenced in a statement (for closure capture)
+/// Collect free variables referenced in a statement (for closure capture).
+/// `bound` is updated with locals introduced in this lambda body.
 fn collect_free_variables(
     stmt: &Statement,
-    param_names: &std::collections::HashSet<String>,
+    bound: &mut std::collections::HashSet<String>,
     captures: &mut Vec<String>,
 ) {
     match stmt {
-        Statement::Let { value, .. } => collect_free_variables_expr(value, param_names, captures),
-        Statement::Set { value, .. } => collect_free_variables_expr(value, param_names, captures),
-        Statement::Print(expr) => collect_free_variables_expr(expr, param_names, captures),
-        Statement::Return(expr) => collect_free_variables_expr(expr, param_names, captures),
-        Statement::Expression(expr) => collect_free_variables_expr(expr, param_names, captures),
+        Statement::Let { name, value, .. } => {
+            collect_free_variables_expr(value, bound, captures);
+            bound.insert(name.clone());
+        }
+        Statement::Set { name, value } => {
+            collect_free_variables_expr(value, bound, captures);
+            // assignment target is not a free capture by itself
+            let _ = name;
+        }
+        Statement::Print(expr) | Statement::Return(expr) | Statement::Expression(expr) => {
+            collect_free_variables_expr(expr, bound, captures)
+        }
         Statement::If {
             condition,
             then_body,
             else_body,
         } => {
-            collect_free_variables_expr(condition, param_names, captures);
+            collect_free_variables_expr(condition, bound, captures);
             for s in then_body {
-                collect_free_variables(s, param_names, captures);
+                collect_free_variables(s, bound, captures);
             }
             if let Some(else_body) = else_body {
                 for s in else_body {
-                    collect_free_variables(s, param_names, captures);
+                    collect_free_variables(s, bound, captures);
                 }
             }
         }
         Statement::While { condition, body } => {
-            collect_free_variables_expr(condition, param_names, captures);
+            collect_free_variables_expr(condition, bound, captures);
             for s in body {
-                collect_free_variables(s, param_names, captures);
+                collect_free_variables(s, bound, captures);
             }
         }
-        Statement::For { iterable, body, .. } => {
-            collect_free_variables_expr(iterable, param_names, captures);
+        Statement::For {
+            item,
+            iterable,
+            body,
+        } => {
+            collect_free_variables_expr(iterable, bound, captures);
+            bound.insert(item.clone());
             for s in body {
-                collect_free_variables(s, param_names, captures);
+                collect_free_variables(s, bound, captures);
             }
         }
         Statement::Loop { body } => {
             for s in body {
-                collect_free_variables(s, param_names, captures);
+                collect_free_variables(s, bound, captures);
+            }
+        }
+        Statement::Match { subject, arms } => {
+            collect_free_variables_expr(subject, bound, captures);
+            for arm in arms {
+                collect_free_variables_expr(&arm.pattern, bound, captures);
+                for s in &arm.body {
+                    collect_free_variables(s, bound, captures);
+                }
             }
         }
         _ => {}
@@ -1984,52 +2056,155 @@ fn collect_free_variables(
 
 fn collect_free_variables_expr(
     expr: &Expression,
-    param_names: &std::collections::HashSet<String>,
+    bound: &std::collections::HashSet<String>,
     captures: &mut Vec<String>,
 ) {
     match expr {
         Expression::Identifier(name) => {
-            if !param_names.contains(name) && !captures.contains(name) {
+            if !bound.contains(name) && !captures.contains(name) {
                 captures.push(name.clone());
             }
         }
         Expression::Binary { left, right, .. } => {
-            collect_free_variables_expr(left, param_names, captures);
-            collect_free_variables_expr(right, param_names, captures);
+            collect_free_variables_expr(left, bound, captures);
+            collect_free_variables_expr(right, bound, captures);
         }
         Expression::Unary { operand, .. } => {
-            collect_free_variables_expr(operand, param_names, captures);
+            collect_free_variables_expr(operand, bound, captures);
         }
         Expression::Call { callee, args } => {
-            collect_free_variables_expr(callee, param_names, captures);
+            collect_free_variables_expr(callee, bound, captures);
             for arg in args {
-                collect_free_variables_expr(arg, param_names, captures);
+                collect_free_variables_expr(arg, bound, captures);
             }
         }
         Expression::List(elements) => {
             for e in elements {
-                collect_free_variables_expr(e, param_names, captures);
+                collect_free_variables_expr(e, bound, captures);
             }
         }
         Expression::Map(entries) => {
             for (_, v) in entries {
-                collect_free_variables_expr(v, param_names, captures);
+                collect_free_variables_expr(v, bound, captures);
             }
         }
         Expression::Index { target, index } => {
-            collect_free_variables_expr(target, param_names, captures);
-            collect_free_variables_expr(index, param_names, captures);
+            collect_free_variables_expr(target, bound, captures);
+            collect_free_variables_expr(index, bound, captures);
         }
         Expression::Field { target, .. } => {
-            collect_free_variables_expr(target, param_names, captures);
+            collect_free_variables_expr(target, bound, captures);
         }
         Expression::MethodCall { target, args, .. } => {
-            collect_free_variables_expr(target, param_names, captures);
+            collect_free_variables_expr(target, bound, captures);
             for arg in args {
-                collect_free_variables_expr(arg, param_names, captures);
+                collect_free_variables_expr(arg, bound, captures);
             }
         }
+        Expression::Lambda { params, body } => {
+            // Nested lambda: free vars relative to nested params (outer free handled separately)
+            let mut nested_bound: std::collections::HashSet<String> =
+                params.iter().map(|p| p.name.clone()).collect();
+            // Outer bound names are also non-free for the nested body
+            for b in bound {
+                nested_bound.insert(b.clone());
+            }
+            let mut nested_caps = Vec::new();
+            for s in body {
+                collect_free_variables(s, &mut nested_bound, &mut nested_caps);
+            }
+            for c in nested_caps {
+                if !bound.contains(&c) && !captures.contains(&c) {
+                    captures.push(c);
+                }
+            }
+        }
+        Expression::OkExpr(inner)
+        | Expression::ErrExpr(inner)
+        | Expression::SomeExpr(inner)
+        | Expression::TryPropagate(inner) => {
+            collect_free_variables_expr(inner, bound, captures);
+        }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod callable_closure_v1_tests {
+    use super::*;
+    use matter_parser::Parser;
+
+    fn check(src: &str) -> std::result::Result<Bytecode, SemanticError> {
+        let mut p = Parser::from_source(src);
+        let program = p.parse().expect("parse");
+        BytecodeBuilder::new().build_checked(&program)
+    }
+
+    #[test]
+    fn lambda_assigned_and_called_compiles() {
+        let bc = check(
+            r#"
+let add = fn(a, b) { return a + b }
+print add(3, 4)
+"#,
+        )
+        .expect("lambda call should compile");
+        // Dynamic Call present (not only CallNamed for 'add')
+        let has_make = bc
+            .main_instructions
+            .iter()
+            .any(|i| matches!(i, Instruction::MakeClosure { .. }));
+        let has_call = bc
+            .main_instructions
+            .iter()
+            .any(|i| matches!(i, Instruction::Call(_)));
+        assert!(has_make, "expected MakeClosure");
+        assert!(has_call, "expected Call for variable callable");
+
+        let lambda = bc
+            .functions
+            .values()
+            .find(|f| f.name.starts_with("__lambda"))
+            .expect("lambda function");
+        assert!(
+            matches!(lambda.instructions[0], Instruction::LoadParam(0)),
+            "expected LoadParam(0), got {:?}",
+            lambda.instructions
+        );
+        assert_eq!(lambda.param_count, 2);
+        // Ensure body loads locals/globals for a,b after StoreLocal
+        let has_store_a = lambda
+            .instructions
+            .iter()
+            .any(|i| matches!(i, Instruction::StoreLocal(n) if n == "a"));
+        assert!(
+            has_store_a,
+            "expected StoreLocal(a): {:?}",
+            lambda.instructions
+        );
+    }
+
+    #[test]
+    fn unknown_name_still_rejected() {
+        let err = check("print missing(1)\n").unwrap_err();
+        assert!(
+            err.message.contains("unknown function or callable")
+                || err.message.contains("undefined variable"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn named_function_arity_still_checked() {
+        let err = check(
+            r#"
+fn add(a, b) { return a + b }
+print add(1)
+"#,
+        )
+        .unwrap_err();
+        assert!(err.message.contains("expects"), "{}", err.message);
     }
 }
 

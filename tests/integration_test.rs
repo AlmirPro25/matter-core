@@ -562,3 +562,68 @@ fn test_parameter_mutation() {
         ]
     );
 }
+
+// --- Callable / Closure Semantics v1 ---
+
+#[test]
+fn test_lambda_basic() {
+    let source = r#"
+        let add = fn(a, b) { return a + b }
+        print add(3, 4)
+    "#;
+    let output = run_matter_code(source).expect("Failed to run lambda test");
+    assert_eq!(output, vec!["7"]);
+}
+
+#[test]
+fn test_lambda_as_argument() {
+    let source = r#"
+        fn apply(f, x) {
+            return f(x)
+        }
+        let double = fn(x) { return x * 2 }
+        print apply(double, 5)
+    "#;
+    let output = run_matter_code(source).expect("Failed to run lambda-as-argument test");
+    assert_eq!(output, vec!["10"]);
+}
+
+#[test]
+fn test_closure_capture() {
+    let source = r#"
+        let x = 10
+        let add_x = fn(y) { return x + y }
+        print add_x(5)
+    "#;
+    let output = run_matter_code(source).expect("Failed to run closure capture test");
+    assert_eq!(output, vec!["15"]);
+}
+
+#[test]
+fn test_nested_closure() {
+    let source = r#"
+        fn make_adder(n) {
+            return fn(x) { return x + n }
+        }
+        let add5 = make_adder(5)
+        let add10 = make_adder(10)
+        print add5(3)
+        print add10(7)
+    "#;
+    let output = run_matter_code(source).expect("Failed to run nested closure test");
+    assert_eq!(output, vec!["8", "17"]);
+}
+
+#[test]
+fn test_call_non_callable_errors() {
+    let source = r#"
+        let x = 1
+        print x()
+    "#;
+    let err = run_matter_code(source).expect_err("expected non-callable error");
+    let low = err.to_lowercase();
+    assert!(
+        low.contains("not callable") || low.contains("function or closure") || low.contains("type"),
+        "unexpected error: {err}"
+    );
+}
